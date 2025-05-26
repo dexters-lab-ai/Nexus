@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+// Set platform-specific environment variables
+process.env.VITE_PLATFORM = 'linux';
+process.env.VITE_ARCH = 'x64';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -138,6 +142,10 @@ export default defineConfig({
     assetsDir: 'vendors/webfonts',
     outDir: 'dist',  // New interface output
     emptyOutDir: true,
+    rollupOptions: {
+      external: ['@rollup/rollup-linux-x64-gnu'],
+      plugins: []
+    },
     rollupOptions: {
       input: {
         modern: path.resolve(__dirname, 'src/modern.html')  // New entry
