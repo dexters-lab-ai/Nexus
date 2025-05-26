@@ -17,14 +17,16 @@
         "start": "node --max-old-space-size=4096 server.js",
         "dev": "concurrently --names \"VITE,SERVER\" --prefix-colors \"green,blue\" --raw \"node --max-old-space-size=4096 node_modules/vite/bin/vite.js\" \"node --max-old-space-size=4096 server.js\"",
         "build": "vite build --mode production",
-        "do-build": "bash build.sh",
+        "do-build": "rm -rf node_modules package-lock.json && npm install --legacy-peer-deps && npm run build",
         "build:ci": "npm install --ignore-optional && npm run build",
         "serve": "node --max-old-space-size=4096 server.js",
         "postinstall": "npx puppeteer browsers install chrome",
         "install:fontawesome": "npm install @fortawesome/fontawesome-free"
     },
     "resolutions": {
-    "rollup": "3.29.4"
+    "rollup": "4.40.1",
+    "vite": "6.3.3",
+    "esbuild": "0.25.3"
   },
   "dependencies": {
         "@puppeteer/browsers": "^2.10.5",
@@ -62,12 +64,12 @@
         "ws": "^8.18.1",
         "zustand": "^5.0.3",
         "lru-cache": "^10.2.0",
-        "vite": "^4.5.0",
-        "rollup": "3.29.4"
+        "vite": "^6.3.3",
+        "rollup": "^4.40.1"
     },
     "devDependencies": {
         "@types/node": "^22.14.1",
-        "@vitejs/plugin-react": "^4.4.1",
+        "@vitejs/plugin-react": "^4.3.1",
         "autoprefixer": "^10.4.21",
         "concurrently": "^9.1.2",
         "nodemon": "^3.1.9",
