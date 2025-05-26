@@ -3,9 +3,8 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Set platform-specific environment variables
-process.env.VITE_PLATFORM = 'linux';
-process.env.VITE_ARCH = 'x64';
+// Configure environment for production build
+process.env.NODE_ENV = 'production';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -138,10 +137,13 @@ export default defineConfig({
     exclude: ['three/examples/js/libs/draco/draco_decoder.js']
   },
   build: {
-    cssCodeSplit: true,
-    assetsDir: 'vendors/webfonts',
-    outDir: 'dist',  // New interface output
+    outDir: 'dist',
     emptyOutDir: true,
+    sourcemap: false,
+    minify: 'terser',
+    commonjsOptions: {
+      include: /node_modules/
+    },
     rollupOptions: {
       external: ['@rollup/rollup-linux-x64-gnu'],
       plugins: []
