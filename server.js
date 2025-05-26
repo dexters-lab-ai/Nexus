@@ -205,7 +205,33 @@ global.NEXUS_PATHS = {
 // ======================================
 // 6) EXPRESS + HTTP SERVER
 // ======================================
-const app    = express();
+const app = express();
+
+// --- Security Headers Middleware ---
+app.use((req, res, next) => {
+  // Set Content Security Policy
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com",
+    "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
+    "img-src 'self' data: https: http:",
+    "font-src 'self' https://cdnjs.cloudflare.com data:",
+    "connect-src 'self' https://operator-344ej.ondigitalocean.app ws: wss:",
+    "frame-src 'self'",
+    "frame-ancestors 'self'",
+    "form-action 'self'",
+    "base-uri 'self'"
+  ].join('; ');
+
+  // Set security headers
+  res.setHeader('Content-Security-Policy', csp);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
+  next();
+});
 
 // --- CORS Configuration ---
 const allowedOrigins = [
@@ -318,17 +344,39 @@ app.use('/midscene_run', (req, res, next) => {
 });
 
 // === GENERAL STATIC ASSETS ===
-app.use(express.static(path.join(__dirname, 'dist')));
-app.use(express.static(path.join(__dirname, 'public')));
-// app.use('/css', express.static(path.join(__dirname, 'public', 'css'))); // REMOVED - Handled by dist serving
-app.use('/js', express.static(path.join(__dirname, 'public', 'js')));
-app.use('/vendors', express.static(path.join(__dirname, 'public', 'vendors'), {
+// Serve static files with proper caching and security headers
+const staticOptions = {
   setHeaders: (res, path) => {
+    // Cache static assets for 1 year (immutable)
+    if (path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+    
+    // Set CORS headers for all static files
+    res.setHeader('Access-Control-Allow-Origin', req => {
+      const origin = req.headers.origin;
+      return allowedOrigins.includes(origin) ? origin : '';
+    });
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+};
+
+// Serve static files from multiple directories
+app.use(express.static(path.join(__dirname, 'dist'), staticOptions));
+app.use(express.static(path.join(__dirname, 'public'), staticOptions));
+app.use('/js', express.static(path.join(__dirname, 'public', 'js'), staticOptions));
+app.use('/css', express.static(path.join(__dirname, 'public', 'css'), staticOptions));
+app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), staticOptions));
+app.use('/vendors', express.static(path.join(__dirname, 'public', 'vendors'), {
+  ...staticOptions,
+  setHeaders: (res, path) => {
+    staticOptions.setHeaders(res, path);
+    // Additional headers for vendor files
     if (path.match(/\.(woff2?|ttf|otf|eot)$/)) {
-      // Add CORS headers for font files
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET');
       res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    }
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       // Set proper MIME types for font files
       if (path.endsWith('.ttf')) {
