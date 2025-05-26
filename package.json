@@ -8,13 +8,14 @@
         "url": "https://github.com/dail/operator-agent.git"
     },
     "engines": {
-        "node": ">=18.0.0"
+        "node": ">=18.0.0 <=20.x"
     },
     "scripts": {
         "prepare": "npx puppeteer browsers install chrome",
-        "start": "pm2 start ecosystem.config.yaml --no-daemon",
+        "start": "node --max-old-space-size=4096 server.js",
         "dev": "concurrently --names \"VITE,SERVER\" --prefix-colors \"green,blue\" --raw \"node --max-old-space-size=4096 node_modules/vite/bin/vite.js\" \"node --max-old-space-size=4096 server.js\"",
-        "build": "vite build",
+        "build": "vite build --mode production",
+        "build:ci": "npm install && npm run build",
         "serve": "node --max-old-space-size=4096 server.js",
         "postinstall": "npx puppeteer browsers install chrome",
         "install:fontawesome": "npm install @fortawesome/fontawesome-free"
@@ -55,7 +56,8 @@
         "ws": "^8.18.1",
         "zustand": "^5.0.3",
         "lru-cache": "^10.2.0",
-        "vite": "^6.3.2"
+        "vite": "^6.3.2",
+        "@rollup/rollup-linux-x64-gnu": "^4.9.0"
     },
     "devDependencies": {
         "@types/node": "^22.14.1",
