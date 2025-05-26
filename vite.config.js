@@ -6,6 +6,9 @@ import { fileURLToPath } from 'url';
 // Configure environment for production build
 process.env.NODE_ENV = 'production';
 
+// Force using JavaScript version of Rollup
+process.env.ROLLUP_DISABLE_NATIVE = 'true';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -141,8 +144,15 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: false,
     minify: 'terser',
+    ssr: false,
+    rollupOptions: {
+      // Ensure we don't try to use platform-specific binaries
+      external: ['@rollup/rollup-linux-x64-gnu'],
+      plugins: []
+    },
     commonjsOptions: {
-      include: /node_modules/
+      include: /node_modules/,
+      transformMixedEsModules: true
     },
     rollupOptions: {
       external: ['@rollup/rollup-linux-x64-gnu'],
