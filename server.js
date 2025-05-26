@@ -215,23 +215,34 @@ const allowedOrigins = [
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
+  const requestHeaders = req.headers['access-control-request-headers'];
   
   // Allow all localhost origins for development
   if (origin && origin.startsWith('http://localhost')) {
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Allow-Headers', requestHeaders || 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Expose-Headers', 'Set-Cookie');
+    res.header('Vary', 'Origin');
   } 
   // Check allowed origins for production
   else if (origin && allowedOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Allow-Headers', requestHeaders || 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Expose-Headers', 'Set-Cookie');
+    res.header('Vary', 'Origin');
   }
   
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    // Cache preflight requests for 2 hours (Chromium default)
+    res.header('Access-Control-Max-Age', '7200');
+    return res.status(204).end();
+  }
+  
   next();
 });
 
@@ -273,10 +284,12 @@ const sessionConfig = {
   cookie: {
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    domain: process.env.NODE_ENV === 'production' ? '.ondigitalocean.app' : undefined
-  }
+    secure: true, // Always use secure in production
+    sameSite: 'none', // Required for cross-site cookies
+    // Remove domain setting to let the browser handle it
+  },
+  proxy: true, // Trust the reverse proxy (Cloudflare)
+  name: 'nexus.sid' // Custom session cookie name
 };
 
 if (process.env.NODE_ENV === 'production') {
