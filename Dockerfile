@@ -4,21 +4,24 @@ FROM node:18-alpine
 # Create app directory
 WORKDIR /usr/src/app
 
+# Install system dependencies
+RUN apk --no-cache add --virtual .gyp python3 make g++
+
 # Copy package files
 COPY package*.json ./
-COPY server.js .
 
-# Install dependencies
-RUN npm install
+# Install app dependencies
+RUN npm install --production
 
-# Bundle app source
+# Copy app source
 COPY . .
 
-# Build the app (if needed)
-# RUN npm run build
+# Set environment to production
+ENV NODE_ENV=production
+ENV PORT=3420
 
-# Expose the port the app runs on
-EXPOSE 3000
+# Expose the app port
+EXPOSE 3420
 
-# Start the application
-CMD [ "node", "server.js" ]
+# Command to run the application
+CMD ["node", "server.js"]
