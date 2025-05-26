@@ -1,0 +1,164 @@
+/* 
+ * settings-button-styles.css
+ * Modern button styling for Settings Modal matching YAML Editor
+ */
+
+/* General Button Styling */
+.settings-btn,
+.nexus-settings-btn,
+.settings-modal-content button,
+button.save-key-btn,
+button.delete-key-btn,
+#save-llm-preferences-btn,
+#close-settings-btn,
+#save-all-changes-btn {
+  background: rgba(30, 40, 65, 0.7);
+  color: rgba(220, 230, 255, 0.95);
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid rgba(120, 140, 240, 0.4);
+  border-radius: 4px;
+  padding: 0 12px;
+  height: 30px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  white-space: nowrap;
+  min-width: 60px;
+  letter-spacing: 0.3px;
+  box-shadow: 0 0 10px rgba(120, 140, 240, 0.1), inset 0 1px rgba(255, 255, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(5px);
+}
+
+/* Hover Effect */
+.settings-btn:hover,
+.nexus-settings-btn:hover,
+.settings-modal-content button:hover,
+button.save-key-btn:hover,
+button.delete-key-btn:hover,
+#save-llm-preferences-btn:hover,
+#close-settings-btn:hover,
+#save-all-changes-btn:hover {
+  background: rgba(40, 50, 80, 0.8);
+  border-color: rgba(157, 113, 234, 0.8);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 0 15px rgba(120, 140, 240, 0.3), inset 0 1px rgba(255, 255, 255, 0.2);
+  text-shadow: 0 0 5px rgba(157, 113, 234, 0.5);
+}
+
+/* Active State */
+.settings-btn:active,
+.nexus-settings-btn:active,
+.settings-modal-content button:active,
+button.save-key-btn:active,
+button.delete-key-btn:active,
+#save-llm-preferences-btn:active,
+#close-settings-btn:active,
+#save-all-changes-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 0 8px rgba(120, 140, 240, 0.2), inset 0 1px 2px rgba(0, 0, 0, 0.2);
+  background: rgba(35, 45, 75, 0.9);
+  border-color: rgba(157, 113, 234, 0.9);
+}
+
+/* Button Gradient Overlay */
+.settings-btn::before,
+.nexus-settings-btn::before,
+.settings-modal-content button::before,
+button.save-key-btn::before,
+button.delete-key-btn::before,
+#save-llm-preferences-btn::before,
+#close-settings-btn::before,
+#save-all-changes-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 100%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.settings-btn:hover::before,
+.nexus-settings-btn:hover::before,
+.settings-modal-content button:hover::before,
+button.save-key-btn:hover::before,
+button.delete-key-btn:hover::before,
+#save-llm-preferences-btn:hover::before,
+#close-settings-btn:hover::before,
+#save-all-changes-btn:hover::before {
+  opacity: 1;
+}
+
+/* Primary Buttons (Save buttons) */
+.settings-btn.primary,
+.nexus-settings-btn.primary,
+button.save-key-btn,
+#save-llm-preferences-btn,
+#save-all-changes-btn {
+  background: unset;
+  border-color: var(--primary-color);
+  color: rgba(220, 210, 255, 0.95);
+  box-shadow: 0 0 12px rgba(157, 113, 234, 0.2), inset 0 1px rgba(255, 255, 255, 0.15);
+}
+
+.settings-btn.primary:hover,
+.nexus-settings-btn.primary:hover,
+button.save-key-btn:hover,
+#save-llm-preferences-btn:hover,
+#save-all-changes-btn:hover {
+  background: rgba(46, 204, 113, 0.2);
+  border-color: var(--primary-color);
+  color: white;
+  box-shadow: 0 0 18px rgba(157, 113, 234, 0.35), inset 0 1px rgba(255, 255, 255, 0.2);
+  text-shadow: 0 0 5px rgba(177, 133, 254, 0.7);
+}
+
+/* Delete Buttons (Red) */
+.settings-btn.danger,
+.nexus-settings-btn.danger,
+button.delete-key-btn {
+  background: unset;
+  border-color: var(--cyberpunk-purple);
+  color: rgba(255, 220, 220, 0.95);
+}
+
+.settings-btn.danger:hover,
+.nexus-settings-btn.danger:hover,
+button.delete-key-btn:hover {
+  background: rgba(140, 40, 40, 0.5);
+  border-color: rgba(200, 70, 70, 0.5);
+}
+
+/* Close Button */
+#close-settings-btn {
+  background: rgba(30, 40, 60, 0.4);
+  border-color: rgba(80, 100, 140, 0.3);
+}
+
+/* Main Action Button Styling */
+#save-all-changes-btn {
+  min-width: 120px;
+  height: 32px;
+  font-size: 12px;
+  background: rgba(20, 120, 80, 0.4);
+  border-color: rgba(30, 180, 120, 0.5);
+}
+
+/* Footer Button Container */
+.settings-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 10px 15px;
+  background: rgba(15, 20, 30, 0.9);
+  border-top: 1px solid rgba(80, 120, 170, 0.2);
+}

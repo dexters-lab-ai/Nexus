@@ -1,0 +1,72 @@
+{
+    "name": "operator-agent",
+    "version": "1.3.8",
+    "description": "O.P.E.R.A.T.O.R - Advanced autonomous agent with browser and computer use capabilities. Nexus Engine written in NodeJs. Product of D.A.I.L",
+    "type": "module",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/dail/operator-agent.git"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "scripts": {
+        "prepare": "npx puppeteer browsers install chrome",
+        "start": "pm2 start ecosystem.config.yaml --no-daemon",
+        "dev": "concurrently --names \"VITE,SERVER\" --prefix-colors \"green,blue\" --raw \"node --max-old-space-size=4096 node_modules/vite/bin/vite.js\" \"node --max-old-space-size=4096 server.js\"",
+        "build": "vite build",
+        "serve": "node --max-old-space-size=4096 server.js",
+        "postinstall": "npx puppeteer browsers install chrome",
+        "install:fontawesome": "npm install @fortawesome/fontawesome-free"
+    },
+    "dependencies": {
+        "@puppeteer/browsers": "^2.10.5",
+        "@fortawesome/fontawesome-free": "^6.7.2",
+        "@midscene/web": "^0.12.7",
+        "@nut-tree-fork/nut-js": "^4.2.6",
+        "@playwright/test": "^1.51.1",
+        "@react-three/drei": "^10.0.6",
+        "@react-three/fiber": "^9.1.2",
+        "@types/three": "^0.175.0",
+        "async-mutex": "^0.5.0",
+        "bcrypt": "^5.1.1",
+        "cheerio": "^1.0.0",
+        "connect-mongo": "^5.1.0",
+        "cors": "^2.8.5",
+        "dotenv": "^16.4.7",
+        "express": "^4.21.2",
+        "express-session": "^1.18.1",
+        "gsap": "^3.12.7",
+        "htmlparser2": "^10.0.0",
+        "lil-gui": "^0.20.0",
+        "marked": "^15.0.8",
+        "mongoose": "^6.13.8",
+        "openai": "^4.88.0",
+        "p-retry": "^6.1.0",
+        "p-timeout": "^6.1.2",
+        "playwright": "^1.37.1",
+        "puppeteer": "^24.4.0",
+        "puppeteer-extra": "^3.3.6",
+        "puppeteer-extra-plugin-stealth": "^2.11.2",
+        "rate-limiter-flexible": "^5.0.0",
+        "three": "^0.175.0",
+        "tweakpane": "^4.0.3",
+        "winston": "^3.11.0",
+        "ws": "^8.18.1",
+        "zustand": "^5.0.3",
+        "lru-cache": "^10.2.0"
+    },
+    "devDependencies": {
+        "@types/node": "^22.14.1",
+        "@vitejs/plugin-react": "^4.4.1",
+        "autoprefixer": "^10.4.21",
+        "concurrently": "^9.1.2",
+        "nodemon": "^3.1.9",
+        "pm2": "^6.0.5",
+        "postcss": "^8.5.3",
+        "react": "^19.1.0",
+        "react-dom": "^19.1.0",
+        "typescript": "^5.8.3",
+        "vite": "^6.3.2"
+    }
+}

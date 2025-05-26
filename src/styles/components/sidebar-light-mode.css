@@ -1,0 +1,262 @@
+/* Sidebar Light Mode Enhancements 
+ * - Consistent with message timeline and taskbar light mode styling
+ * - Enhances readability and visual harmony in light theme
+ */
+
+/* Light mode sidebar variables */
+html[data-theme="light"] body, 
+body[class] [data-theme="light"] {
+  --sidebar-bg: rgba(245, 246, 250, 0.9) !important;
+  --sidebar-border-color: rgba(59, 130, 246, 0.15) !important;
+  --sidebar-card-bg: rgba(255, 255, 255, 0.9) !important;
+  --sidebar-card-hover-bg: rgba(255, 255, 255, 0.95) !important;
+  --sidebar-card-active-bg: rgba(59, 130, 246, 0.1) !important;
+  --sidebar-text: #1F2937 !important;
+  --sidebar-text-muted: #4B5563 !important;
+  --sidebar-accent: #3B82F6 !important;
+  --sidebar-shadow: 0 5px 20px rgba(0, 0, 0, 0.1) !important;
+  --sidebar-card-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Main sidebar container */
+html[data-theme="light"] body .sidebar,
+body[class] [data-theme="light"] .sidebar {
+  background: var(--sidebar-bg) !important;
+  border-left: 1px solid var(--sidebar-border-color) !important;
+  box-shadow: -2px 0 15px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Sidebar header */
+html[data-theme="light"] body .sidebar-header,
+body[class] [data-theme="light"] .sidebar-header {
+  border-bottom: 1px solid rgba(59, 130, 246, 0.1) !important;
+  background: transparent !important;
+}
+
+/* Toggle button */
+html[data-theme="light"] body .sidebar-toggle,
+body[class] [data-theme="light"] .sidebar-toggle {
+  background: rgba(59, 130, 246, 0.1) !important;
+  color: var(--sidebar-accent) !important;
+}
+
+html[data-theme="light"] body .sidebar-toggle:hover,
+body[class] [data-theme="light"] .sidebar-toggle:hover {
+  background: rgba(59, 130, 246, 0.2) !important;
+}
+
+/* Menu buttons */
+html[data-theme="light"] body .sidebar-menu-btn,
+body[class] [data-theme="light"] .sidebar-menu-btn {
+  color: #4B5563 !important;
+}
+
+html[data-theme="light"] body .sidebar-menu-btn:hover,
+body[class] [data-theme="light"] .sidebar-menu-btn:hover {
+  color: #1F2937 !important;
+  background: rgba(59, 130, 246, 0.05) !important;
+}
+
+html[data-theme="light"] body .sidebar-menu-btn.active,
+body[class] [data-theme="light"] .sidebar-menu-btn.active {
+  color: var(--dark) !important;
+  background: rgba(59, 130, 246, 0.1) !important;
+}
+
+/* YAML rotator */
+.yaml-info-slide {
+  color: rgba(59, 130, 246, 0.1) !important;
+}
+
+/* Map cards */
+html[data-theme="light"] body .map-card,
+body[class] [data-theme="light"] .map-card {
+  background: var(--sidebar-card-bg) !important;
+  border: 1px solid rgba(59, 130, 246, 0.1) !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03) !important;
+}
+
+html[data-theme="light"] body .map-card:hover,
+body[class] [data-theme="light"] .map-card:hover {
+  background: var(--sidebar-card-hover-bg) !important;
+  border-color: rgba(59, 130, 246, 0.2) !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05) !important;
+}
+
+html[data-theme="light"] body .map-card.active,
+body[class] [data-theme="light"] .map-card.active {
+  background: var(--sidebar-card-active-bg) !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+/* Map card title */
+html[data-theme="light"] body .map-title,
+body[class] [data-theme="light"] .map-title {
+  color: #1F2937 !important;
+}
+
+html[data-theme="light"] body .map-subtitle,
+body[class] [data-theme="light"] .map-subtitle {
+  color: #4B5563 !important;
+}
+
+/* Footer area */
+html[data-theme="light"] body .sidebar-footer,
+body[class] [data-theme="light"] .sidebar-footer {
+  border-top: 1px solid rgba(59, 130, 246, 0.1) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* SDK promotion */
+html[data-theme="light"] body .sdk-promotion,
+body[class] [data-theme="light"] .sdk-promotion {
+  background: rgba(240, 245, 250, 0.9);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+}
+
+html[data-theme="light"] body .sdk-promotion:hover,
+body[class] [data-theme="light"] .sdk-promotion:hover {
+  background: rgba(235, 242, 250, 0.95);
+  border-color: rgba(59, 130, 246, 0.25);
+}
+
+html[data-theme="light"] body .sdk-title,
+body[class] [data-theme="light"] .sdk-title {
+  color: #1F2937;
+}
+
+html[data-theme="light"] body .coming-soon-badge,
+body[class] [data-theme="light"] .coming-soon-badge {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--info);
+}
+
+/* Navigation area */
+html[data-theme="light"] body .sidebar-nav-btn,
+body[class] [data-theme="light"] .sidebar-nav-btn {
+  color: #4B5563;
+}
+
+html[data-theme="light"] body .sidebar-nav-btn:hover,
+body[class] [data-theme="light"] .sidebar-nav-btn:hover {
+  background: rgba(59, 130, 246, 0.05);
+  color: #1F2937;
+}
+
+/* Empty state */
+html[data-theme="light"] body .empty-state,
+body[class] [data-theme="light"] .empty-state {
+  color: #4B5563;
+}
+
+html[data-theme="light"] body .empty-state i,
+body[class] [data-theme="light"] .empty-state i {
+  color: rgba(59, 130, 246, 0.2);
+}
+
+/* Scrollbar customization */
+html[data-theme="light"] body .sidebar-content::-webkit-scrollbar-track,
+body[class] [data-theme="light"] .sidebar-content::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* SDK Tooltip Light Mode */
+html[data-theme="light"] body .sdk-tooltip,
+body[class] [data-theme="light"] .sdk-tooltip {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border: 1px solid rgba(59, 130, 246, 0.15) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(59, 130, 246, 0.05) !important;
+}
+
+html[data-theme="light"] body .sdk-tooltip-content,
+body[class] [data-theme="light"] .sdk-tooltip-content {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(245, 247, 250, 0.95)) !important;
+  color: var(--sidebar-text) !important;
+}
+
+html[data-theme="light"] body .sdk-tooltip p,
+body[class] [data-theme="light"] .sdk-tooltip p {
+  color: var(--sidebar-text-muted) !important;
+}
+
+html[data-theme="light"] body .sdk-tooltip h3,
+body[class] [data-theme="light"] .sdk-tooltip h3 {
+  color: var(--sidebar-text) !important;
+}
+
+html[data-theme="light"] body .sdk-tooltip h4,
+body[class] [data-theme="light"] .sdk-tooltip h4 {
+  color: var(--sidebar-accent) !important;
+}
+
+/* Keep the blue accent for the icon */
+html[data-theme="light"] body .sdk-tooltip h3:before,
+body[class] [data-theme="light"] .sdk-tooltip h3:before {
+  color: var(--primary, #3B82F6) !important;
+}
+
+/* Add a subtle border to separate content in light mode */
+html[data-theme="light"] body .sdk-tooltip-content::before,
+body[class] [data-theme="light"] .sdk-tooltip-content::before {
+  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.1), transparent) !important;
+}
+
+/* SDK Features List in Light Mode */
+html[data-theme="light"] body .sdk-features li,
+body[class] [data-theme="light"] .sdk-features li {
+  color: var(--sidebar-text) !important;
+}
+
+/* SDK Option Boxes in Light Mode */
+html[data-theme="light"] body .sdk-option,
+body[class] [data-theme="light"] .sdk-option {
+  background: rgba(240, 245, 255, 0.7) !important;
+  border: 1px solid rgba(59, 130, 246, 0.2) !important;
+}
+
+html[data-theme="light"] body .sdk-option:hover,
+body[class] [data-theme="light"] .sdk-option:hover {
+  background: rgba(230, 240, 255, 0.9) !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+/* Code Examples in Light Mode */
+html[data-theme="light"] body .sdk-option code,
+body[class] [data-theme="light"] .sdk-option code {
+  background: rgba(0, 0, 0, 0.05) !important;
+  color: #1a56db !important; /* Darker blue for better contrast */
+  border: 1px solid rgba(59, 130, 246, 0.1) !important;
+  font-family: 'Fira Code', 'Courier New', monospace !important;
+}
+
+/* Copy Icon in Light Mode */
+html[data-theme="light"] body .sdk-option code::after,
+body[class] [data-theme="light"] .sdk-option code::after {
+  content: '\f0c5'; /* Copy icon */
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: rgba(59, 130, 246, 0.6);
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+html[data-theme="light"] body .sdk-option code:hover::after,
+body[class] [data-theme="light"] .sdk-option code:hover::after {
+  color: var(--sidebar-accent) !important;
+}
+
+/* Feature Icons in Light Mode */
+html[data-theme="light"] body .sdk-features li i,
+body[class] [data-theme="light"] .sdk-features li i {
+  color: #10b981 !important; /* Green checkmark color */
+}
+
+html[data-theme="light"] body .sidebar-content::-webkit-scrollbar-thumb,
+body[class] [data-theme="light"] .sidebar-content::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.2);
+}

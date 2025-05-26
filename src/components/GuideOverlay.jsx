@@ -1,0 +1,886 @@
+/**
+ * GuideOverlay.jsx - Enhanced Guide Component for O.P.E.R.A.T.O.R
+ * A comprehensive and user-friendly guide with tabbed interface
+ */
+
+import { eventBus } from '../utils/events.js';
+import { version } from '../../package.json';
+
+// Import guide overlay styles
+function importGuideStyles() {
+  // First, remove any existing guide theme
+  const existingLink = document.getElementById('guide-overlay-styles');
+  if (existingLink) existingLink.remove();
+  
+  // Add new theme
+  const themeLink = document.createElement('link');
+  themeLink.id = 'guide-overlay-styles';
+  themeLink.rel = 'stylesheet';
+  themeLink.href = '/src/styles/components/guide-overlay.css';
+  document.head.appendChild(themeLink);
+}
+
+// Import the styles when this file is loaded
+importGuideStyles();
+
+// Create a singleton instance
+let guideOverlayInstance = null;
+
+// Factory function to get or create the instance
+export function getGuideOverlay() {
+  if (!guideOverlayInstance) {
+    guideOverlayInstance = new GuideOverlay();
+  }
+  return guideOverlayInstance;
+}
+
+class GuideOverlay {
+  constructor() {
+    this.isVisible = false;
+    this.activeTab = 'main';
+    this.containerId = 'guide-overlay';
+    this.overlay = null;
+    this.container = null;
+    
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => this.initialize());
+    } else {
+      this.initialize();
+    }
+  }
+  
+  initialize() {
+    // Create container if it doesn't exist
+    this.container = document.createElement('div');
+    this.container.id = this.containerId + '-container';
+    
+    // Create overlay container
+    this.overlay = document.createElement('div');
+    this.overlay.className = 'guide-overlay';
+    this.overlay.id = this.containerId;
+    
+    // Create main content
+    const content = this.createContent();
+    this.overlay.appendChild(content);
+    
+    // Add to DOM
+    this.container.appendChild(this.overlay);
+    document.body.appendChild(this.container);
+    
+    // Setup event listeners
+    this.setupEventListeners();
+  }
+  
+  createContent() {
+    const content = document.createElement('div');
+    content.className = 'guide-container';
+    
+    // Header
+    const header = document.createElement('div')
+    header.className = 'guide-header';
+    
+    header.innerHTML = `
+      <h2>O.P.E.R.A.T.O.R Guide <span class="version-badge">v${version}</span></h2>
+      <button class="close-btn">&times;</button>
+    `;
+    
+    // Tabs navigation
+    const tabsNav = document.createElement('div');
+    tabsNav.className = 'guide-tabs-nav';
+    tabsNav.innerHTML = `
+      <button class="tab-btn active" data-tab="main">Main</button>
+      <button class="tab-btn" data-tab="getting-started">Getting Started</button>
+      <button class="tab-btn" data-tab="tasks">Task Management</button>
+      <button class="tab-btn" data-tab="llm">LLM Engines</button>
+      <button class="tab-btn" data-tab="advanced">Advanced Features</button>
+      <button class="tab-btn" data-tab="tips">Tips & Tricks</button>
+    `;
+    
+    // Tabs content container
+    const tabsContent = document.createElement('div');
+    tabsContent.className = 'guide-tabs-content';
+    
+    // Create each tab content
+    const mainTab = this.createMainTab();
+    const gettingStartedTab = this.createGettingStartedTab();
+    const tasksTab = this.createTasksTab();
+    const llmTab = this.createLLMTab();
+    const advancedTab = this.createAdvancedTab();
+    const tipsTab = this.createTipsTab();
+    
+    // Set active tab
+    mainTab.classList.add('active');
+    
+    // Add tabs to content
+    tabsContent.appendChild(mainTab);
+    tabsContent.appendChild(gettingStartedTab);
+    tabsContent.appendChild(tasksTab);
+    tabsContent.appendChild(llmTab);
+    tabsContent.appendChild(advancedTab);
+    tabsContent.appendChild(tipsTab);
+    
+    // Assemble content
+    content.appendChild(header);
+    content.appendChild(tabsNav);
+    content.appendChild(tabsContent);
+    
+    return content;
+  }
+  
+  createMainTab() {
+    const tab = document.createElement('div');
+    tab.className = 'guide-tab';
+    tab.dataset.tab = 'main';
+    
+    tab.innerHTML = `
+      <div class="guide-section">
+        <div class="section-header">
+          <h3><span class="icon">🚀</span> Welcome to the Guidebook</h3>
+        </div>
+        <div class="section-content">
+          <p>O.P.E.R.A.T.O.R is your advanced autonomous agent with browser and computer use capabilities, powered by the Nexus Engine.</p>
+          
+          <div class="guide-highlights">
+            <div class="highlight-item">
+              <i class="fas fa-robot"></i>
+              <h4>Autonomous</h4>
+              <p>Advanced AI that can navigate and interact with any application or website</p>
+            </div>
+            <div class="highlight-item">
+              <i class="fas fa-tasks"></i>
+              <h4>Task Automation</h4>
+              <p>Automate complex workflows across multiple platforms</p>
+            </div>
+            <div class="highlight-item">
+              <i class="fas fa-brain"></i>
+              <h4>Adaptive Learning</h4>
+              <p>Improves performance through machine learning and user feedback</p>
+            </div>
+            <div class="highlight-item">
+              <i class="fas fa-shield-alt"></i>
+              <h4>Secure</h4>
+              <p>Enterprise-grade security for all your automation needs</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="guide-section">
+        <div class="section-header">
+          <h3><span class="icon">⚡</span> Quick Start</h3>
+        </div>
+        <div class="section-content">
+          <ol class="quick-start-steps">
+            <li>
+              <h4>Enter your objective</h4>
+              <p>Type what you want O.P.E.R.A.T.O.R to accomplish in the Command Center.</p>
+            </li>
+            <li>
+              <h4>Provide context (optional)</h4>
+              <p>Add any specific requirements, preferences, or constraints.</p>
+            </li>
+            <li>
+              <h4>Review and execute</h4>
+              <p>O.P.E.R.A.T.O.R will analyze your request and execute the necessary steps.</p>
+            </li>
+            <li>
+              <h4>Monitor and refine</h4>
+              <p>Track progress and provide feedback to improve results.</p>
+            </li>
+          </ol>
+          
+          <div class="guide-cta">
+            <button class="btn btn-primary tab-link-btn" data-tab="getting-started">
+              <i class="fas fa-book-open"></i> View Full Guide
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    return tab;
+  }
+  
+  createGettingStartedTab() {
+    const tab = document.createElement('div');
+    tab.className = 'guide-tab';
+    tab.dataset.tab = 'getting-started';
+    
+    tab.innerHTML = `
+      <div class="guide-section">
+        <h3>Getting Started with O.P.E.R.A.T.O.R</h3>
+        <p>O.P.E.R.A.T.O.R is designed to be intuitive and powerful, helping you automate tasks with AI assistance.</p>
+        
+        <div class="guide-subsection">
+          <h4>The Agent Interface</h4>
+          <div class="guide-image-container">
+            <div class="guide-image-placeholder">
+              <i class="fas fa-desktop"></i>
+              <p>Interface Overview</p>
+            </div>
+          </div>
+          <p>The Agent interface consists of several key components:</p>
+          <ul>
+            <li><strong>Command Center</strong> - Located at the bottom of the screen, this is where you enter your tasks and queries.</li>
+            <li><strong>Message Timeline</strong> - The central area displays the conversation history and task results.</li>
+            <li><strong>Navigation Bar</strong> - Access settings, history, and this guide from the top navigation.</li>
+            <li><strong>Task Bar</strong> - Monitor active and recently completed tasks.</li>
+          </ul>
+        </div>
+        
+        <div class="guide-subsection">
+          <h4>Your First Task</h4>
+          <p>Let's walk through creating your first task in Nexus:</p>
+          <ol>
+            <li><strong>Navigate to the Command Center</strong> at the bottom of the screen</li>
+            <li><strong>Enter a clear, specific request</strong>, such as "Research the latest developments in renewable energy"</li>
+            <li><strong>Submit your task</strong> by pressing Enter or clicking the Send button</li>
+            <li><strong>Watch as Nexus processes</strong> your request, showing real-time progress</li>
+            <li><strong>Review the results</strong> in the Message Timeline</li>
+            <li><strong>Save or reference</strong> the output for future use</li>
+          </ol>
+        </div>
+      </div>
+      
+      <div class="guide-section">
+        <h3>Interacting with the AI</h3>
+        <p>Nexus uses advanced language models to understand and process your requests. Here are some tips for effective communication:</p>
+        
+        <div class="guide-tips-grid">
+          <div class="guide-tip-card">
+            <i class="fas fa-bullseye"></i>
+            <h4>Be Specific</h4>
+            <p>Clearly state what you need and provide relevant details for better results.</p>
+          </div>
+          <div class="guide-tip-card">
+            <i class="fas fa-list-ol"></i>
+            <h4>Structure Complex Requests</h4>
+            <p>Break down complex tasks into steps or bullet points for clarity.</p>
+          </div>
+          <div class="guide-tip-card">
+            <i class="fas fa-comment-dots"></i>
+            <h4>Follow-up is Welcome</h4>
+            <p>You can ask clarifying questions or request adjustments to the results.</p>
+          </div>
+          <div class="guide-tip-card">
+            <i class="fas fa-lightbulb"></i>
+            <h4>Provide Context</h4>
+            <p>Include relevant background information or preferences when appropriate.</p>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    return tab;
+  }
+  
+  createTasksTab() {
+    const tab = document.createElement('div');
+    tab.className = 'guide-tab';
+    tab.dataset.tab = 'tasks';
+    
+    tab.innerHTML = `
+      <div class="guide-section">
+        <h3>Task Management</h3>
+        <p>Nexus provides powerful tools for managing, tracking, and analyzing your tasks.</p>
+        
+        <div class="guide-subsection">
+          <h4>Task Lifecycle</h4>
+          <div class="task-lifecycle">
+            <div class="lifecycle-step">
+              <div class="step-number">1</div>
+              <h5>Creation</h5>
+              <p>Enter task in Command Center</p>
+            </div>
+            <div class="lifecycle-connector"><i class="fas fa-arrow-right"></i></div>
+            <div class="lifecycle-step">
+              <div class="step-number">2</div>
+              <h5>Processing</h5>
+              <p>AI analyzes and works on your task</p>
+            </div>
+            <div class="lifecycle-connector"><i class="fas fa-arrow-right"></i></div>
+            <div class="lifecycle-step">
+              <div class="step-number">3</div>
+              <h5>Completion</h5>
+              <p>Results are displayed in timeline</p>
+            </div>
+            <div class="lifecycle-connector"><i class="fas fa-arrow-right"></i></div>
+            <div class="lifecycle-step">
+              <div class="step-number">4</div>
+              <h5>Storage</h5>
+              <p>Task saved to history for later reference</p>
+            </div>
+          </div>
+        </div>
+        
+        <div class="guide-subsection">
+          <h4>Progress Tracking</h4>
+          <p>Monitor the progress of your active tasks through:</p>
+          <ul>
+            <li><strong>Task Bar</strong> - Shows active tasks with progress indicators</li>
+            <li><strong>Timeline Updates</strong> - Real-time updates appear as your task progresses</li>
+            <li><strong>Notifications</strong> - Receive alerts when tasks are completed or need attention</li>
+          </ul>
+        </div>
+      </div>
+      
+      <div class="guide-section">
+        <h3>History and Reporting</h3>
+        <p>Access comprehensive reports and historical data to gain insights from your tasks.</p>
+        
+        <div class="guide-subsection">
+          <h4>Accessing History</h4>
+          <p>Open the History modal from the navigation bar to view all past tasks. From there, you can:</p>
+          <ul>
+            <li>Filter tasks by date, type, or status</li>
+            <li>Search for specific keywords across all tasks</li>
+            <li>View detailed reports for each completed task</li>
+            <li>Delete tasks that are no longer needed</li>
+          </ul>
+        </div>
+        
+        <div class="guide-subsection">
+          <h4>Reports and Analytics</h4>
+          <p>Each completed task generates a detailed report that includes:</p>
+          <ul>
+            <li><strong>Task Summary</strong> - Overview of the task and results</li>
+            <li><strong>Process Details</strong> - Step-by-step breakdown of how the task was completed</li>
+            <li><strong>Resource Usage</strong> - Information about the AI models and resources used</li>
+            <li><strong>Performance Metrics</strong> - Time taken, efficiency insights, and other metrics</li>
+          </ul>
+          <p>These reports help you understand how Nexus approaches different tasks and can inform your future requests.</p>
+        </div>
+      </div>
+    `;
+    
+    return tab;
+  }
+  
+  createLLMTab() {
+    const tab = document.createElement('div');
+    tab.className = 'guide-tab';
+    tab.dataset.tab = 'llm';
+    
+    tab.innerHTML = `
+      <div class="guide-section">
+        <h3>Language Model Engines</h3>
+        <p>Nexus leverages four cutting-edge multimodal language models optimized for browser control and visual understanding tasks.</p>
+        
+        <div class="guide-subsection">
+          <h4>Recommended Models</h4>
+          <div class="llm-models-grid">
+            <div class="llm-model-card">
+              <div class="model-header gpt4o">
+                <h5>GPT-4o</h5>
+                <span class="model-provider">OpenAI</span>
+              </div>
+              <div class="model-body">
+                <p class="model-description">Multimodal LLM with advanced visual understanding and step-by-step browser control.</p>
+                <div class="model-strengths">
+                  <div class="strength-item"><i class="fas fa-check"></i> Step-by-step browser control</div>
+                  <div class="strength-item"><i class="fas fa-check"></i> Visual understanding</div>
+                  <div class="strength-item"><i class="fas fa-check"></i> Advanced task planning</div>
+                  <div class="strength-item"><i class="fas fa-check"></i> Adaptive screen parsing</div>
+                </div>
+                <p class="model-best-for">Best for: General web tasks, form filling, content extraction, and UI navigation</p>
+                <p class="model-api-source">API Key: <a href="https://platform.openai.com/" target="_blank">OpenAI Platform</a></p>
+              </div>
+            </div>
+            
+            <div class="llm-model-card">
+              <div class="model-header qwen">
+                <h5>Qwen-2.5-VL 72B Instruct</h5>
+                <span class="model-provider">Alibaba</span>
+              </div>
+              <div class="model-body">
+                <p class="model-description">Advanced visual language model with exceptional visual grounding abilities.</p>
+                <div class="model-strengths">
+                  <div class="strength-item"><i class="fas fa-check"></i> Visual grounding</div>
+                  <div class="strength-item"><i class="fas fa-check"></i> Action planning</div>
+                  <div class="strength-item"><i class="fas fa-check"></i> 72B parameter model</div>
+                  <div class="strength-item"><i class="fas fa-check"></i> Precise element targeting</div>
+                </div>
+                <p class="model-best-for">Best for: Complex visual tasks, precise element selection, and ambiguous UI interactions</p>
+                <p class="model-api-source">API Key: <a href="https://openrouter.ai/" target="_blank">OpenRouter</a> or <a href="https://www.alibabacloud.com/" target="_blank">Alibaba Cloud</a></p>
+              </div>
+            </div>
+            
+            <div class="llm-model-card">
+              <div class="model-header gemini">
+                <h5>Gemini-2.5-Pro</h5>
+                <span class="model-provider">Google</span>
+              </div>
+              <div class="model-body">
+                <p class="model-description">Google's advanced multimodal model with strong visual processing capabilities.</p>
+                <div class="model-strengths">
+                  <div class="strength-item"><i class="fas fa-check"></i> Visual understanding</div>
+                  <div class="strength-item"><i class="fas fa-check"></i> Action planning</div>
+                  <div class="strength-item"><i class="fas fa-check"></i> Long-range context</div>
+                  <div class="strength-item"><i class="fas fa-check"></i> Information extraction</div>
+                </div>
+                <p class="model-best-for">Best for: Research tasks, information extraction, and complex visual analysis</p>
+                <p class="model-api-source">API Key: <a href="https://ai.google.dev/" target="_blank">Google AI Studio</a></p>
+              </div>
+            </div>
+            
+            <div class="llm-model-card">
+              <div class="model-header uitars">
+                <h5>UI-TARS</h5>
+                <span class="model-provider">ByteDance</span>
+              </div>
+              <div class="model-body">
+                <p class="model-description">End-to-end GUI agent model based on VLM architecture specifically for browser control.</p>
+                <div class="model-strengths">
+                  <div class="strength-item"><i class="fas fa-check"></i> Full-time visual grounding</div>
+                  <div class="strength-item"><i class="fas fa-check"></i> Precise step planning</div>
+                  <div class="strength-item"><i class="fas fa-check"></i> Element targeting</div>
+                  <div class="strength-item"><i class="fas fa-check"></i> UI state tracking</div>
+                </div>
+                <p class="model-best-for">Best for: Complex UI workflows, web automation, and multi-step processes</p>
+                <p class="model-api-source">API Key: <a href="https://www.volcengine.com/" target="_blank">VolcEngine</a> (ByteDance)</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="guide-subsection">
+          <h4>Setting Up Your API Keys</h4>
+          <p>To use these models with Nexus, you'll need to obtain and configure the appropriate API keys:</p>
+          <ol>
+            <li>Open the <strong>Settings</strong> from the navigation bar</li>
+            <li>Navigate to the <strong>API Keys</strong> tab</li>
+            <li>Enter your API keys for each model you wish to use</li>
+            <li>Click <strong>Save</strong> for each key</li>
+          </ol>
+          <p><strong>Note:</strong> GPT-4o is set as the default engine upon signup. Ensure you have a valid GPT-4o API key for the best experience.</p>
+          <p>The system will automatically use the appropriate key based on your selected LLM engine.</p>
+        </div>
+        
+        <div class="guide-subsection">
+          <h4>Choosing the Right Model</h4>
+          <p>Each model has unique strengths for different types of browser automation tasks:</p>
+          <ul>
+            <li><strong>GPT-4o</strong> - Best for general purpose web tasks and good balance of capabilities</li>
+            <li><strong>Qwen-2.5-VL</strong> - Ideal when precise visual understanding and element targeting is critical</li>
+            <li><strong>Gemini-2.5-Pro</strong> - Excellent for research and information extraction tasks</li>
+            <li><strong>UI-TARS</strong> - Optimal for complex workflows requiring precise UI interactions</li>
+          </ul>
+          <p>You can switch between models in the LLM Engines tab of Settings based on your current needs.</p>
+        </div>
+        
+        <div class="guide-subsection">
+          <h4>Execution Mode Configuration</h4>
+          <p>In addition to selecting your preferred model, you can also configure how the model executes tasks:</p>
+          <div class="execution-mode-summary">
+            <div class="mode-option">
+              <i class="fas fa-list-ol"></i>
+              <strong>Step Planning</strong>
+              <p>Tasks are broken down into small, discrete steps with feedback after each one (Default)</p>
+            </div>
+            <div class="mode-option">
+              <i class="fas fa-sitemap"></i>
+              <strong>Action Planning</strong>
+              <p>Tasks are planned as a comprehensive sequence of actions for more efficient execution</p>
+            </div>
+          </div>
+          <p>Configure your execution mode in the LLM Engines tab of Settings alongside your preferred model.</p>
+          <p><strong>Tip:</strong> For models with strong planning capabilities like GPT-4o and UI-TARS, action planning mode can significantly improve task completion efficiency.</p>
+          <p>See the <a href="#" class="tab-link" data-tab="advanced">Advanced Features</a> section for more details on execution modes.</p>
+        </div>
+      </div>
+    `;
+    
+    return tab;
+  }
+  
+  createAdvancedTab() {
+    const tab = document.createElement('div');
+    tab.className = 'guide-tab';
+    tab.dataset.tab = 'advanced';
+    
+    tab.innerHTML = `
+      <div class="guide-section">
+        <div class="section-header">
+          <h3><span class="icon">⚙️</span> Advanced Features</h3>
+        </div>
+        <div class="section-content">
+          <p>O.P.E.R.A.T.O.R's Nexus Engine offers a range of advanced capabilities for power users and specialized workflows.</p>
+          
+          <div class="guide-subsection">
+            <h4>YAML Integration</h4>
+            <p>Leverage the power of YAML to create reusable automation templates and complex workflows:</p>
+            
+            <div class="code-block">
+              <pre># Example YAML automation template
+name: Job Application Assistant
+description: Automates the job application process
+version: 1.0
+
+# Define your variables here or pass them when running the workflow
+# Example variables:
+# - jobTitle: "Software Engineer"
+# - location: "San Francisco"
+# - minSalary: 120000
+
+tasks:
+  - name: Search Job Listings
+    action: web.search
+    params:
+      query: "{{jobTitle}} in {{location}} site:linkedin.com/jobs"
+      limit: 5
+    
+  - name: Filter Results
+    action: filter
+    params:
+      condition: "{{item.salary}} >= {{minSalary}} && {{item.remote}} === true"
+    
+  - name: Apply to Position
+    action: web.fill_form
+    params:
+      url: "{{job.url}}"
+      fields:
+        "#resume-upload": "/path/to/resume.pdf"
+        "#cover-letter": "{{coverLetter}}"
+    
+  - name: Follow Up
+    action: email.send
+    params:
+      to: "{{hiringManager.email}}"
+      subject: "Following up on my application for {{job.title}}"
+      body: |
+        Dear {{hiringManager.name}},
+        
+        I wanted to follow up on my application for the {{job.title}} position.
+        I'm very excited about this opportunity and look forward to your response.
+        
+        Best regards,
+        {{yourName}}
+      </pre>
+              <button class="copy-code-btn" title="Copy to clipboard">
+                <i class="far fa-copy"></i>
+              </button>
+            </div>
+            
+            <p>Key YAML features:</p>
+            <ul class="feature-list">
+              <li>Define complex, multi-step workflows with dependencies</li>
+              <li>Use variables and expressions for dynamic behavior</li>
+              <li>Integrate with web APIs and services</li>
+              <li>Handle errors and retries automatically</li>
+              <li>Reuse templates across different scenarios</li>
+            </ul>
+          </div>
+        
+        <div class="guide-subsection">
+          <h4>API Integration</h4>
+          <p>Configure API keys in Settings to enable Nexus to interact with external services:</p>
+          <ul>
+            <li><strong>OpenAI API</strong> - For GPT-4o Visual Step Based automation</li>
+            <li><strong>ByteDance API</strong> - For UI-TARS GUI explorative automation</li>
+            <li><strong>Google API</strong> - For Visual Grounded action planning automation</li>
+            <li><strong>Qwen API</strong> - For Visual Grounded action planning automation</li>
+          </ul>
+          <p>With these integrations, Nexus can perform research, access external data, and automate web-based tasks.</p>
+        </div>
+        
+        <div class="guide-subsection">
+          <h4>Custom Workflows</h4>
+          <p>Create specialized workflows for repeated tasks by:</p>
+          <ol>
+            <li>Developing a clear task template Map with specific parameters</li>
+            <li>Saving successful tasks as templates in the History view</li>
+            <li>Using structured prompts with consistent formatting</li>
+            <li>Creating workflow sequences by linking multiple tasks</li>
+          </ol>
+          <p>This allows you to streamline recurring processes and ensure consistent results.</p>
+        </div>
+        
+        <div class="guide-subsection">
+          <h4>Execution Modes</h4>
+          <p>Nexus offers two different execution modes for task processing:</p>
+          
+          <div class="execution-modes-comparison">
+            <div class="execution-mode">
+              <h5>Step Planning Mode</h5>
+              <p>The default mode that performs tasks step-by-step with feedback after each action.</p>
+              <ul>
+                <li><strong>Interactive</strong> - Provides detailed progress updates</li>
+                <li><strong>Cautious</strong> - Validates each step before proceeding</li>
+                <li><strong>Transparent</strong> - Easier to follow the reasoning process</li>
+                <li><strong>Precise</strong> - Higher accuracy for complex tasks</li>
+              </ul>
+              <p><em>Best for: New users, complex tasks requiring precision, or when you want to follow the execution closely.</em></p>
+            </div>
+            
+            <div class="execution-mode">
+              <h5>Action Planning Mode</h5>
+              <p>An advanced mode that plans a complete sequence of actions upfront to accomplish tasks more efficiently.</p>
+              <ul>
+                <li><strong>Efficient</strong> - Completes tasks with fewer interactions</li>
+                <li><strong>Proactive</strong> - Anticipates next steps without prompting</li>
+                <li><strong>Streamlined</strong> - Less back-and-forth for simple tasks</li>
+                <li><strong>Faster</strong> - Reduced completion time for familiar tasks</li>
+              </ul>
+              <p><em>Best for: Experienced users, repetitive tasks, or when speed is prioritized over step-by-step visibility.</em></p>
+            </div>
+          </div>
+          
+          <p>To change your execution mode:</p>
+          <ol>
+            <li>Open <strong>Settings</strong> from the navigation bar</li>
+            <li>Navigate to the <strong>LLM Engines</strong> tab</li>
+            <li>Find the <strong>Execution Mode</strong> toggle</li>
+            <li>Select your preferred mode</li>
+            <li>Click <strong>Save</strong></li>
+          </ol>
+          <p>You can switch between modes at any time based on your current needs.</p>
+        </div>
+      </div>
+      
+      <div class="guide-section">
+        <h3>Export and Sharing</h3>
+        <p>Share your Nexus results and task outputs in various formats:</p>
+        
+        <div class="export-options-grid">
+          <div class="export-option">
+            <i class="fas fa-file-pdf"></i>
+            <h4>PDF Reports</h4>
+            <p>Export comprehensive reports with all task details, steps, and results.</p>
+          </div>
+          <div class="export-option">
+            <i class="fas fa-file-code"></i>
+            <h4>Code Files</h4>
+            <p>Extract and save generated code with proper formatting and syntax highlighting.</p>
+          </div>
+          <div class="export-option">
+            <i class="fas fa-file-alt"></i>
+            <h4>Text Content</h4>
+            <p>Copy or export text content for use in other applications.</p>
+          </div>
+          <div class="export-option">
+            <i class="fas fa-share-alt"></i>
+            <h4>Direct Sharing</h4>
+            <p>Share task results via email or direct links to collaborative workspaces.</p>
+          </div>
+        </div>
+        
+        <p class="note"><i class="fas fa-info-circle"></i> Access export options from the task menu in the Message Timeline or from detailed views in the History section.</p>
+      </div>
+    `;
+    
+    return tab;
+  }
+  
+  createTipsTab() {
+    const tab = document.createElement('div');
+    tab.className = 'guide-tab';
+    tab.dataset.tab = 'tips';
+    
+    tab.innerHTML = `
+      <div class="guide-section">
+        <div class="section-header">
+          <h3><span class="icon">💡</span> Tips & Best Practices</h3>
+        </div>
+        <div class="section-content">
+          <p>Maximize your productivity with these expert tips for using O.P.E.R.A.T.O.R effectively.</p>
+          
+          <div class="guide-tips-list">
+            <div class="guide-tip">
+              <div class="tip-number">01</div>
+              <div class="tip-content">
+                <h4>Be Specific with Instructions</h4>
+                <p>Provide clear, detailed instructions with all necessary context for optimal results.</p>
+                <div class="tip-example">
+                  <strong>Instead of:</strong> "Help me shop for a laptop"<br>
+                  <strong>Try:</strong> "Find me the best laptop under $1500 for software development with at least 16GB RAM, 512GB SSD, and 8+ hours of battery life. Compare top 3 options with pros and cons."
+                </div>
+              </div>
+            </div>
+          
+          <div class="guide-tip">
+            <div class="tip-number">02</div>
+            <div class="tip-content">
+              <h4>Iterate and Refine</h4>
+              <p>Don't expect perfect results on the first try. Use follow-up requests to refine outputs, provide additional context, or ask for specific changes.</p>
+              <div class="tip-example">
+                <strong>Follow-up example:</strong> "That's great. Now could you expand on the section about perovskite solar cells, particularly their durability challenges?"
+              </div>
+            </div>
+          </div>
+          
+          <div class="guide-tip">
+            <div class="tip-number">03</div>
+            <div class="tip-content">
+              <h4>Choose the Right Model</h4>
+              <p>Match the language model to your task type. Use more powerful models (GPT-4, Claude 3 Opus) for complex reasoning tasks, and faster models for simpler tasks.</p>
+            </div>
+          </div>
+          
+          <div class="guide-tip">
+            <div class="tip-number">04</div>
+            <div class="tip-content">
+              <h4>Break Down Complex Tasks</h4>
+              <p>Split complex projects into smaller, more manageable subtasks. This helps maintain focus and allows for more specific instructions.</p>
+            </div>
+          </div>
+          
+          <div class="guide-tip">
+            <div class="tip-number">05</div>
+            <div class="tip-content">
+              <h4>Use Templates for Consistency</h4>
+              <p>Develop templates for recurring tasks to ensure consistent formatting and completeness in the results.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="guide-section">
+        <div class="section-header">
+          <h3><span class="icon">✨</span> Common Use Cases</h3>
+        </div>
+        <div class="section-content">
+          <p>Discover powerful ways to leverage O.P.E.R.A.T.O.R in your daily workflow:</p>
+          
+          <div class="use-cases-grid">
+            <div class="use-case-card">
+              <div class="use-case-icon"><i class="fas fa-shopping-cart"></i></div>
+              <h4>Smart Shopping Assistant</h4>
+              <p>Automate price comparisons, track deals, and make informed purchasing decisions.</p>
+              <div class="use-case-example">
+                "Find the best deal on a 65\" 4K TV with HDR and smart features under $800. Compare prices across major retailers and alert me if the price drops below $750 in the next 2 weeks."
+              </div>
+            </div>
+            
+            <div class="use-case-card">
+              <div class="use-case-icon"><i class="fas fa-briefcase"></i></div>
+              <h4>Job Application Manager</h4>
+              <p>Streamline your job search by automating applications and tracking responses.</p>
+              <div class="use-case-example">
+                "Search for remote software engineering positions at companies with 4+ star ratings on Glassdoor. Customize my resume for each application and track all submissions in a spreadsheet with application deadlines and follow-up dates."
+              </div>
+            </div>
+            
+            <div class="use-case-card">
+              <div class="use-case-icon"><i class="fas fa-video"></i></div>
+              <h4>Meeting Assistant</h4>
+              <p>Automate meeting preparation, attendance, and follow-ups.</p>
+              <div class="use-case-example">
+                "Join my Zoom meeting at 2 PM, transcribe the discussion in real-time, identify action items, and schedule follow-up tasks in my project management tool. Send a summary to all participants within 30 minutes after the meeting ends."
+              </div>
+            </div>
+            
+            <div class="use-case-card">
+              <div class="use-case-icon"><i class="fas fa-robot"></i></div>
+              <h4>Workflow Automation</h4>
+              <p>Create custom automations that connect multiple applications and services.</p>
+              <div class="use-case-example">
+                "When I receive an email with an invoice attachment, extract the total amount and due date, add it to my accounting software, and create a calendar reminder 3 days before the due date."
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    return tab;
+  }
+  
+  // Setting up event listeners
+  setupEventListeners() {
+    // Close on overlay click (outside content)
+    this.overlay.addEventListener('click', (e) => {
+      if (e.target === this.overlay) {
+        this.hide();
+      }
+    });
+    
+    // Close button
+    const closeBtn = this.overlay.querySelector('.close-btn');
+    closeBtn.addEventListener('click', () => this.hide());
+    
+    // Tab switching
+    const tabBtns = this.overlay.querySelectorAll('.tab-btn');
+    tabBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.switchTab(btn.dataset.tab);
+      });
+    });
+    
+    // Tab links within content
+    const tabLinkBtns = this.overlay.querySelectorAll('.tab-link-btn');
+    tabLinkBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.switchTab(btn.dataset.tab);
+      });
+    });
+    
+    // Video placeholder click
+    const videoPlaceholder = this.overlay.querySelector('.video-placeholder');
+    if (videoPlaceholder) {
+      videoPlaceholder.addEventListener('click', () => {
+        // Replace with actual video embed
+        const videoContainer = this.overlay.querySelector('.video-container');
+        videoContainer.innerHTML = `
+          <iframe width="100%" height="315" 
+            src="https://www.youtube.com/embed/placeholder" 
+            title="Nexus Demo Video" 
+            frameborder="0" 
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+            allowfullscreen>
+          </iframe>
+        `;
+      });
+    }
+  }
+  
+  switchTab(tabId) {
+    // Update active tab
+    this.activeTab = tabId;
+    
+    // Update tab buttons
+    const tabBtns = this.overlay.querySelectorAll('.tab-btn');
+    tabBtns.forEach(btn => {
+      if (btn.dataset.tab === tabId) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+    
+    // Update tab content
+    const tabContents = this.overlay.querySelectorAll('.guide-tab');
+    tabContents.forEach(tab => {
+      if (tab.dataset.tab === tabId) {
+        tab.classList.add('active');
+      } else {
+        tab.classList.remove('active');
+      }
+    });
+  }
+  
+  show() {
+    if (!this.isVisible) {
+      this.overlay.classList.add('visible');
+      this.isVisible = true;
+    }
+  }
+  
+  hide() {
+    if (this.isVisible) {
+      this.overlay.classList.remove('visible');
+      this.isVisible = false;
+    }
+  }
+  
+  toggle() {
+    if (this.isVisible) {
+      this.hide();
+    } else {
+      this.show();
+    }
+  }
+}
+
+// Export the factory function
+export default getGuideOverlay;

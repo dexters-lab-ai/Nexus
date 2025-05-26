@@ -1,0 +1,268 @@
+/* Task Card Styles - Modernized to match command center */
+
+.task-bar-task-item {
+  margin-bottom: 10px;
+}
+
+.task-card {
+  background: rgba(20, 25, 45, 0.7);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(100, 120, 250, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.task-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2), 0 0 15px rgba(100, 120, 250, 0.1);
+  border-color: rgba(100, 120, 250, 0.25);
+}
+
+.task-card-header {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  width: 100% !important;
+  height: 32px;
+}
+
+.task-card-header .title {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-card-header .meta {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.65);
+  transition: color 0.2s ease;
+}
+
+.task-card-header .meta:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.task-progress-container {
+  width: 100%;
+  background: rgba(30, 35, 60, 0.4);
+  height: 8px;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 14px 0;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.task-progress-container .progress {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(100, 120, 250, 0.8), rgba(130, 180, 255, 0.9));
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(100, 120, 250, 0.5);
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.task-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.task-card-actions button {
+  background: rgba(30, 35, 60, 0.6);
+  border: 1px solid rgba(100, 120, 250, 0.15);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.8);
+  padding: 6px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.task-card-actions button:hover {
+  background: rgba(40, 45, 80, 0.7);
+  border-color: rgba(100, 120, 250, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2), 0 0 5px rgba(100, 120, 250, 0.2);
+}
+
+.task-card-actions button:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.task-card-actions .cancel {
+  background: rgba(255, 70, 70, 0.1);
+  border-color: rgba(255, 70, 70, 0.2);
+}
+
+.task-card-actions .cancel:hover {
+  background: rgba(255, 70, 70, 0.2);
+  border-color: rgba(255, 70, 70, 0.3);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2), 0 0 5px rgba(255, 70, 70, 0.2);
+}
+
+/* CommandCenter Active Tasks Overrides */
+.active-tasks-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  padding: 20px 0;
+}
+#no-active-tasks {
+  grid-column: 1 / -1;
+  text-align: center;
+  font-style: italic;
+  color: var(--text-muted);
+  font-size: 16px;
+  padding: 40px 0;
+}
+.task-command {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.task-cancel-btn {
+  background: transparent;
+  border: none;
+  color: var(--danger);
+  font-size: 14px;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.task-cancel-btn i {
+  font-size: 14px;
+  margin-right: 4px;
+}
+.task-cancel-btn:hover {
+  color: var(--danger-dark);
+}
+/* Progress bar style override */
+.task-progress-container progress {
+  width: 100%;
+  height: 8px;
+  appearance: none;
+  border: none;
+  background: var(--dark-border);
+}
+.task-progress-container progress::-webkit-progress-bar {
+  background: var(--dark-border);
+  border-radius: 4px;
+}
+.task-progress-container progress::-webkit-progress-value {
+  background: linear-gradient(90deg, var(--primary-light), var(--primary));
+  border-radius: 4px;
+}
+.task-progress-container span {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+/* Status tweaks */
+.task-status {
+  margin-top: 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.task-status {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  text-transform: capitalize;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+.task-status.success { 
+  background: linear-gradient(135deg, rgba(40, 200, 120, 0.8), rgba(30, 180, 100, 0.9));
+  box-shadow: 0 2px 8px rgba(40, 200, 120, 0.3);
+}
+
+.task-status.error { 
+  background: linear-gradient(135deg, rgba(255, 70, 70, 0.8), rgba(220, 50, 50, 0.9)); 
+  box-shadow: 0 2px 8px rgba(255, 70, 70, 0.3);
+}
+
+.task-status.processing { 
+  background: linear-gradient(135deg, rgba(255, 180, 50, 0.8), rgba(240, 150, 30, 0.9));
+  box-shadow: 0 2px 8px rgba(255, 180, 50, 0.3);
+}
+
+.task-result {
+  margin-top: 16px;
+  padding: 16px;
+  background: rgba(20, 22, 35, 0.7);
+  border: 1px solid rgba(100, 120, 250, 0.15);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-x: auto;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  transition: all 0.3s ease;
+}
+
+.task-result:hover {
+  border-color: rgba(100, 120, 250, 0.25);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.15), 0 0 10px rgba(100, 120, 250, 0.1);
+}
+
+/* Task report links styling */
+.task-report-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  margin: 8px 8px 8px 0;
+  background: rgba(30, 35, 60, 0.7);
+  border: 1px solid rgba(100, 120, 250, 0.2);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+  font-size: 14px;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.task-report-link:hover {
+  background: rgba(40, 45, 80, 0.8);
+  border-color: rgba(100, 120, 250, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2), 0 0 15px rgba(100, 120, 250, 0.2);
+}
+
+.task-report-link:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.task-report-link i {
+  color: rgba(100, 150, 255, 0.9);
+  font-size: 16px;
+}

@@ -1,0 +1,58 @@
+/* Command Center UI Enhancement fixes
+ * - Improves Command Center heading with a blue/purple gradient like the OPERATOR logo
+ * - Ensures tooltips are properly styled in both dark and light mode
+ * - Fixes light mode tab container border color
+ */
+
+/* Command Center Header Gradient Styling */
+.command-center-header {
+  background: linear-gradient(90deg, #347bee 0%, #7b4dff 100%);
+  color: white;
+  font-weight: 500;
+  padding: 0.85rem 1.25rem;
+  border-radius: 8px 8px 0 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* Tooltip enhancements for both dark and light modes */
+.command-center-card .tooltip {
+  position: absolute;
+  top: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 20, 40, 0.85);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+  white-space: wrap;
+  z-index: 1000;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(100, 140, 255, 0.25);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Light mode tooltip styling */
+html[data-theme="light"] body .command-center-card .tooltip,
+body[class] [data-theme="light"] .command-center-card .tooltip {
+  background: rgba(255, 255, 255, 0.95) !important;
+  color: #1F2937 !important;
+  border: 1px solid rgba(59, 130, 246, 0.2) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Show tooltip on hover */
+.command-center-card .card-title:hover .tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-5px);
+}
+
+/* Light mode tab container border */
+html[data-theme="light"] body .tab-buttons,
+body[class] [data-theme="light"] .tab-buttons {
+  border-top: 0.5px solid rgba(59, 130, 246, 0.1) !important;
+  background: rgba(249, 250, 251, 0.9) !important;
+}

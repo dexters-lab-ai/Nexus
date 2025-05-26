@@ -1,0 +1,130 @@
+/* Neural Flow Visualization Fixes */
+
+/* Thought bubble container enhancements */
+.thought-bubble {
+  border: var(--glass-border) !important;
+  background-color: var(--glass-background) !important;
+  backdrop-filter: blur(10px) !important;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3) !important;
+  border-radius: 12px !important;
+  margin: 1.5rem 0 !important;
+  position: relative !important;
+  width: 100% !important;
+  overflow: hidden !important; /* Ensure content is contained */
+  transition: height 0.3s ease !important;
+}
+
+/* Title styling */
+.thought-title {
+  font-family: "SF Mono", "Courier New", monospace !important;
+  font-size: 0.85rem !important;
+  background: rgba(0, 0, 0, 0.3) !important;
+  color: var(--info) !important;
+  padding: 0.5rem 1rem !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.5px !important;
+  border-bottom: 1px solid rgba(100, 120, 255, 0.2) !important;
+}
+
+/* Thought text styling */
+.thought-text {
+  padding: 1rem !important;
+  font-family: "SF Mono", "Courier New", monospace !important;
+  font-size: 0.9rem !important;
+  line-height: 1.5 !important;
+  color: white !important;
+  white-space: pre-wrap !important;
+  overflow-x: auto !important;
+  max-height: none !important;
+  margin: 0 !important;
+}
+
+/* Neural Flow Container - Fixed 300px height with proper scrolling */
+.neural-flow-container {
+  height: 300px !important;
+  min-height: 300px !important;
+  max-height: 300px !important;
+  position: relative !important;
+  overflow: visible !important;  /* Changed from hidden to visible */
+  background: #0a0f20;
+  border-radius: 8px;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+  border: unset !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+/* Ensure the canvas takes full container height */
+.neural-flow-container canvas {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  pointer-events: none; /* Allow clicks to pass through to container */
+}
+
+/* Canvas inside container */
+.neural-flow-canvas {
+  width: 100% !important;
+  height: 100% !important;
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+/* Ensure controls are properly positioned */
+.neural-flow-controls {
+  position: absolute !important;
+  bottom: 8px !important;
+  right: 8px !important;
+  z-index: 10 !important;
+  pointer-events: auto !important;
+}
+
+/* Neural flow node styling */
+.neural-flow-node {
+  background: var(--glass-background) !important;
+  border: 1px solid var(--primary) !important;
+  box-shadow: 0 0 8px rgba(95, 110, 255, 0.3) !important;
+  color: white !important;
+  font-size: 0.9rem !important;
+  padding: 0.75rem !important;
+  border-radius: 8px !important;
+  max-width: 300px !important;
+  word-wrap: break-word !important;
+}
+
+/* Neural flow line styling */
+.neural-flow-line {
+  stroke: var(--primary) !important;
+  stroke-width: 2px !important;
+  filter: drop-shadow(0 0 3px rgba(95, 110, 255, 0.5)) !important;
+}
+
+/* Neural flow pulse animation */
+@keyframes neural-pulse {
+  0% { opacity: 0.3; stroke-width: 1px; }
+  50% { opacity: 1; stroke-width: 3px; }
+  100% { opacity: 0.3; stroke-width: 1px; }
+}
+
+.neural-flow-pulse {
+  animation: neural-pulse 1.5s infinite !important;
+}
+
+/* Ensure thought bubbles display correctly for commands */
+.task-bubble {
+  min-height: 400px !important;
+  overflow: visible !important;
+}
+
+/* Fix parent containers to properly size to content */
+.message-timeline-container {
+  overflow: auto !important;
+}
+

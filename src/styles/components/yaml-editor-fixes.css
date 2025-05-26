@@ -1,0 +1,1874 @@
+/* YAML Editor Fixes and Enhancements - Futuristic Theme */
+
+/* Use existing variables from the main theme */
+:root {
+  /* Updating local variables to use existing theme variables */
+  --glass-background: rgba(13, 18, 30, 0.75);
+  --glass-border: 1px solid rgba(var(--primary-color-rgb), 0.3);
+  --glass-hover: rgba(25, 33, 52, 0.85);
+  --card-shadow: var(--shadow-elevated);
+  
+  /* Override specific colors to match Settings modal */
+  --yaml-btn-bg: linear-gradient(135deg, var(--dark-light), var(--dark-medium));
+  --yaml-btn-bg-hover: linear-gradient(135deg, var(--dark-medium), #202a50);
+  --yaml-btn-primary-bg: linear-gradient(135deg, var(--primary-dark), var(--primary));
+  --yaml-btn-primary-bg-hover: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  --yaml-btn-border: 1px solid rgba(var(--primary-color-rgb), 0.4);
+  --yaml-btn-glow: 0 0 15px var(--primary-glow);
+}
+
+/* Critical Styles (moved from inline) */
+.yaml-maps-container { 
+  display: flex !important; 
+  flex-direction: column !important; 
+  height: 100% !important; 
+}
+
+#yaml-content-area {
+  height: max-content;
+  overflow: hidden !important;
+  padding: 0 !important;
+}
+
+.yaml-info-rotator { 
+  display: block !important; 
+  visibility: visible !important; 
+}
+
+.yaml-info-slide.active { 
+  display: block !important; 
+}
+
+.yaml-new-map-btn, .create-map-btn { 
+  cursor: pointer !important; 
+}
+
+/* YAML Editor Animation Keyframes */
+@keyframes yaml-element-fade-in {
+  from { 
+    opacity: 0; 
+    transform: translateY(-10px);
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0);
+  }
+}
+
+@keyframes yaml-button-glow {
+  0% { box-shadow: 0 0 5px rgba(157, 113, 234, 0.1); }
+  50% { box-shadow: 0 0 15px rgba(157, 113, 234, 0.3); }
+  100% { box-shadow: 0 0 5px rgba(157, 113, 234, 0.1); }
+}
+@keyframes yaml-backdrop-fade-in {
+  from { background-color: rgba(0, 0, 0, 0); }
+  to { background-color: rgba(0, 0, 0, 0.8); }
+}
+
+@keyframes yaml-modal-slide-in {
+  from { 
+    opacity: 0; 
+    transform: translateY(-20px) scale(0.98);
+    box-shadow: 0 0 0 rgba(157, 113, 234, 0);
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0) scale(1);
+    box-shadow: 0 0 30px rgba(157, 113, 234, 0.3);
+  }
+}
+
+@keyframes yaml-pulse-glow {
+  0% { box-shadow: 0 0 15px rgba(157, 113, 234, 0.2); }
+  50% { box-shadow: 0 0 30px rgba(157, 113, 234, 0.4); }
+  100% { box-shadow: 0 0 15px rgba(157, 113, 234, 0.2); }
+}
+
+.yaml-editor-container {
+  animation: yaml-backdrop-fade-in 0.4s ease-out forwards;
+  background-color: rgba(0, 0, 0, 0);
+}
+
+/* Main YAML Editor Modal */
+.yaml-editor-modal {
+  background: var(--glass-background) !important;
+  backdrop-filter: blur(10px) !important;
+  border: var(--glass-border) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--card-shadow) !important;
+  overflow: hidden !important;
+  animation: yaml-modal-slide-in 0.5s ease-out forwards, yaml-pulse-glow 3s ease-in-out infinite;
+  animation-delay: 0.1s, 1s;
+  opacity: 0;
+}
+
+.yaml-editor-header {
+  background: rgba(20, 25, 40, 0.85) !important;
+  border-bottom: 1px solid rgba(79, 94, 113, 0.3) !important;
+  padding: 15px 20px !important;
+  animation: yaml-element-fade-in 0.6s ease-out forwards;
+  animation-delay: 0.3s;
+  opacity: 0;
+}
+
+.yaml-editor-header h3 {
+  color: white !important;
+  font-weight: 600 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.yaml-editor-header h3:before {
+  content: '⚡' !important;
+  font-size: 1.2em !important;
+  color: var(--neon-teal) !important;
+}
+
+/* Form elements - matched with Settings modal */
+.yaml-editor-form input[type="text"],
+.yaml-editor-form textarea,
+.yaml-editor-form select,
+.settings-input,
+.settings-modal input[type="text"],
+.settings-modal input[type="password"],
+.settings-modal textarea,
+.settings-modal select {
+  background: var(--dark-light) !important;
+  border: 1px solid rgba(var(--primary-color-rgb), 0.3) !important;
+  border-radius: var(--border-radius-sm) !important;
+  color: var(--text) !important;
+  padding: 10px 12px !important;
+  font-size: 14px !important;
+  transition: all 0.2s ease !important;
+  font-family: var(--font-sans) !important;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+}
+
+.yaml-editor-form input[type="text"]:focus,
+.yaml-editor-form textarea:focus,
+.yaml-editor-form select:focus,
+.settings-input:focus,
+.settings-modal input[type="text"]:focus,
+.settings-modal input[type="password"]:focus,
+.settings-modal textarea:focus,
+.settings-modal select:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 2px var(--primary-light) !important;
+  outline: none !important;
+  background: var(--dark-medium) !important;
+}
+
+.yaml-editor-form label {
+  color: #b8c7e0 !important;
+  font-weight: 500 !important;
+  font-size: 14px !important;
+  margin-bottom: 8px !important;
+  display: block !important;
+}
+
+/* Code editor */
+.yaml-editor-code {
+  background: rgba(10, 15, 25, 0.8) !important;
+  border: 1px solid rgba(79, 94, 113, 0.4) !important;
+  border-radius: 8px !important;
+  font-family: 'Fira Code', 'Roboto Mono', monospace !important;
+}
+
+/* Button styles aligned with Settings modal */
+.yaml-editor-button,
+.yaml-editor-form button {
+  background: var(--yaml-btn-bg) !important;
+  border: var(--yaml-btn-border) !important;
+  border-radius: var(--border-radius-sm) !important;
+  color: var(--text) !important;
+  font-weight: 500 !important;
+  padding: 10px 18px !important;
+  transition: all 0.2s ease !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  font-family: var(--font-sans) !important;
+}
+
+.yaml-editor-button:hover,
+.yaml-editor-form button:hover {
+  background: var(--yaml-btn-bg-hover) !important;
+  border-color: var(--primary) !important;
+  box-shadow: var(--yaml-btn-glow) !important;
+  transform: translateY(-1px) !important;
+}
+
+.yaml-editor-button.primary,
+.yaml-editor-form button.primary {
+  background: var(--yaml-btn-primary-bg) !important;
+  border-color: var(--primary) !important;
+}
+
+.yaml-editor-button.primary:hover,
+.yaml-editor-form button.primary:hover {
+  background: var(--yaml-btn-primary-bg-hover) !important;
+  box-shadow: 0 0 15px var(--primary-glow) !important;
+}
+
+/* Tags input */
+.yaml-editor-tags-input {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  padding: 8px !important;
+  background: rgba(15, 20, 35, 0.7) !important;
+  border: 1px solid rgba(79, 94, 113, 0.5) !important;
+  border-radius: 6px !important;
+}
+
+.yaml-editor-tag {
+  background: rgba(0, 119, 255, 0.2) !important;
+  border: 1px solid rgba(0, 119, 255, 0.3) !important;
+  border-radius: 4px !important;
+  padding: 4px 10px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 12px !important;
+  color: #c5d8f8 !important;
+}
+
+.yaml-editor-tag-remove {
+  cursor: pointer !important;
+  color: #8faad2 !important;
+  font-size: 14px !important;
+  transition: color 0.2s !important;
+}
+
+.yaml-editor-tag-remove:hover {
+  color: #ff5555 !important;
+}
+
+/* Save overlay with animation */
+.yaml-editor-save-overlay {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  background-color: rgba(0, 0, 0, 0.7) !important;
+  backdrop-filter: blur(10px) !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  z-index: 9999 !important;
+  animation: fadeIn 0.2s ease !important;
+}
+
+.yaml-editor-save-overlay-content {
+  background: var(--glass-background) !important;
+  border: var(--glass-border) !important;
+  border-radius: 12px !important;
+  padding: 24px 32px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 20px !important;
+  box-shadow: var(--card-shadow) !important;
+  max-width: 450px !important;
+  width: 90% !important;
+}
+
+.yaml-editor-save-overlay-content i {
+  font-size: 32px !important;
+  color: var(--neon-teal) !important;
+  animation: pulse 1.5s infinite !important;
+}
+
+.yaml-editor-save-overlay-content span {
+  color: white !important;
+  font-weight: 500 !important;
+  font-size: 16px !important;
+}
+
+/* Success notification */
+.yaml-save-notification {
+  position: fixed !important;
+  top: 30px !important;
+  right: 30px !important;
+  background: var(--glass-background) !important;
+  border: 1px solid var(--success) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 0 15px rgba(0, 230, 118, 0.3) !important;
+}
+
+/* YAML Map Viewer Enhancements */
+/* Modal & Panel Shared Styles - for consistent UI across Settings, Guide, and YAML components */
+.settings-modal,
+.guide-modal,
+.yaml-maps-modal,
+.yaml-map-detail {
+  background: var(--dark-light) !important;
+  background-image: linear-gradient(to bottom right, rgba(var(--primary-color-rgb), 0.05), transparent) !important;
+  border: 1px solid rgba(var(--primary-color-rgb), 0.2) !important;
+  border-radius: var(--border-radius-lg) !important;
+  padding: 20px !important;
+  box-sizing: border-box;
+  box-shadow: var(--shadow-floating) !important;
+  color: var(--text) !important;
+  overflow: hidden !important;
+}
+
+/* Specific YAML map detail panel */
+.yaml-map-detail {
+  margin-left: 0 !important;
+  height: 100% !important;
+  overflow-y: auto !important;
+}
+
+/* Common header styles for all modals */
+.settings-modal-header,
+.guide-modal-header,
+.yaml-editor-header,
+.yaml-map-detail-header {
+  background: var(--dark-medium) !important;
+  background-image: linear-gradient(to right, rgba(var(--primary-color-rgb), 0.1), transparent) !important;
+  margin: -20px -20px 20px -20px !important;
+  padding: 16px 20px !important;
+  border-bottom: 1px solid rgba(var(--primary-color-rgb), 0.2) !important;
+  border-top-left-radius: var(--border-radius-lg) !important;
+  border-top-right-radius: var(--border-radius-lg) !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+}
+
+/* Common heading styles across modals */
+.settings-modal h2,
+.guide-modal h2,
+.yaml-map-detail-title h3,
+.yaml-editor-header h3 {
+  color: var(--text) !important;
+  font-weight: 600 !important;
+  margin-bottom: 5px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-family: var(--font-sans) !important;
+}
+
+.yaml-map-detail-meta {
+  color: var(--text-dim) !important;
+  font-size: 13px !important;
+}
+
+.yaml-map-usage-instructions {
+  background: rgba(15, 28, 55, 0.6) !important;
+  border: 1px solid rgba(59, 85, 130, 0.4) !important;
+  border-radius: 8px !important;
+  padding: 15px !important;
+  margin: 15px 0 !important;
+}
+
+.yaml-map-usage-instructions h4 {
+  color: var(--secondary) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin-bottom: 10px !important;
+  font-size: 15px !important;
+  font-weight: 500 !important;
+}
+
+/* Code blocks and inline code in all modals */
+.yaml-map-usage-instructions code,
+.settings-modal code,
+.guide-modal code {
+  background: var(--primary-light) !important;
+  border: 1px solid rgba(var(--primary-color-rgb), 0.3) !important;
+  color: var(--text) !important;
+  padding: 5px 10px !important;
+  border-radius: var(--border-radius-sm) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 13px !important;
+  display: inline-block !important;
+  margin: 8px 0 !important;
+}
+
+.yaml-map-actions {
+  position: absolute;
+  top: 0;
+  right: 1em;
+  display: flex !important;
+  gap: 10px !important;
+  margin-top: 15px !important;
+  flex-wrap: wrap !important;
+}
+
+.yaml-map-actions button {
+  background: linear-gradient(135deg, #0a1e3c, #122c4f) !important;
+  border: 1px solid rgba(79, 137, 188, 0.5) !important;
+  border-radius: 6px !important;
+  color: white !important;
+  font-weight: 500 !important;
+  padding: 8px 14px !important;
+  font-size: 13px !important;
+  transition: all 0.2s ease !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+}
+
+.yaml-map-actions button:hover {
+  background: linear-gradient(135deg, #1a3151, #1d3a60) !important;
+  border-color: #0077ff !important;
+  box-shadow: 0 0 10px rgba(0, 119, 255, 0.6), 0 0 20px rgba(0, 119, 255, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+.yaml-map-actions .run-btn, 
+.yaml-map-actions .attach-btn {
+  background: linear-gradient(135deg, #0058b7, #0077ff) !important;
+  border-color: #0088ff !important;
+}
+
+.yaml-map-actions .run-btn:hover, 
+.yaml-map-actions .attach-btn:hover {
+  background: linear-gradient(135deg, #0062cc, #0088ff) !important;
+  box-shadow: 0 0 15px rgba(0, 119, 255, 0.6) !important;
+}
+
+/* YAML map code content */
+.yaml-map-code {
+  background: rgba(10, 15, 25, 0.8) !important;
+  border: 1px solid rgba(79, 94, 113, 0.4) !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+  margin-top: 20px !important;
+}
+
+.yaml-map-code-header {
+  background: rgba(20, 30, 50, 0.8) !important;
+  padding: 8px 12px !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  border-bottom: 1px solid rgba(79, 94, 113, 0.4) !important;
+  color: #8ca0c1 !important;
+  font-size: 13px !important;
+}
+
+.yaml-map-code pre {
+  margin: 0 !important;
+  padding: 15px !important;
+  font-family: 'Fira Code', 'Roboto Mono', monospace !important;
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+  color: #c9d9e6 !important;
+  overflow-x: auto !important;
+  max-height: 400px !important;
+}
+
+.yaml-map-guide {
+  background: rgba(15, 28, 55, 0.6) !important;
+  border: 1px solid rgba(59, 85, 130, 0.4) !important;
+  border-radius: 8px !important;
+  padding: 15px !important;
+  margin-top: 20px !important;
+}
+
+.yaml-map-guide h4 {
+  color: #00e5ff !important;
+  margin-bottom: 10px !important;
+  font-size: 15px !important;
+}
+
+.yaml-map-guide ol {
+  margin: 10px 0 !important;
+  padding-left: 25px !important;
+}
+
+.yaml-map-guide li {
+  margin-bottom: 8px !important;
+  color: #c5d8f8 !important;
+}
+
+/* Common link styles across all modals */
+.yaml-map-guide a,
+.settings-modal a,
+.guide-modal a,
+.yaml-maps-modal a {
+  color: var(--primary) !important;
+  text-decoration: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  transition: all var(--transition-fast) !important;
+  border-bottom: 1px solid transparent !important;
+  padding-bottom: 2px !important;
+  font-family: var(--font-sans) !important;
+}
+
+.yaml-map-guide a:hover,
+.settings-modal a:hover,
+.guide-modal a:hover,
+.yaml-maps-modal a:hover {
+  color: var(--secondary) !important;
+  border-bottom-color: var(--secondary) !important;
+  text-shadow: 0 0 8px var(--secondary-glow) !important;
+}
+
+/* YAML map list item styling - matched to Settings style */
+.yaml-map-item {
+  background: var(--dark-light) !important;
+  border: 1px solid rgba(var(--primary-color-rgb), 0.2) !important;
+  border-radius: var(--border-radius-md) !important;
+  padding: 15px !important;
+  margin-bottom: 10px !important;
+  cursor: pointer !important;
+  transition: all var(--transition-fast) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.yaml-map-item:before {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 4px !important;
+  height: 100% !important;
+  background: transparent !important;
+  transition: all var(--transition-fast) !important;
+}
+
+.yaml-map-item:hover {
+  background: var(--dark-medium) !important;
+  border-color: rgba(var(--primary-color-rgb), 0.4) !important;
+  transform: translateY(-2px) !important;
+  box-shadow: var(--shadow-elevated) !important;
+}
+
+.yaml-map-item:hover:before {
+  background: var(--primary) !important;
+}
+
+.yaml-map-item.active {
+  background: var(--dark-medium) !important;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 15px var(--primary-glow) !important;
+}
+
+.yaml-map-item.active:before {
+  background: var(--secondary) !important;
+  box-shadow: 0 0 10px var(--secondary-glow) !important;
+}
+
+.yaml-map-name {
+  font-weight: 500 !important;
+  font-size: 15px !important;
+  color: white !important;
+  margin-bottom: 5px !important;
+}
+
+.yaml-map-description {
+  color: #a0b1d3 !important;
+  font-size: 13px !important;
+  margin-bottom: 8px !important;
+  line-height: 1.4 !important;
+  min-height: 50px;
+}
+
+.yaml-map-tags {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 5px !important;
+  margin-bottom: 8px !important;
+}
+
+.yaml-map-tag {
+  background: rgba(0, 119, 255, 0.2) !important;
+  border: 1px solid rgba(0, 119, 255, 0.3) !important;
+  border-radius: 4px !important;
+  padding: 2px 8px !important;
+  font-size: 11px !important;
+  color: #b8d8ff !important;
+}
+
+.yaml-map-meta {
+  display: flex !important;
+  justify-content: space-between !important;
+  color: #8ca0c1 !important;
+  font-size: 12px !important;
+}
+
+.yaml-save-notification {
+  padding: 15px 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2), 0 0 8px rgba(0, 255, 100, 0.3) !important;
+  z-index: 10000 !important;
+  transform: translateY(-20px) !important;
+  opacity: 0 !important;
+  animation: notificationSlideIn 0.3s forwards !important;
+}
+
+.yaml-save-notification i {
+  color: var(--success) !important;
+  font-size: 20px !important;
+}
+
+.yaml-save-notification span {
+  color: white !important;
+  font-weight: 500 !important;
+}
+
+.yaml-save-notification.hide {
+  animation: notificationSlideOut 0.3s forwards !important;
+}
+
+/* Usage instructions for maps */
+.yaml-map-usage-instructions {
+  margin-top: 15px !important;
+  background: rgba(0, 0, 0, 0.2) !important;
+  border-radius: 6px !important;
+  padding: 12px 15px !important;
+  font-size: 14px !important;
+}
+
+.yaml-map-usage-instructions h4 {
+  color: var(--info) !important;
+  margin: 0 0 8px 0 !important;
+  font-size: 15px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.yaml-map-usage-instructions h4 i {
+  color: var(--info) !important;
+}
+
+.yaml-map-usage-instructions code {
+  background: rgba(0, 0, 0, 0.3) !important;
+  padding: 4px 8px !important;
+  border-radius: 4px !important;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace !important;
+  color: var(--primary) !important;
+  display: inline-block !important;
+  margin-top: 5px !important;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes notificationSlideIn {
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes notificationSlideOut {
+  to { transform: translateY(-20px); opacity: 0; }
+}
+
+/* ================ POLISHED YAML EDITOR LAYOUT ================ */
+
+/* Main modal container tweaks for cleaner look */
+.yaml-editor {
+  background: var(--glass-background) !important;
+  backdrop-filter: blur(10px) !important;
+  border: var(--glass-border) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  max-width: 1200px;
+  max-height: 90vh;
+  width: 90%;
+}
+
+/* Optimized content area for better space usage */
+.yaml-editor-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 0;
+}
+
+/* Polished sidebar with proper padding */
+.yaml-editor-sidebar {
+  background: rgba(15, 20, 30, 0.95);
+  border-radius: 4px;
+  padding: 10px;
+  flex: 0 0 35%;
+  width: 35%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Move header into sidebar */
+.yaml-editor-sidebar-header {
+  padding: 8px 10px;
+  background: rgba(10, 20, 35, 0.9);
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  border-bottom: 1px solid rgba(80, 120, 170, 0.2);
+  position: relative;
+}
+
+.yaml-editor-sidebar-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  letter-spacing: 0.3px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.yaml-editor-sidebar-header i {
+  font-size: 12px;
+}
+
+.yaml-editor-close {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.yaml-editor-sidebar-content {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 40px; /* Space for fixed footer */
+}
+
+.yaml-editor-field {
+  margin: 6px 8px;
+}
+
+.yaml-editor-field label {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(220, 230, 255, 0.9);
+  gap: 8px;
+}
+
+.yaml-editor-sidebar h4 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.yaml-editor-field label[for="name"]:before {
+  content: '\f6e8';
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+  font-size: 10px;
+  color: var(--accent);
+  margin-right: 6px;
+}
+
+.yaml-editor-field label[for="description"]:before {
+  content: '\f15c';
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+  font-size: 10px;
+  color: var(--accent);
+  margin-right: 6px;
+}
+
+.yaml-editor-field label[for="tagInput"]:before {
+  content: '\f02c';
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+  font-size: 10px;
+  color: var(--accent);
+  margin-right: 6px;
+}
+
+.yaml-editor-field input[type="text"],
+.yaml-editor-field textarea {
+  width: calc(100% - 2px);
+  padding: 6px 8px;
+  border: 1px solid rgba(80, 120, 170, 0.3);
+  border-radius: 3px;
+  background: rgba(10, 15, 25, 0.8);
+  color: #f0f0f0;
+  font-size: 12px;
+  transition: all 0.2s;
+  box-sizing: border-box;
+}
+
+.yaml-editor-checkbox input[type="checkbox"] {
+  margin-right: 8px;
+  position: relative;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  border: 1px solid rgba(157, 113, 234, 0.5);
+  border-radius: 3px;
+  background: rgba(20, 30, 50, 0.8);
+  outline: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.yaml-editor-checkbox input[type="checkbox"]:hover {
+  border-color: rgba(157, 113, 234, 0.8);
+  box-shadow: 0 0 0 1px rgba(157, 113, 234, 0.2);
+}
+
+.yaml-editor-checkbox input[type="checkbox"]:checked {
+  background: rgba(157, 113, 234, 0.2);
+  border-color: rgba(157, 113, 234, 0.8);
+}
+
+.yaml-editor-checkbox input[type="checkbox"]:checked:after {
+  content: '\f00c';
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+  font-size: 10px;
+  color: var(--accent);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Add a subtle animation effect when toggling */
+.yaml-editor-checkbox input[type="checkbox"]:checked {
+  animation: checkbox-pulse 0.4s ease;
+}
+
+@keyframes checkbox-pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+.yaml-editor-field input[type="text"]:focus,
+.yaml-editor-field textarea:focus {
+  border-color: rgba(157, 113, 234, 0.5);
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(157, 113, 234, 0.3);
+}
+
+.yaml-editor-field textarea {
+  min-height: 50px;
+  resize: vertical;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Compact help section */
+.yaml-editor-help {
+  margin-top: 10px;
+  margin-bottom: 60px; /* Space for buttons */
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(200, 215, 235, 0.7);
+  background: rgba(20, 30, 50, 0.4);
+  padding: 10px;
+  border-radius: 4px;
+  border-left: 3px solid rgba(157, 113, 234, 0.4);
+}
+
+.yaml-editor-help h4 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 6px 0;
+  color: rgba(157, 113, 234, 0.9);
+}
+
+.yaml-editor-help p {
+  margin: 0 0 8px 0;
+}
+
+.yaml-editor-help a {
+  color: var(--accent);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.yaml-editor-help a:hover {
+  text-decoration: underline;
+}
+
+/* YAML Map URL display styling */
+.yaml-map-url {
+  font-size: 13px;
+  color: rgba(160, 175, 195, 0.8);
+  margin: 2px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.yaml-map-url-card {
+  background: rgba(30, 40, 60, 0.4);
+  padding: 5px 8px;
+  border-radius: 4px;
+  border-left: 2px solid var(--accent);
+  margin: 8px 0;
+}
+
+.yaml-url-link {
+  color: var(--accent);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.yaml-url-link:hover {
+  text-decoration: underline;
+  color: #b08df8;
+}
+
+.yaml-map-url i {
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.yaml-map-detail-url {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 15px 0 25px;
+  padding: 12px 15px;
+  background: rgba(30, 40, 60, 0.6);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.url-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: rgba(230, 240, 255, 0.9);
+  white-space: nowrap;
+}
+
+.url-label i {
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.url-value {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yaml-map-detail-url a {
+  color: var(--accent);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-all;
+}
+
+.yaml-map-detail-url a:hover {
+  text-decoration: underline;
+  color: #b08df8;
+}
+
+.yaml-map-detail-url a i {
+  font-size: 12px;
+}
+
+/* Command Center Button styling */
+.attach-command-center-btn {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.command-center-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(40, 50, 70, 0.6);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--accent);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.command-center-btn:hover {
+  background: rgba(50, 60, 80, 0.8);
+  color: #fff;
+  border-color: #b08df8;
+  box-shadow: 0 0 8px rgba(157, 113, 234, 0.4);
+}
+
+.command-center-btn i {
+  font-size: 12px;
+}
+
+/* YAML Map URL Banner */
+.yaml-map-content-url-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(30, 40, 60, 0.5);
+  border-bottom: 1px solid rgba(157, 113, 234, 0.3);
+  color: rgba(210, 220, 240, 0.9);
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+
+.yaml-map-content-url-banner i {
+  color: var(--accent);
+}
+
+.yaml-map-content-url-banner a {
+  color: var(--accent);
+  text-decoration: none;
+  word-break: break-all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yaml-map-content-url-banner a:hover {
+  text-decoration: underline;
+}
+
+/* YAML content URL styling */
+.yaml-map-content-url {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  margin-right: 12px;
+  font-size: 12px;
+}
+
+.yaml-map-content-url i {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.yaml-map-content-url a {
+  color: rgba(180, 190, 210, 0.9);
+  text-decoration: none;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yaml-map-content-url a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* Sidebar footer with relative positioning */
+.yaml-editor-sidebar-footer {
+  position: relative;
+  margin-top: 1rem;
+  padding: 8px;
+  background: rgba(10, 20, 30, 0.9);
+  border-top: 1px solid rgba(80, 120, 170, 0.2);
+}
+
+.yaml-editor-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.yaml-editor-actions button {
+  flex: 1;
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: none;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  white-space: nowrap;
+}
+
+.btn-secondary.cancel-btn {
+  background: rgba(30, 40, 60, 0.7);
+  color: rgba(220, 230, 255, 0.9);
+  border: 1px solid rgba(80, 120, 170, 0.3);
+}
+
+.btn-secondary.cancel-btn:hover {
+  background: rgba(40, 50, 70, 0.8);
+  border-color: rgba(100, 140, 190, 0.4);
+}
+
+.btn-primary.submit-btn {
+  background: rgba(157, 113, 234, 0.3);
+  color: rgba(240, 245, 255, 0.95);
+  border: 1px solid rgba(157, 113, 234, 0.5);
+}
+
+.btn-primary.submit-btn:hover {
+  background: rgba(157, 113, 234, 0.5);
+  border-color: rgba(157, 113, 234, 0.7);
+}
+
+.btn-primary.submit-btn i {
+  font-size: 10px;
+}
+
+.yaml-editor-actions button[type="button"]:hover {
+  background: rgba(40, 55, 80, 0.8);
+}
+
+/* Elegant error container above footer */
+.yaml-editor-status {
+  position: absolute;
+  bottom: 50px;
+  left: 0;
+  width: 33%;
+  padding: 0 15px;
+  z-index: 6;
+}
+
+.yaml-editor-error {
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.yaml-validation-error {
+  display: flex;
+  align-items: flex-start;
+  padding: 8px 10px;
+  background: rgba(255, 70, 70, 0.15);
+  border-radius: 4px;
+  border-left: 2px solid #ff5858;
+  color: #ff9898;
+}
+
+.yaml-validation-error:before {
+  content: '⚠️';
+  margin-right: 6px;
+  font-size: 12px;
+}
+
+/* Ultra-compact toolbox header for code editor */
+.yaml-editor-code-header {
+  border-radius: 4px 4px 0 0;
+  background: rgba(15, 20, 30, 0.95) !important;
+  border: 1px solid rgba(80, 120, 170, 0.2);
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 5px 6px;
+  height: auto;
+  min-height: 30px;
+  position: relative;
+  width: 100%;
+}
+
+.yaml-editor-code-header span.code-header-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #00ffaa;
+  margin-right: 12px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: max-content;
+  flex-shrink: 0;
+  letter-spacing: 0.5px;
+  text-shadow: 0 0 5px rgba(0, 255, 170, 0.7), 0 0 10px rgba(0, 255, 170, 0.4);
+  background: rgba(0, 50, 40, 0.3);
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 255, 170, 0.3);
+  box-shadow: 0 0 10px rgba(0, 255, 170, 0.15);
+}
+
+.yaml-editor-code-header span.code-header-title:before {
+  content: '\f121';
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+  font-size: 10px;
+}
+
+.yaml-editor-tools {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 4px;
+  align-items: center;
+  width: auto;
+  position: relative;
+  margin: 0;
+  margin-left: auto;
+  overflow-x: visible;
+}
+
+.yaml-tool-btn {
+  background: rgba(20, 30, 55, 0.8);
+  color: rgba(220, 230, 255, 0.95);
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid rgba(80, 120, 170, 0.3);
+  border-radius: 3px;
+  padding: 0 12px;
+  height: 28px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  white-space: nowrap;
+  min-width: 55px;
+  letter-spacing: 0.2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.yaml-tool-btn:hover {
+  background: rgba(30, 45, 65, 0.95);
+  border-color: rgba(157, 113, 234, 0.6);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25);
+}
+
+.yaml-tool-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  background: rgba(25, 35, 55, 1);
+}
+
+/* Button before content styling */
+.yaml-tool-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 100%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.yaml-tool-btn:hover::before {
+  opacity: 1;
+}
+
+/* Clear button (eraser) styling to match other buttons */
+.yaml-editor-tools .btn-icon.clear-yaml-btn {
+  background: rgba(255, 80, 80, 0.15);
+  border: 1px solid rgba(255, 100, 100, 0.3);
+  color: rgba(255, 120, 120, 0.95);
+  transition: all 0.2s ease;
+  font-size: 11px;
+  padding: 0 12px;
+  height: 28px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin-left: 10px;
+  order: 999; /* Ensure it appears at the end */
+  white-space: nowrap;
+  min-width: 45px;
+  letter-spacing: 0.2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.yaml-editor-tools .btn-icon.clear-yaml-btn:hover {
+  background: rgba(255, 80, 80, 0.25);
+  border-color: rgba(255, 100, 100, 0.6);
+  color: rgba(255, 255, 255, 0.95);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25);
+}
+
+.yaml-editor-tools .btn-icon.clear-yaml-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  background: rgba(255, 60, 60, 0.3);
+}
+
+.yaml-editor-tools .btn-icon.clear-yaml-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 100%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.yaml-editor-tools .btn-icon.clear-yaml-btn:hover::before {
+  opacity: 1;
+}
+
+.yaml-editor-tools .btn-icon.clear-yaml-btn i {
+  font-size: 11px;
+}
+
+/* Optimized code editor container for space efficiency */
+.yaml-editor-code {
+  flex: 1;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin: 0;
+  border: none;
+}
+
+/* Sleek code container and line numbers */
+.yaml-editor-code-container {
+  display: flex;
+  border: none;
+  border-radius: 0;
+  overflow: hidden;
+  position: relative;
+  margin: 0;
+  height: 250px; 
+  border-top: none;
+}
+
+.yaml-editor-line-numbers {
+  background: rgba(15, 20, 30, 0.9);
+  color: rgba(120, 140, 180, 0.6);
+  padding: 10px 8px 10px 12px;
+  text-align: right;
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  user-select: none;
+  overflow-y: hidden;
+  width: 40px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 1;
+  border-right: 1px solid rgba(80, 120, 170, 0.15);
+}
+
+.yaml-editor-code-container textarea {
+  flex: 1;
+  border: none !important;
+  border-radius: 0 !important;
+  background: rgba(10, 15, 25, 0.95) !important;
+  color: #f0f0f0 !important;
+  font-family: 'Fira Code', 'Consolas', monospace !important;
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+  resize: none !important;
+  padding: 10px 15px 10px 50px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  tab-size: 2 !important;
+  position: relative !important;
+  z-index: 0 !important;
+  height: 100% !important;
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Polished tag input and display */
+.yaml-editor-tag-input {
+  display: flex;
+  margin-bottom: 8px;
+}
+
+.yaml-editor-tag-input input {
+  flex: 1;
+  margin-right: 6px;
+}
+
+.yaml-editor-tag-add {
+  background: rgba(20, 30, 50, 0.7);
+  color: rgba(220, 230, 255, 0.9);
+  border: 1px solid rgba(80, 120, 170, 0.3);
+  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.yaml-editor-tag-add:hover {
+  background: rgba(30, 40, 60, 0.8);
+  border-color: rgba(157, 113, 234, 0.5);
+}
+
+.yaml-editor-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.yaml-editor-tag {
+  display: flex;
+  align-items: center;
+  background: rgba(20, 30, 50, 0.7);
+  border: 1px solid rgba(80, 120, 170, 0.3);
+  border-radius: 3px;
+  padding: 3px 6px;
+  font-size: 11px;
+  color: rgba(220, 230, 255, 0.9);
+}
+
+.yaml-editor-tag-remove {
+  margin-left: 4px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 9px;
+  transition: color 0.2s ease;
+}
+
+.yaml-editor-tag-remove:hover {
+  color: rgba(255, 100, 100, 0.9);
+}
+
+/* 10. Make the tags look better with smaller remove buttons */
+.yaml-editor-tag {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(157, 113, 234, 0.15);
+  border: 1px solid rgba(157, 113, 234, 0.3);
+  border-radius: 4px;
+  padding: 2px 8px;
+  margin-right: 5px;
+  margin-bottom: 5px;
+  font-size: 12px;
+  color: #c5d8f8;
+}
+
+.yaml-editor-tag span {
+  margin-right: 8px;
+}
+
+.yaml-editor-tag-remove {
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  transition: color 0.2s;
+  background: rgba(255, 100, 100, 0.1);
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  padding: 0;
+}
+
+.yaml-editor-tag-remove:hover {
+  color: #ff5555;
+  background: rgba(255, 100, 100, 0.2);
+}
+
+/* 11. Clean up checkbox alignment */
+.yaml-editor-checkbox.publish-toggle {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  width: 100%;
+  font-size: 12px;
+  color: rgba(220, 230, 255, 0.9);
+  padding: 2px 0;
+  user-select: none;
+  position: relative;
+}
+
+.yaml-editor-checkbox.publish-toggle span::before {
+  content: '\f0ac';
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+  font-size: 10px;
+  color: var(--accent);
+  margin-right: 6px;
+}
+
+.yaml-editor-checkbox input[type="checkbox"] {
+  margin-right: 8px;
+}
+
+/* Compact publish toggle with animation */
+.yaml-editor-help {
+  background: rgba(20, 30, 50, 0.6);
+  padding: 8px 10px;
+  border-radius: 4px;
+  margin: 8px 8px 0;
+  border-left: 2px solid var(--accent);
+}
+
+.yaml-editor-help h4 {
+  margin-top: 0;
+  margin-bottom: 6px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.yaml-editor-help h4:before {
+  content: '\f05a';
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+  font-size: 10px;
+  color: var(--accent);
+}
+
+.yaml-editor-field.yaml-editor-publish {
+  background: rgba(20, 30, 50, 0.4);
+  padding: 10px 12px;
+  border-radius: 3px;
+  margin: 12px 8px;
+  border-left: 2px solid var(--accent);
+  position: relative;
+  overflow: visible;
+  transition: all 0.3s;
+  max-width: calc(100% - 16px);
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+/* Publish toggle tooltip */
+.yaml-editor-checkbox.publish-toggle::after {
+  content: 'Publishing allows this YAML map to be listed in the sidebar global maps section, making it accessible to all users';
+  position: absolute;
+  left: -12px;
+  top: calc(100% + 8px);
+  background: rgba(10, 15, 30, 0.95);
+  padding: 10px 12px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: rgba(220, 230, 255, 0.9);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+  white-space: normal;
+  z-index: 100;
+  max-width: 250px;
+  line-height: 1.5;
+  border: 1px solid rgba(157, 113, 234, 0.4);
+}
+
+.yaml-editor-checkbox.publish-toggle:hover::after {
+  opacity: 1;
+}
+
+.yaml-editor-publish:hover {
+  background: rgba(30, 40, 60, 0.5);
+  box-shadow: 0 0 5px rgba(157, 113, 234, 0.2);
+}
+
+.yaml-editor-publish:after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 65%, rgba(157, 113, 234, 0.1) 70%, transparent 75%);
+  background-size: 200% 200%;
+  animation: publishShine 3s infinite linear;
+  pointer-events: none;
+}
+
+@keyframes publishShine {
+  0% { background-position: 200% 0; }
+  100% { background-position: 0 0; }
+}
+
+.yaml-editor-checkbox {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+}
+
+.publish-toggle {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+}
+
+.publish-toggle .yaml-public-checkbox {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  flex-shrink: 0;
+  cursor: pointer;
+  margin-right: 8px;
+  position: relative;
+  appearance: none;
+  background: rgba(10, 20, 30, 0.6);
+  border: 1px solid rgba(80, 120, 170, 0.5);
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+.publish-toggle .yaml-public-checkbox:checked {
+  background: rgba(80, 160, 220, 0.2);
+  border-color: var(--accent);
+}
+
+.publish-toggle .yaml-public-checkbox:checked:after {
+  content: '\f00c';
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+  font-size: 10px;
+  color: var(--accent);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.publish-toggle input:hover {
+  border-color: rgba(157, 113, 234, 0.8);
+}
+
+.publish-toggle span {
+  color: rgba(220, 230, 255, 0.9);
+  font-size: 11px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.publish-toggle span:before {
+  content: '\f0ac';
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+  font-size: 10px;
+  color: var(--accent);
+}
+
+/* Compact preview section styling */
+.preview-header, .help-header {
+  margin-top: 6px;
+}
+
+.yaml-editor-preview {
+  background: rgba(10, 15, 25, 0.95);
+  padding: 6px 8px;
+  border-radius: 0 0 4px 4px;
+  font-family: 'Fira Code', 'Consolas', monospace;
+  line-height: 1.3;
+  font-size: 12px;
+  color: rgba(240, 245, 255, 0.9);
+  overflow: auto;
+  max-height: 170px;
+  border-top: none;
+  margin-bottom: 6px;
+  border: 1px solid rgba(80, 120, 170, 0.2);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);
+}
+
+/* Compact Format Requirements section */
+.yaml-help-content {
+  background: rgba(10, 15, 25, 0.95);
+  padding: 8px 10px;
+  border-radius: 0 0 4px 4px;
+  font-size: 11px;
+  line-height: 1.3;
+  color: rgba(220, 230, 255, 0.8);
+  border: 1px solid rgba(80, 120, 170, 0.2);
+  border-top: none;
+  margin-bottom: 8px;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.yaml-help-content p {
+  margin: 0 0 6px 0;
+  font-size: 10px;
+}
+
+.yaml-help-content pre {
+  background: rgba(20, 30, 50, 0.6);
+  padding: 6px 8px;
+  border-radius: 3px;
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 10px;
+  margin: 4px 0 6px 0;
+  border-left: 2px solid var(--accent);
+  color: rgba(240, 245, 255, 0.9);
+  overflow-x: auto;
+}
+
+.yaml-help-content code {
+  background: rgba(20, 30, 50, 0.6);
+  padding: 1px 3px;
+  border-radius: 2px;
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 10px;
+  color: #66d9e8;
+}
+
+.yaml-help-content ul {
+  margin: 4px 0 6px 0;
+  padding-left: 16px;
+}
+
+.yaml-help-content li {
+  margin-bottom: 2px;
+  font-size: 10px;
+}
+
+/* Document link styling */
+.yaml-checker-link, 
+.yaml-doc-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+  padding-left: 14px;
+  transition: all 0.2s ease;
+}
+
+.yaml-checker-link:before,
+.yaml-doc-link:before {
+  content: '\f0c1';
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+  position: absolute;
+  left: 0;
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.yaml-checker-link:hover,
+.yaml-doc-link:hover {
+  color: #b191ee;
+  text-decoration: underline;
+}
+
+/* Final touches for code header sections */
+.yaml-editor-code-header {
+  background: rgba(15, 25, 35, 0.9);
+  padding: 0;
+  border-radius: 4px 4px 0 0;
+  border: 1px solid rgba(80, 120, 170, 0.2);
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+
+  min-height: 50px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+}
+
+.yaml-editor-code-header > span {
+  padding: 5px 8px;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  gap: 5px;
+  font-size: 11px;
+}
+
+.preview-header span.code-header-title:before {
+  content: '\f06e';
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+  font-size: 10px;
+}
+
+.help-header span.code-header-title:before {
+  content: '\f0ad';
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+  font-size: 10px;
+}
