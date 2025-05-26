@@ -6,8 +6,8 @@ import { fileURLToPath } from 'url';
 // Configure environment for production build
 process.env.NODE_ENV = 'production';
 
-// Force using JavaScript version of Rollup
-process.env.ROLLUP_DISABLE_NATIVE = 'true';
+// Configure for better compatibility
+process.env.VITE_APP_BUILD_AT = new Date().toISOString();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -147,7 +147,17 @@ export default defineConfig({
     ssr: false,
     rollupOptions: {
       // Ensure we don't try to use platform-specific binaries
-      external: ['@rollup/rollup-linux-x64-gnu'],
+      external: [
+        /^@rollup\/.*-x64-gnu$/,
+        /^@rollup\/.*-x64-musl$/,
+        /^@rollup\/.*-arm64/,
+        /^@rollup\/.*-arm-gnueabihf$/,
+        /^@rollup\/.*-linux-x64/,
+        /^@rollup\/.*-win32-x64/,
+        /^@rollup\/.*-darwin-x64/,
+        /^@esbuild\/.*/,
+        'fsevents'
+      ],
       plugins: []
     },
     commonjsOptions: {
