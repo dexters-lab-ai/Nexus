@@ -228,13 +228,35 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // 7.2 Session store (must come before any route that reads/writes req.session)
-const MONGO_URI = process.env.MONGO_URI;
+let mongoUri = process.env.MONGO_URI;
+// Remove surrounding quotes if present
+mongoUri = mongoUri.replace(/^['"]|['"]$/g, '');
+
+// Log the connection string (with sensitive info redacted)
+const safeMongoUri = mongoUri ? mongoUri.replace(/(mongodb\+srv:\/\/[^:]+:)[^@]+@/, '$1*****@') : 'undefined';
+console.log('Session store connecting to MongoDB with URI:', safeMongoUri);
+
 app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  store: MongoStore.create({ mongoUrl: MONGO_URI, collectionName: 'sessions' }),
-  cookie: { maxAge: 24 * 60 * 60 * 1000 }
+  store: MongoStore.create({ 
+    mongoUrl: mongoUri, 
+    collectionName: 'sessions',
+    mongoOptions: {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 15000,
+      retryWrites: true,
+      w: 'majority'
+    }
+  }),
+  cookie: { 
+    maxAge: 24 * 60 * 60 * 1000,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production'
+  }
 }));
 
 // 7.3 Debug logger for sessions
@@ -669,14 +691,49 @@ async function clearDatabaseOnce() {
 async function connectToMongoDB() {
   const startTime = Date.now();
   try {
-    await mongoose.connect(process.env.MONGO_URI, {
+    // Get the connection string from environment and ensure it's properly formatted
+    let mongoUri = process.env.MONGO_URI;
+    
+    // Log the connection string (with sensitive info redacted)
+    const safeMongoUri = mongoUri ? mongoUri.replace(/(mongodb\+srv:\/\/[^:]+:)[^@]+@/, '$1*****@') : 'undefined';
+    console.log(`Attempting to connect to MongoDB with URI: ${safeMongoUri}`);
+    
+    // Ensure the connection string has the correct prefix
+    if (!mongoUri) {
+      throw new Error('MONGO_URI is not defined in environment variables');
+    }
+    
+    // Remove any surrounding quotes from the connection string
+    mongoUri = mongoUri.replace(/^['"]|['"]$/g, '');
+    
+    // Extract components using regex instead of URL
+    const match = mongoUri.match(/^mongodb\+srv:\/\/([^:]+):([^@]+)@([^?]+)(\?.*)?$/);
+    
+    if (!match) {
+      throw new Error('Invalid MongoDB connection string format');
+    }
+    
+    // Encode username and password
+    const username = encodeURIComponent(match[1]);
+    const password = encodeURIComponent(match[2]);
+    const host = match[3];
+    const search = match[4] || '';
+    
+    // Rebuild the connection string with encoded credentials
+    mongoUri = `mongodb+srv://${username}:${password}@${host}${search}`;
+    
+    const options = {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000,
-      connectTimeoutMS: 10000,
-    });
-    console.log(`Connected to MongoDB in ${Date.now() - startTime}ms`);
-    return true; // Successfully connected
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 15000,
+      retryWrites: true,
+      w: 'majority'
+    };
+    
+    await mongoose.connect(mongoUri, options);
+    console.log(`✅ MongoDB connected in ${Date.now() - startTime}ms`);
+    return true;
   } catch (err) {
     console.error('Mongoose connection error:', err);
     
