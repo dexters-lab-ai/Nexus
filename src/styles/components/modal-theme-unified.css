@@ -1,0 +1,539 @@
+/* 
+ * modal-theme-unified.css
+ * A unified theme for all Nexus modals based on the YAML Editor styling
+ */
+
+/* ===== Shared Modal Container Styles ===== */
+.modal-container,
+.guide-overlay,
+.settings-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+}
+
+/* ===== Shared Modal Content Styles ===== */
+.yaml-editor,
+.guide-content,
+.settings-modal {
+  background: rgba(15, 20, 30, 0.95);
+  border-radius: 4px;
+  width: 90%;
+  max-width: 1200px;
+  height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(80, 120, 170, 0.3);
+}
+
+/* ===== Shared Header Styles ===== */
+.yaml-editor-sidebar-header,
+.guide-header,
+.settings-modal-header {
+  padding: 10px;
+  background: rgba(10, 20, 35, 0.9);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(80, 120, 170, 0.2);
+}
+
+.yaml-editor-sidebar-header h3,
+.guide-header h2,
+.settings-modal-header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  letter-spacing: 0.3px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.yaml-editor-close,
+.guide-header .close-btn,
+.settings-modal-header .close-btn {
+  background: transparent;
+  border: none;
+  color: rgba(220, 230, 255, 0.7);
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.yaml-editor-close:hover,
+.guide-header .close-btn:hover,
+.settings-modal-header .close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+/* ===== Shared Tab Navigation Styles ===== */
+.guide-tabs-nav,
+.settings-tabs {
+  display: flex;
+  background: rgba(15, 25, 40, 0.7);
+  border-bottom: 1px solid rgba(80, 120, 170, 0.2);
+  overflow-x: auto;
+  padding: 0 5px;
+}
+
+.guide-tabs-nav .tab-btn,
+.settings-tabs .settings-tab {
+  background: transparent;
+  color: rgba(220, 230, 255, 0.7);
+  border: none;
+  padding: 10px 15px;
+  margin: 0 2px;
+  cursor: pointer;
+  font-size: 13px;
+  position: relative;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.guide-tabs-nav .tab-btn:hover,
+.settings-tabs .settings-tab:hover {
+  color: rgba(220, 230, 255, 0.9);
+  background: rgba(30, 40, 60, 0.4);
+}
+
+.guide-tabs-nav .tab-btn.active,
+.settings-tabs .settings-tab.active {
+  color: var(--accent);
+  background: rgba(30, 40, 60, 0.3);
+}
+
+.guide-tabs-nav .tab-btn.active::after,
+.settings-tabs .settings-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--accent);
+}
+
+/* ===== Shared Content Area Styles ===== */
+.guide-tabs-content,
+.settings-modal-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  background:  unset;
+}
+
+/* ===== Shared Section Styles ===== */
+.guide-section,
+.settings-section {
+  background: rgba(20, 30, 50, 0.4);
+  border-radius: 3px;
+  padding: 0;
+  margin-bottom: 15px;
+  overflow: hidden;
+}
+
+.guide-section h3,
+.settings-section-title {
+  color: var(--accent);
+  font-size: 14px;
+  margin-top: 0;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.guide-section p,
+.settings-section p {
+  color: rgba(220, 230, 255, 0.9);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+/* ===== Shared Form Elements Styles ===== */
+.guide-content input[type="text"],
+.guide-content textarea,
+.settings-modal-content input[type="text"],
+.settings-modal-content input[type="password"],
+.text-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: rgba(20, 30, 50, 0.6);
+  color: rgba(220, 230, 255, 0.9);
+  border: 1px solid rgba(80, 120, 170, 0.3);
+  border-radius: 3px;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.guide-content input[type="text"]:focus,
+.guide-content textarea:focus,
+.settings-modal-content input[type="text"]:focus,
+.settings-modal-content input[type="password"]:focus,
+.text-input:focus {
+  border-color: rgba(157, 113, 234, 0.5);
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(157, 113, 234, 0.2);
+}
+
+/* ===== Shared Button Styles ===== */
+.guide-content button,
+.settings-btn,
+.nexus-settings-btn {
+  background: rgba(20, 30, 55, 0.8);
+  color: rgba(220, 230, 255, 0.95);
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid rgba(80, 120, 170, 0.3);
+  border-radius: 3px;
+  padding: 0 12px;
+  height: 28px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  white-space: nowrap;
+  min-width: 55px;
+  letter-spacing: 0.2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.guide-content button:hover,
+.settings-btn:hover,
+.nexus-settings-btn:hover {
+  background: rgba(30, 45, 65, 0.95);
+  border-color: rgba(157, 113, 234, 0.6);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25);
+}
+
+.guide-content button::before,
+.settings-btn::before,
+.nexus-settings-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 100%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.guide-content button:hover::before,
+.settings-btn:hover::before,
+.nexus-settings-btn:hover::before {
+  opacity: 1;
+}
+
+.guide-content button.primary,
+.settings-btn.primary,
+.nexus-settings-btn.primary {
+  background: rgba(80, 100, 220, 0.3);
+  border-color: rgba(157, 113, 234, 0.5);
+  color: rgba(220, 230, 255, 0.95);
+}
+
+.guide-content button.primary:hover,
+.settings-btn.primary:hover,
+.nexus-settings-btn.primary:hover {
+  background: rgba(80, 100, 220, 0.5);
+  border-color: rgba(157, 113, 234, 0.8);
+}
+
+/* ===== Shared Select Styles ===== */
+.guide-content select,
+.settings-select,
+.nexus-settings-input select {
+  background: rgba(20, 30, 50, 0.6);
+  color: rgba(220, 230, 255, 0.9);
+  border: 1px solid rgba(80, 120, 170, 0.3);
+  border-radius: 3px;
+  padding: 6px 8px;
+  font-size: 13px;
+  height: 32px;
+  min-width: 200px;
+  transition: all 0.2s;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgba(220, 230, 255, 0.7)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 16px;
+  padding-right: 30px;
+}
+
+.guide-content select:focus,
+.settings-select:focus,
+.nexus-settings-input select:focus {
+  border-color: rgba(157, 113, 234, 0.5);
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(157, 113, 234, 0.2);
+}
+
+/* ===== Shared Checkbox Styles ===== */
+.guide-content input[type="checkbox"],
+.settings-modal-content input[type="checkbox"] {
+  margin-right: 8px;
+  position: relative;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  border: 1px solid rgba(157, 113, 234, 0.5);
+  border-radius: 3px;
+  background: rgba(20, 30, 50, 0.8);
+  outline: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.guide-content input[type="checkbox"]:hover,
+.settings-modal-content input[type="checkbox"]:hover {
+  border-color: rgba(157, 113, 234, 0.8);
+  box-shadow: 0 0 0 1px rgba(157, 113, 234, 0.2);
+}
+
+.guide-content input[type="checkbox"]:checked,
+.settings-modal-content input[type="checkbox"]:checked {
+  background: rgba(157, 113, 234, 0.2);
+  border-color: rgba(157, 113, 234, 0.8);
+}
+
+.guide-content input[type="checkbox"]:checked:after,
+.settings-modal-content input[type="checkbox"]:checked:after {
+  content: '\f00c';
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+  font-size: 10px;
+  color: var(--accent);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* ===== Scrollbar Styling ===== */
+.guide-tabs-content::-webkit-scrollbar,
+.settings-modal-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.guide-tabs-content::-webkit-scrollbar-track,
+.settings-modal-content::-webkit-scrollbar-track {
+  background: rgba(15, 20, 30, 0.4);
+}
+
+.guide-tabs-content::-webkit-scrollbar-thumb,
+.settings-modal-content::-webkit-scrollbar-thumb {
+  background: rgba(80, 120, 170, 0.3);
+  border-radius: 4px;
+}
+
+.guide-tabs-content::-webkit-scrollbar-thumb:hover,
+.settings-modal-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(80, 120, 170, 0.5);
+}
+
+/* ===== Guide Modal Specific Adjustments ===== */
+.guide-overlay {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.guide-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.guide-tab {
+  display: none;
+}
+
+.guide-tab.active {
+  display: block;
+}
+
+.guide-subsection {
+  margin-bottom: 20px;
+}
+
+.guide-highlights {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.highlight-item {
+  background: rgba(30, 40, 60, 0.4);
+  border-radius: 4px;
+  padding: 12px;
+  border: 1px solid rgba(80, 120, 170, 0.2);
+  transition: all 0.2s;
+}
+
+.highlight-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  border-color: rgba(157, 113, 234, 0.3);
+}
+
+.highlight-item i {
+  color: var(--accent);
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+
+.video-placeholder {
+  background: rgba(20, 30, 50, 0.6);
+  border-radius: 6px;
+  height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid rgba(80, 120, 170, 0.2);
+  margin: 15px 0;
+}
+
+.video-placeholder:hover {
+  background: rgba(30, 40, 60, 0.7);
+  border-color: rgba(157, 113, 234, 0.3);
+}
+
+.video-placeholder i {
+  font-size: 40px;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+
+/* ===== Settings Modal Specific Adjustments ===== */
+.settings-modal-overlay {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.settings-modal-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.settings-tab-content {
+  display: none;
+}
+
+.settings-tab-content.active {
+  display: block;
+}
+
+.settings-option {
+  margin-bottom: 15px;
+}
+
+.settings-option-label {
+  display: flex;
+  align-items: center;
+  margin-bottom: 5px;
+  font-weight: 500;
+  color: rgba(220, 230, 255, 0.9);
+}
+
+.settings-notification {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 12px;
+  max-width: 280px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(20, 30, 60, 0.85) 0%, rgba(25, 35, 75, 0.9) 100%);
+  border-left: 2px solid rgba(157, 113, 234, 0.8);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(157, 113, 234, 0.2);
+  backdrop-filter: blur(8px);
+  color: rgba(220, 230, 255, 0.95);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0;
+  transform: translateY(10px) scale(0.95);
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  z-index: 10000;
+}
+
+.settings-notification.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  animation: notification-pulse 5s infinite;
+}
+
+@keyframes notification-pulse {
+  0% { box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(157, 113, 234, 0.2); }
+  50% { box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(157, 113, 234, 0.4), 0 0 15px rgba(157, 113, 234, 0.3); }
+  100% { box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(157, 113, 234, 0.2); }
+}
+
+.settings-notification.error {
+  background: linear-gradient(135deg, rgba(60, 20, 40, 0.85) 0%, rgba(80, 25, 55, 0.9) 100%);
+  border-left: 2px solid rgba(230, 80, 100, 0.8);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(230, 80, 100, 0.2);
+}
+
+.settings-notification.error.visible {
+  animation: notification-pulse-error 5s infinite;
+}
+
+@keyframes notification-pulse-error {
+  0% { box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(230, 80, 100, 0.2); }
+  50% { box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(230, 80, 100, 0.4), 0 0 15px rgba(230, 80, 100, 0.3); }
+  100% { box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(230, 80, 100, 0.2); }
+}
+
+/* ===== Cool Version Badge (for both) ===== */
+/*
+.guide-header h2::after,
+.settings-modal-header h2::after {
+  content: 'v1.0.0';
+  font-size: 11px;
+  font-weight: 600;
+  color: #00ffaa;
+  margin-left: 8px;
+  background: rgba(0, 50, 40, 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 255, 170, 0.3);
+  box-shadow: 0 0 10px rgba(0, 255, 170, 0.15);
+  text-shadow: 0 0 5px rgba(0, 255, 170, 0.7), 0 0 10px rgba(0, 255, 170, 0.4);
+  letter-spacing: 0.5px;
+}
+  */

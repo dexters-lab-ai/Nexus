@@ -1,0 +1,264 @@
+/* 
+ * Advanced Settings Styling
+ * Enhanced UI for execution modes and processing types
+ */
+
+/* Model Card Styling */
+.model-card-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+  margin-bottom: 24px;
+}
+
+.model-card {
+  background: linear-gradient(135deg, rgba(20, 30, 60, 0.7) 0%, rgba(25, 35, 75, 0.8) 100%);
+  border: 1px solid rgba(120, 140, 240, 0.25);
+  border-radius: 6px;
+  padding: 18px;
+  transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+  box-shadow: 0 0 25px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(120, 140, 240, 0.05);
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+}
+
+.model-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2), 0 0 15px rgba(120, 140, 240, 0.25);
+  border-color: rgba(157, 113, 234, 0.5);
+  background: linear-gradient(135deg, rgba(25, 35, 70, 0.8) 0%, rgba(30, 40, 85, 0.9) 100%);
+}
+
+.model-card h4 {
+  font-size: 1.1rem;
+  margin: 0 0 8px 0;
+  color: #ecf0f1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-card h4 i {
+  color: #3498db;
+  font-size: 0.9em;
+}
+
+.model-card p {
+  font-size: 0.9rem;
+  color: #bdc3c7;
+  margin: 0 0 12px 0;
+  line-height: 1.4;
+}
+
+.model-card .model-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.model-capability {
+  font-size: 0.75rem;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: rgba(52, 152, 219, 0.15);
+  color: #3498db;
+}
+
+.model-card.selected {
+  border-color: rgba(157, 113, 234, 0.8);
+  background: linear-gradient(135deg, rgba(30, 25, 60, 0.85) 0%, rgba(40, 30, 80, 0.9) 100%);
+  box-shadow: 0 0 25px rgba(157, 113, 234, 0.2), 0 0 0 1px rgba(157, 113, 234, 0.3);
+}
+
+.model-card.selected::after {
+  content: "\f00c";
+  font-family: "Font Awesome 5 Free";
+  font-weight: 900;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  color: rgba(157, 113, 234, 0.9);
+  text-shadow: 0 0 8px rgba(157, 113, 234, 0.5);
+}
+
+/* Execution Mode Selector */
+.execution-mode-container {
+  display: flex;
+  gap: 16px;
+  margin: 20px 0;
+}
+
+.execution-mode-card {
+  flex: 1;
+  background: linear-gradient(145deg, #162538 0%, #111b2b 100%);
+  border: 1px solid rgba(52, 152, 219, 0.15);
+  border-radius: 10px;
+  padding: 16px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.execution-mode-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15), 0 0 8px rgba(52, 152, 219, 0.2);
+  border-color: rgba(52, 152, 219, 0.3);
+}
+
+.execution-mode-card.selected {
+  border-color: #2ecc71;
+  background: linear-gradient(145deg, #162538 0%, #112a22 100%);
+}
+
+.execution-mode-card h4 {
+  font-size: 1.1rem;
+  margin: 0 0 8px 0;
+  color: #ecf0f1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.execution-mode-card h4 i {
+  color: #3498db;
+}
+
+.execution-mode-card p {
+  font-size: 0.9rem;
+  color: #bdc3c7;
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Informative Feature Showcase */
+.feature-showcase {
+  background: rgba(15, 25, 45, 0.4);
+  border-radius: 6px;
+  padding: 20px;
+  box-sizing: border-box;
+  margin: 20px 0;
+  box-shadow: 0 0 20px rgba(120, 140, 240, 0.1);
+  backdrop-filter: blur(5px);
+  border: 1px solid rgba(120, 140, 240, 0.2);
+}
+
+.feature-showcase h4 {
+  font-size: 1.1rem;
+  margin: 0 0 12px 0;
+  color: #ecf0f1;
+}
+
+.feature-showcase p {
+  font-size: 0.9rem;
+  color: #bdc3c7;
+  margin: 0 0 16px 0;
+  line-height: 1.5;
+}
+
+.yaml-benefits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.yaml-benefit {
+  flex: 1;
+  min-width: 200px;
+  padding: 10px 16px;
+  background: rgba(52, 152, 219, 0.1);
+  border-radius: 8px;
+}
+
+.yaml-benefit i {
+  color: #3498db;
+  margin-right: 8px;
+}
+
+.yaml-benefit h5 {
+  font-size: 0.95rem;
+  margin: 0 0 6px 0;
+  color: #ecf0f1;
+}
+
+.yaml-benefit p {
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+/* Advanced Processing Types Selector */
+.processing-types {
+  margin: 20px 0;
+}
+
+.processing-type-option {
+  padding: 16px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(20, 30, 60, 0.5) 0%, rgba(25, 35, 75, 0.6) 100%);
+  border: 1px solid rgba(120, 140, 240, 0.25);
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(120, 140, 240, 0.05);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+  cursor: pointer;
+}
+
+.processing-type-option:hover {
+  border-color: rgba(157, 113, 234, 0.4);
+  background: linear-gradient(135deg, rgba(25, 35, 70, 0.6) 0%, rgba(30, 40, 85, 0.7) 100%);
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(157, 113, 234, 0.2);
+  transform: translateY(-2px);
+}
+
+.processing-type-option.selected {
+  border-color: rgba(157, 113, 234, 0.8);
+  background: linear-gradient(135deg, rgba(30, 25, 60, 0.75) 0%, rgba(40, 30, 80, 0.8) 100%);
+  box-shadow: 0 0 20px rgba(157, 113, 234, 0.2), 0 0 0 1px rgba(157, 113, 234, 0.3);
+}
+
+.processing-type-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.processing-type-option h4 {
+  font-size: 1rem;
+  margin: 0;
+  color: rgba(230, 230, 250, 0.95);
+  flex: 1;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  text-shadow: 0 0 1px rgba(157, 113, 234, 0.3);
+}
+
+.processing-type-radio {
+  width: 18px;
+  height: 18px;
+  accent-color: #2ecc71;
+}
+
+.processing-type-option p {
+  font-size: 0.85rem;
+  color: rgba(200, 200, 230, 0.8);
+  margin: 0;
+  line-height: 1.5;
+  font-weight: 300;
+  letter-spacing: 0.2px;
+}
+
+/* Animation for selected elements */
+@keyframes pulse-select {
+  0% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(46, 204, 113, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
+}
+
+.processing-type-option.selected,
+.execution-mode-card.selected,
+.model-card.selected {
+  animation: pulse-select 1.5s infinite;
+}

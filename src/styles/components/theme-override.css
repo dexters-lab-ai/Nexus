@@ -1,0 +1,723 @@
+/**
+ * Theme Override Styles - Guaranteed to be applied last
+ * Uses higher specificity selectors to ensure light theme is properly applied
+ *
+ * Overrides specific styles from:
+ * - message-timeline.css
+ * - command-center.css
+ * - layouts.css
+ */
+
+/* Accessibility Settings - Large Text */
+body.large-text,
+body.large-text * {
+  font-family: 'Google Sans', Roboto, sans-serif;
+  font-stretch: extra-expanded !important;
+  font-size-adjust: 0.7 !important;
+}
+
+body.large-text .btn,
+body.large-text input,
+body.large-text textarea,
+body.large-text .dropdown-item,
+body.large-text .history-title,
+body.large-text .notification {
+  font-size: 1.1em !important;
+}
+
+body.large-text h1 { font-size: 2.5em !important; }
+body.large-text h2 { font-size: 2.2em !important; }
+body.large-text h3 { font-size: 1.9em !important; }
+body.large-text h4 { font-size: 1.6em !important; }
+body.large-text h5 { font-size: 1.3em !important; }
+
+/* Ultra high-specificity light theme selectors */
+html[data-theme="light"] body .message-timeline-container,
+body[class] [data-theme="light"] .message-timeline-container {
+  background: linear-gradient(165deg, rgba(245, 246, 250, 0.95), rgba(235, 238, 245, 0.9)) !important;
+  border: 1px solid rgba(59, 130, 246, 0.15) !important;
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.03) !important;
+}
+
+html[data-theme="light"] body .message-timeline,
+body[class] [data-theme="light"] .message-timeline {
+  color: #1F2937 !important;
+}
+
+/* Message bubbles with higher specificity */
+html[data-theme="light"] body .msg-item,
+body[class] [data-theme="light"] .msg-item {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid rgba(59, 130, 246, 0.15) !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05) !important;
+  color: #1F2937 !important;
+}
+
+html[data-theme="light"] body .msg-item:hover,
+body[class] [data-theme="light"] .msg-item:hover {
+  border-color: rgba(59, 130, 246, 0.3) !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* User messages */
+html[data-theme="light"] body .msg-item.msg-user,
+body[class] [data-theme="light"] .msg-item.msg-user {
+  background: rgba(59, 130, 246, 0.1) !important;
+  border-right: 2px solid #3B82F6 !important;
+  color: #1E40AF !important;
+}
+
+html[data-theme="light"] body .msg-item.msg-user:hover,
+body[class] [data-theme="light"] .msg-item.msg-user:hover {
+  box-shadow: 0 2px 5px rgba(59, 130, 246, 0.2) !important;
+  border-right: 2px solid #2563EB !important;
+}
+
+/* Assistant messages */
+html[data-theme="light"] body .msg-item.msg-assistant,
+body[class] [data-theme="light"] .msg-item.msg-assistant {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-left: 2px solid #3B82F6 !important;
+  color: #1F2937 !important;
+}
+
+html[data-theme="light"] body .msg-item.msg-assistant:hover,
+body[class] [data-theme="light"] .msg-item.msg-assistant:hover {
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1) !important;
+  border-left: 2px solid #2563EB !important;
+}
+
+/* System messages */
+html[data-theme="light"] body .msg-item.msg-system,
+body[class] [data-theme="light"] .msg-item.msg-system {
+  background: rgba(243, 244, 246, 0.95) !important;
+  border-left: 2px solid #9CA3AF !important;
+  color: #4B5563 !important;
+}
+
+html[data-theme="light"] body .msg-item.msg-system:hover,
+body[class] [data-theme="light"] .msg-item.msg-system:hover {
+  border-color: #6B7280 !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Metadata styling */
+html[data-theme="light"] body .msg-meta,
+body[class] [data-theme="light"] .msg-meta {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+  color: #6B7280 !important;
+}
+
+html[data-theme="light"] body .msg-timestamp,
+body[class] [data-theme="light"] .msg-timestamp {
+  color: #6B7280 !important;
+}
+
+/* Icons */
+html[data-theme="light"] body .msg-item i,
+body[class] [data-theme="light"] .msg-item i {
+  color: #6B7280 !important;
+}
+
+html[data-theme="light"] body .msg-item .task-success i,
+body[class] [data-theme="light"] .msg-item .task-success i {
+  color: unset !important;
+}
+
+/* Neural Flow overrides for light mode */
+html[data-theme="light"] body .neural-flow-container,
+body[class] [data-theme="light"] .neural-flow-container {
+  background-color: #0a0f20 !important;
+  background-image: linear-gradient(to bottom, #0a0f20 0%, #111b30 40%, #162042 100%) !important;
+  color: #ffffff !important;
+}
+
+/* Neural Flow tooltip overrides for light mode */
+html[data-theme="light"] body .neural-flow-tooltip,
+body[class] [data-theme="light"] .neural-flow-tooltip {
+  background-color: rgba(10, 15, 30, 0.8) !important;
+  color: #ffffff !important;
+  border-color: rgba(140, 85, 255, 0.4) !important;
+  box-shadow: 0 0 20px rgba(140, 85, 255, 0.2), inset 0 0 4px rgba(140, 85, 255, 0.25), inset 1px 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Thought bubble */
+html[data-theme="light"] body .thought-bubble,
+body[class] [data-theme="light"] .thought-bubble {
+  background: rgba(255, 255, 255, 0.7) !important;
+  backdrop-filter: blur(8px) !important;
+  border: 1px solid rgba(59, 130, 246, 0.2) !important;
+  color: #1F2937 !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Completed thought bubbles in light mode - match system cards */
+html[data-theme="light"] body .thought-bubble.complete,
+html[data-theme="light"] body .thought-bubble.thought-complete,
+body[class] [data-theme="light"] .thought-bubble.complete,
+body[class] [data-theme="light"] .thought-bubble.thought-complete {
+  background: rgba(243, 244, 246, 0.95) !important;
+  border-left: 2px solid #9CA3AF !important;
+  color: #4B5563 !important;
+  backdrop-filter: blur(10px) !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08) !important;
+  transition: all 0.3s ease-out !important;
+}
+
+/* Hover styling for completed thought bubbles */
+html[data-theme="light"] body .thought-bubble.complete:hover,
+html[data-theme="light"] body .thought-bubble.thought-complete:hover,
+body[class] [data-theme="light"] .thought-bubble.complete:hover,
+body[class] [data-theme="light"] .thought-bubble.thought-complete:hover {
+  border-color: #6B7280 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* NLI section */
+html[data-theme="light"] body #nli-section,
+body[class] [data-theme="light"] #nli-section {
+  background: #F9FAFB !important;
+}
+
+html[data-theme="light"] body .user-message,
+body[class] [data-theme="light"] .user-message {
+  background-color: #3B82F6 !important;
+  color: white !important;
+}
+
+html[data-theme="light"] body .assistant-message,
+body[class] [data-theme="light"] .assistant-message {
+  background-color: #F3F4F6 !important;
+  color: #1F2937 !important;
+}
+
+/* ================= COMMAND CENTER OVERRIDES ================= */
+
+html[data-theme="light"] body .command-center-container,
+body[class] [data-theme="light"] .command-center-container {
+  background: linear-gradient(165deg, rgba(52, 123, 238, 0.05), rgba(123, 77, 255, 0.08)) !important;
+  border: 1px solid rgba(52, 123, 238, 0.2) !important;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.03) !important;
+}
+
+html[data-theme="light"] body .thought-bubble,
+body[class] [data-theme="light"] .thought-bubble {
+  background: rgba(255, 255, 255, 0.7) !important;
+  border: 1px solid rgba(59, 130, 246, 0.15) !important;
+  color: #1F2937 !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05) !important;
+}
+
+html[data-theme="light"] body .thought-bubble.creative-bubble,
+body[class] [data-theme="light"] .thought-bubble.creative-bubble {
+  background: rgba(245, 245, 255, 0.7) !important;
+  border: 1px solid rgba(90, 100, 240, 0.2) !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05), 0 0 15px rgba(100, 100, 200, 0.1) !important;
+}
+
+html[data-theme="light"] body .command-input,
+body[class] [data-theme="light"] .command-input {
+  background: rgba(255, 255, 255, 0.8) !important;
+  border: 1px solid rgba(59, 130, 246, 0.2) !important;
+  color: #1F2937 !important;
+}
+
+html[data-theme="light"] body .unified-input-bar,
+body[class] [data-theme="light"] .unified-input-bar {
+  background: white !important;
+  border: 1px solid rgba(59, 130, 246, 0.15) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* ================= LAYOUTS OVERRIDES ================= */
+
+html[data-theme="light"] body .modern-layout,
+body[class] [data-theme="light"] .modern-layout {
+  background-color: #F9FAFB !important;
+}
+
+html[data-theme="light"] body .timeline-area,
+body[class] [data-theme="light"] .timeline-area {
+  background-color: transparent !important;
+}
+
+html[data-theme="light"] body .command-area,
+body[class] [data-theme="light"] .command-area {
+  background: rgba(255, 255, 255, 0.8) !important;
+  backdrop-filter: blur(10px) !important;
+  box-shadow: 0 -2px 24px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+html[data-theme="light"] body .sidebar-area,
+body[class] [data-theme="light"] .sidebar-area {
+  background-color: white !important;
+  border-left: 1px solid rgba(59, 130, 246, 0.1) !important;
+}
+
+html[data-theme="light"] body .tab-btn,
+body[class] [data-theme="light"] .tab-btn {
+  background: rgba(255, 255, 255, 0.9) !important;
+  color: #4B5563 !important;
+  border: 1px solid rgba(59, 130, 246, 0.1) !important;
+}
+
+html[data-theme="light"] body .tab-btn.active,
+body[class] [data-theme="light"] .tab-btn.active {
+  background: rgba(59, 130, 246, 0.1) !important;
+  color: #1E40AF !important;
+  border: 1px solid rgba(59, 130, 246, 0.2) !important;
+}
+
+/* Additional Command Center Elements */
+
+html[data-theme="light"] body .streaming-container,
+body[class] [data-theme="light"] .streaming-container {
+  background: rgba(240, 242, 245, 0.8) !important;
+  border: 1px solid rgba(59, 130, 246, 0.1) !important;
+}
+
+html[data-theme="light"] body .streaming-step,
+body[class] [data-theme="light"] .streaming-step {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid rgba(59, 130, 246, 0.1) !important;
+  color: #1F2937 !important;
+}
+
+html[data-theme="light"] body .command-textarea,
+body[class] [data-theme="light"] .command-textarea {
+  background: white !important;
+  border: 1px solid rgba(59, 130, 246, 0.2) !important;
+  color: #1F2937 !important;
+}
+
+html[data-theme="light"] body .command-textarea:focus,
+body[class] [data-theme="light"] .command-textarea:focus {
+  border-color: #3B82F6 !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2) !important;
+}
+
+html[data-theme="light"] body .engine-dropdown-trigger,
+body[class] [data-theme="light"] .engine-dropdown-trigger {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid rgba(59, 130, 246, 0.2) !important;
+  color: #1F2937 !important;
+}
+
+html[data-theme="light"] body .engine-dropdown,
+body[class] [data-theme="light"] .engine-dropdown {
+  background: white !important;
+  border: unset !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+
+html[data-theme="light"] body .dropdown-item,
+body[class] [data-theme="light"] .dropdown-item {
+  color: #1F2937 !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+}
+
+html[data-theme="light"] body .dropdown-item:hover,
+body[class] [data-theme="light"] .dropdown-item:hover {
+  background-color: rgba(59, 130, 246, 0.1) !important;
+}
+
+/* Button and Report Links */
+
+html[data-theme="light"] body .report-link,
+body[class] [data-theme="light"] .report-link {
+  color: #3B82F6 !important;
+}
+
+html[data-theme="light"] body .send-button,
+body[class] [data-theme="light"] .send-button,
+html[data-theme="light"] body .btn-unified-send,
+body[class] [data-theme="light"] .btn-unified-send {
+  background: linear-gradient(135deg, #3B82F6 0%, #6366F1 100%) !important;
+}
+
+html[data-theme="light"] body .send-button:hover,
+body[class] [data-theme="light"] .send-button:hover,
+html[data-theme="light"] body .btn-unified-send:hover,
+body[class] [data-theme="light"] .btn-unified-send:hover {
+  background: linear-gradient(135deg, #2563EB 0%, #4F46E5 100%) !important;
+}
+
+html[data-theme="light"] body .system-msg-links a.report-link,
+body[class] [data-theme="light"] .system-msg-links a.report-link {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+}
+
+html[data-theme="light"] body .system-msg-links a.report-link:hover,
+body[class] [data-theme="light"] .system-msg-links a.report-link:hover {
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15) !important;
+}
+
+html[data-theme="light"] body .inline-report-link,
+body[class] [data-theme="light"] .inline-report-link {
+  color: #3B82F6 !important;
+}
+
+html[data-theme="light"] body .inline-report-link:hover,
+body[class] [data-theme="light"] .inline-report-link:hover {
+  color: #2563EB !important;
+}
+
+html[data-theme="light"] body .inline-report-link.nexus-report,
+body[class] [data-theme="light"] .inline-report-link.nexus-report {
+  color: #10B981 !important;
+}
+
+html[data-theme="light"] body .inline-report-link.landing-report,
+body[class] [data-theme="light"] .inline-report-link.landing-report {
+  color: #3B82F6 !important;
+}
+
+html[data-theme="light"] body .inline-report-link.error-report,
+body[class] [data-theme="light"] .inline-report-link.error-report {
+  color: #EF4444 !important;
+}
+
+/* Override any animations or transitions */
+html[data-theme="light"] body .command-center-container,
+body[class] [data-theme="light"] .command-center-container,
+html[data-theme="light"] body .modern-layout,
+body[class] [data-theme="light"] .modern-layout,
+html[data-theme="light"] body .sidebar-area,
+body[class] [data-theme="light"] .sidebar-area,
+html[data-theme="light"] body .timeline-area,
+body[class] [data-theme="light"] .timeline-area {
+  transition: all var(--animation-duration) ease-in-out !important;
+}
+
+/* ================= MESSAGE TIMELINE OVERRIDES ================= */
+
+/* Message content and meta information */
+html[data-theme="light"] body .msg-content,
+body[class] [data-theme="light"] .msg-content {
+  color: #1F2937 !important;
+  background-color: transparent !important;
+}
+
+html[data-theme="light"] body .msg-meta,
+body[class] [data-theme="light"] .msg-meta {
+  color: #6B7280 !important;
+}
+html[data-theme="light"] body .task-success-plan,
+body[class] [data-theme="light"] .task-success-plan {
+  background: #dbe4f4 !important;
+}
+
+/* User and assistant message items */
+html[data-theme="light"] body .msg-item.msg-user.msg-chat,
+body[class] [data-theme="light"] .msg-item.msg-user.msg-chat,
+html[data-theme="light"] body .msg-item.msg-assistant.msg-chat,
+body[class] [data-theme="light"] .msg-item.msg-assistant.msg-chat {
+  color: #1F2937 !important;
+}
+
+/* Timeline filters */
+html[data-theme="light"] body .timeline-filters,
+body[class] [data-theme="light"] .timeline-filters {
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.9), rgba(250, 250, 255, 0.9)) !important;
+  border: 1px solid var(--primary) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05) !important;
+}
+
+html[data-theme="light"] body .timeline-filter-btn,
+body[class] [data-theme="light"] .timeline-filter-btn {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  color: #4B5563 !important;
+  border: 1px solid rgba(59, 130, 246, 0.1) !important;
+}
+
+html[data-theme="light"] body .timeline-filter-btn:hover,
+body[class] [data-theme="light"] .timeline-filter-btn:hover {
+  background-color: rgba(59, 130, 246, 0.05) !important;
+  color: #1F2937 !important;
+  border-color: rgba(59, 130, 246, 0.2) !important;
+}
+
+html[data-theme="light"] body .timeline-filter-btn.active,
+body[class] [data-theme="light"] .timeline-filter-btn.active {
+  background: rgba(52, 123, 238, 0.1) !important;
+  color: var(--primary) !important;
+  border: 1px solid rgba(52, 123, 238, 0.3) !important;
+}
+
+html[data-theme="light"] body .message-refresh-btn,
+body[class] [data-theme="light"] .message-refresh-btn {
+  color: #4B5563 !important;
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid rgba(59, 130, 246, 0.1) !important;
+}
+
+html[data-theme="light"] body .message-refresh-btn:hover,
+body[class] [data-theme="light"] .message-refresh-btn:hover {
+  color: #1E40AF !important;
+  background-color: rgba(59, 130, 246, 0.05) !important;
+}
+
+/* Command Center Tab Buttons */
+html[data-theme="light"] body #task-type-tabs,
+body[class] [data-theme="light"] #task-type-tabs {
+  background-color: rgba(249, 250, 251, 0.8) !important;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.1) !important;
+}
+
+html[data-theme="light"] body .tab-btn,
+body[class] [data-theme="light"] .tab-btn {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  color: #4B5563 !important;
+  border: 1px solid rgba(59, 130, 246, 0.1) !important;
+}
+
+html[data-theme="light"] body .tab-btn:hover,
+body[class] [data-theme="light"] .tab-btn:hover {
+  background-color: rgba(59, 130, 246, 0.05) !important;
+  color: #1F2937 !important;
+  border-color: rgba(59, 130, 246, 0.2) !important;
+}
+
+html[data-theme="light"] body .tab-btn.active,
+body[class] [data-theme="light"] .tab-btn.active {
+  background-color: #FFFFFF !important;
+  color: var(--primary) !important;
+  border: none !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Icons in Light Theme */
+html[data-theme="light"] body .tab-btn i,
+body[class] [data-theme="light"] .tab-btn i,
+html[data-theme="light"] body .timeline-filter-btn i,
+body[class] [data-theme="light"] .timeline-filter-btn i,
+html[data-theme="light"] body .card-title i,
+body[class] [data-theme="light"] .card-title i,
+html[data-theme="light"] body .message-refresh-btn i,
+body[class] [data-theme="light"] .message-refresh-btn i,
+html[data-theme="light"] body .engine-dropdown-trigger i,
+body[class] [data-theme="light"] .engine-dropdown-trigger i,
+html[data-theme="light"] body .dropdown-item i,
+body[class] [data-theme="light"] .dropdown-item i {
+  color: var(--primary) !important;
+  opacity: 0.7 !important;
+}
+
+html[data-theme="light"] body .tab-btn.active i,
+body[class] [data-theme="light"] .tab-btn.active i,
+html[data-theme="light"] body .timeline-filter-btn.active i,
+body[class] [data-theme="light"] .timeline-filter-btn.active i {
+  color: var(--primary) !important;
+  opacity: 1 !important;
+}
+
+/* Command Center Container */
+html[data-theme="light"] body .command-center,
+body[class] [data-theme="light"] .command-center {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid rgba(52, 123, 238, 0.2) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+
+html[data-theme="light"] body .card-title,
+body[class] [data-theme="light"] .card-title {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-alt) 100%) !important;
+  background: rgba(59, 130, 246, 0.1);
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+}
+
+html[data-theme="light"] body .card-title .tooltip,
+body[class] [data-theme="light"] .card-title .tooltip {
+  -webkit-text-fill-color: black !important;
+}
+
+html[data-theme="light"] body .command-center .tooltip,
+body[class] [data-theme="light"] .command-center .tooltip {
+  -webkit-text-fill-color: black !important;
+}
+
+html[data-theme="light"] body .guide-dot,
+body[class] [data-theme="light"] .guide-dot {
+  background-color: rgba(59, 130, 246, 0.1) !important;
+  color: #1E40AF !important;
+  border: 1px solid rgba(59, 130, 246, 0.2) !important;
+}
+
+html[data-theme="light"] body .tooltip-text,
+body[class] [data-theme="light"] .tooltip-text {
+  background-color: #F9FAFB !important;
+  color: #1F2937 !important;
+}
+
+/* Input Areas */
+html[data-theme="light"] body .unified-input-textarea,
+body[class] [data-theme="light"] .unified-input-textarea {
+  color: #1F2937 !important;
+  background-color: white !important;
+  border: 1px solid rgba(59, 130, 246, 0.2) !important;
+}
+
+html[data-theme="light"] body .unified-input-textarea::placeholder,
+body[class] [data-theme="light"] .unified-input-textarea::placeholder {
+  color: #9CA3AF !important;
+}
+
+html[data-theme="light"] body .unified-input-textarea:focus,
+body[class] [data-theme="light"] .unified-input-textarea:focus {
+  border-color: #3B82F6 !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2) !important;
+}
+
+/* ================= TASKBAR OVERRIDES ================= */
+
+html[data-theme="light"] body .taskbar,
+body[class] [data-theme="light"] .taskbar,
+html[data-theme="light"] body .task-bar,
+body[class] [data-theme="light"] .task-bar {
+  background: linear-gradient(165deg, rgba(245, 247, 250, 0.9), rgba(240, 242, 245, 0.95)) !important;
+  border-top: 1px solid rgba(52, 123, 238, 0.15) !important;
+  box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.05), 0 -1px 3px rgba(0, 0, 0, 0.03) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+html[data-theme="light"] body .taskbar-item,
+body[class] [data-theme="light"] .taskbar-item {
+  color: #4B5563 !important;
+  background-color: transparent !important;
+  border: 1px solid transparent !important;
+}
+
+html[data-theme="light"] body .taskbar-item:hover,
+body[class] [data-theme="light"] .taskbar-item:hover {
+  background-color: rgba(59, 130, 246, 0.05) !important;
+  color: #1F2937 !important;
+  border-color: rgba(59, 130, 246, 0.1) !important;
+}
+
+html[data-theme="light"] body .taskbar-item.active,
+body[class] [data-theme="light"] .taskbar-item.active,
+html[data-theme="light"] body .task-bar-task-item.active,
+body[class] [data-theme="light"] .task-bar-task-item.active {
+  background: rgba(52, 123, 238, 0.1) !important;
+  color: var(--primary) !important;
+  border: 1px solid var(--primary) !important;
+}
+
+html[data-theme="light"] body .taskbar-item i,
+body[class] [data-theme="light"] .taskbar-item i,
+html[data-theme="light"] body .task-bar-control i,
+body[class] [data-theme="light"] .task-bar-control i {
+  color: var(--primary) !important;
+  opacity: 0.7 !important;
+}
+
+html[data-theme="light"] body .taskbar-item.active i,
+body[class] [data-theme="light"] .taskbar-item.active i,
+html[data-theme="light"] body .task-bar-task-item.active i,
+body[class] [data-theme="light"] .task-bar-task-item.active i {
+  color: var(--primary) !important;
+  opacity: 1 !important;
+}
+
+html[data-theme="light"] body .taskbar-menu,
+body[class] [data-theme="light"] .taskbar-menu {
+  background-color: white !important;
+  border: 1px solid rgba(59, 130, 246, 0.1) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+
+html[data-theme="light"] body .taskbar-menu-item,
+body[class] [data-theme="light"] .taskbar-menu-item {
+  color: #1F2937 !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+}
+
+html[data-theme="light"] body .taskbar-menu-item:hover,
+body[class] [data-theme="light"] .taskbar-menu-item:hover {
+  background-color: rgba(59, 130, 246, 0.05) !important;
+}
+
+html[data-theme="light"] body .taskbar-notification,
+body[class] [data-theme="light"] .taskbar-notification {
+  background-color: #EF4444 !important;
+  color: white !important;
+}
+
+html[data-theme="light"] body .taskbar-status,
+body[class] [data-theme="light"] .taskbar-status {
+  color: #4B5563 !important;
+  border-left: 1px solid rgba(59, 130, 246, 0.1) !important;
+}
+
+/* TaskBar Status Indicator Light Theme Overrides */
+html[data-theme="light"] body .status-item,
+body[class] [data-theme="light"] .status-item {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border: 0.5px solid var(--primary) !important;
+  color: var(--text-primary) !important;
+}
+
+html[data-theme="light"] body .status-item i,
+body[class] [data-theme="light"] .status-item i {
+  color: #4B5563 !important;
+}
+
+html[data-theme="light"] body .status-value,
+body[class] [data-theme="light"] .status-value {
+  color: #1F2937 !important;
+}
+
+html[data-theme="light"] body .task-bar-controls,
+body[class] [data-theme="light"] .task-bar-controls {
+  background: rgba(249, 250, 251, 0.9) !important;
+  border: 1px solid rgba(59, 130, 246, 0.1) !important;
+}
+
+html[data-theme="light"] body .task-bar-task-item,
+body[class] [data-theme="light"] .task-bar-task-item {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  color: #4B5563 !important;
+  border: 1px solid rgba(59, 130, 246, 0.1) !important;
+}
+
+html[data-theme="light"] body .task-bar-task-item:hover,
+body[class] [data-theme="light"] .task-bar-task-item:hover {
+  background-color: rgba(59, 130, 246, 0.05) !important;
+  color: #1F2937 !important;
+  border-color: rgba(59, 130, 246, 0.2) !important;
+}
+
+html[data-theme="light"] body .task-bar-task-item.active,
+body[class] [data-theme="light"] .task-bar-task-item.active {
+  background-color: rgba(59, 130, 246, 0.1) !important;
+  color: #1E40AF !important;
+  border-color: rgba(59, 130, 246, 0.2) !important;
+}
+
+html[data-theme="light"] body .task-count,
+body[class] [data-theme="light"] .task-count {
+  background-color: rgba(59, 130, 246, 0.1) !important;
+  color: #1E40AF !important;
+}
+
+html[data-theme="light"] body .task-bar-control,
+body[class] [data-theme="light"] .task-bar-control {
+  color: #4B5563 !important;
+  background-color: transparent !important;
+}
+
+html[data-theme="light"] body .task-bar-control:hover,
+body[class] [data-theme="light"] .task-bar-control:hover {
+  background-color: rgba(59, 130, 246, 0.05) !important;
+  color: #1F2937 !important;
+}
+
+/* ================= SIDEBAR OVERRIDES ================= */
+
+html[data-theme="light"] body .sidebar .yaml-map-card,
+body[class] [data-theme="light"] .sidebar .yaml-map-card {
+  color: white !important;
+  background: rgba(59, 130, 246, 0.8) !important;
+}

@@ -1,0 +1,149 @@
+/* 
+ * settings-api-keys.css
+ * Modern styling for API Keys tab in Settings Modal
+ */
+
+/* API Keys Section Styling */
+.settings-tab-content[data-tab="api-keys"] {
+  padding: 15px;
+}
+
+/* API Key Group Container */
+.api-key-group {
+  background: rgba(20, 30, 50, 0.4);
+  border-radius: 4px;
+  padding: 16px;
+  margin-bottom: 20px;
+  border-left: 2px solid var(--accent);
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.api-key-group:hover {
+  background: rgba(25, 35, 55, 0.5);
+}
+
+/* API Key Label */
+.api-key-label {
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0.3px;
+}
+
+.api-key-label i {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+/* API Key Input Field */
+.api-key-input-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  position: relative;
+}
+
+.api-key-input-container input[type="password"],
+.api-key-input-container input[type="text"] {
+  flex: 1;
+  background: rgba(15, 25, 40, 0.7);
+  border: 1px solid rgba(80, 120, 170, 0.3);
+  border-radius: 3px;
+  height: 34px;
+  padding: 0 12px;
+  color: rgba(220, 230, 255, 0.9);
+  font-family: monospace;
+  font-size: 13px;
+  letter-spacing: 1px;
+  transition: all 0.2s ease;
+}
+
+.api-key-input-container input[type="password"]:focus,
+.api-key-input-container input[type="text"]:focus {
+  border-color: rgba(157, 113, 234, 0.5);
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(157, 113, 234, 0.2);
+  background: rgba(20, 30, 50, 0.8);
+}
+
+/* API Key Actions Container */
+.api-key-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* API Key Description */
+.api-key-description {
+  color: rgba(180, 190, 210, 0.7);
+  font-size: 11px;
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+/* Toggle Password Visibility Button */
+.toggle-password-btn {
+  position: absolute;
+  right: 48px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: rgba(180, 190, 210, 0.6);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  transition: all 0.2s ease;
+}
+
+.toggle-password-btn:hover {
+  color: rgba(220, 230, 255, 0.9);
+}
+
+/* API Key Animation */
+@keyframes highlight {
+  0% { background-color: rgba(157, 113, 234, 0.1); }
+  50% { background-color: rgba(157, 113, 234, 0.2); }
+  100% { background-color: rgba(20, 30, 50, 0.4); }
+}
+
+.api-key-group.highlight {
+  animation: highlight 1.5s ease;
+}
+
+/* API Key Save/Delete Button Positioning */
+.api-key-input-container .save-key-btn,
+.api-key-input-container .delete-key-btn {
+  flex-shrink: 0;
+}
+
+/* API Key Status Indicator */
+.api-key-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  margin-left: 10px;
+}
+
+.api-key-status.active {
+  background: rgba(40, 160, 80, 0.15);
+  border: 1px solid rgba(40, 160, 80, 0.3);
+  color: rgba(100, 210, 140, 0.9);
+}
+
+.api-key-status.inactive {
+  background: rgba(160, 40, 40, 0.15);
+  border: 1px solid rgba(160, 40, 40, 0.3);
+  color: rgba(210, 100, 100, 0.9);
+}

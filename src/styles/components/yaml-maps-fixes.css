@@ -1,0 +1,871 @@
+/* YAML Maps component fixes and enhancements - Compact Edition */
+
+/* Custom variable overrides for compact view */
+:root {
+  --yaml-compact-text: 0.75rem;
+  --yaml-compact-spacing: 6px;
+  --yaml-compact-radius: 6px;
+  --yaml-compact-padding: 8px;
+}
+
+/* Ensure the component is visible inside the sidebar */
+.yaml-maps-container {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  width: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  color: var(--text, #f0f0f0) !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;
+  font-size: var(--yaml-compact-text) !important;
+}
+
+/* Fix rotator visibility */
+.yaml-info-rotator {
+  display: block !important;
+  position: relative !important;
+  margin: 6px !important;
+  padding: 10px !important;
+  border-radius: 6px !important;
+  background: linear-gradient(135deg, rgba(78, 111, 255, 0.15), rgba(138, 79, 255, 0.15)) !important;
+  border: 1px solid rgba(78, 111, 255, 0.3) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2) !important;
+  overflow: hidden !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  z-index: 10 !important;
+  min-height: 90px !important;
+  margin-bottom: 10px !important;
+  animation: fadeIn 0.3s ease-in-out !important;
+}
+
+.yaml-info-rotator::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, rgba(78, 111, 255, 0.8), rgba(138, 79, 255, 0.8));
+}
+
+.yaml-info-slide {
+  display: none !important;
+  animation: fadeIn 0.5s ease-in-out !important;
+  position: relative !important;
+  width: 100% !important;
+  height: auto !important;
+}
+
+.yaml-info-slide.active {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  animation: fadeIn 0.5s ease-in-out !important;
+}
+
+/* YAML Map Item Actions */
+.yaml-map-item {
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.yaml-map-item:hover .yaml-map-item-actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.yaml-map-item-content {
+  flex: 1;
+  min-width: 0;
+  padding-right: 10px;
+}
+
+.yaml-map-item-actions {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transform: translateY(-5px);
+  transition: all 0.2s ease;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  padding: 4px;
+  z-index: 2;
+}
+
+.yaml-map-action-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text, #f0f0f0);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 12px;
+}
+
+.yaml-map-action-btn:hover {
+  background: var(--primary, #4e6fff);
+  border-color: var(--primary, #4e6fff);
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(78, 111, 255, 0.3);
+}
+
+.yaml-map-action-btn:active {
+  transform: translateY(0);
+}
+
+.yaml-map-action-btn i {
+  font-size: 12px;
+}
+
+/* Fix specific for YAML Maps heading */
+.yaml-maps-header h3 {
+  font-size: 1rem !important;
+  margin: 0 !important;
+  font-weight: 600 !important;
+  display: flex !important;
+  align-items: center !important;
+  padding-inline: 5px;
+  box-sizing: border-box;
+  background: linear-gradient(90deg, var(--secondary), var(--primary-alt)) !important;
+  color: transparent !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.terminal-prefix {
+  color: var(--cyberpunk-purple, #7846ff) !important;
+  margin-right: 8px !important;
+  font-family: monospace !important;
+  font-weight: bold !important;
+  font-size: 1.1rem !important;
+}
+
+.circular-btn {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: var(--primary, #4e6fff) !important;
+  color: white !important;
+  border: none !important;
+  padding: 0 !important;
+  cursor: pointer !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2) !important;
+  transition: all 0.2s ease !important;
+}
+
+.circular-btn:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3) !important;
+  background: var(--cyberpunk-purple, #7846ff) !important;
+}
+
+.circular-btn:active {
+  transform: translateY(0) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Fix for header area */
+.yaml-maps-header {
+  padding: 4px 8px !important;
+  background: linear-gradient(135deg, rgba(78, 111, 255, 0.2), rgba(138, 79, 255, 0.2)) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1) !important;
+  margin-bottom: 4px !important;
+}
+
+.yaml-info-title {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+  color: var(--primary, #4e6fff);
+}
+
+.yaml-info-title i {
+  margin-right: 6px;
+  font-size: 0.8rem;
+}
+
+.yaml-info-content {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  margin-bottom: 6px;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.yaml-maps-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 0 6px;
+}
+
+.yaml-info-navigation {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 5px;
+  position: absolute;
+  bottom: 8px;
+  width: calc(100% - 20px);
+  left: 10px;
+}
+
+.yaml-info-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.yaml-info-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.yaml-info-dot.active {
+  background: var(--primary, #4e6fff);
+  transform: scale(1.3);
+}
+
+.yaml-info-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.yaml-info-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 5px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+}
+
+.yaml-info-btn:hover {
+  color: var(--primary, #4e6fff);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Fix loading state visibility */
+.yaml-maps-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 15px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.75rem;
+}
+
+.yaml-maps-loading i {
+  margin-right: 10px;
+  color: var(--primary, #4e6fff);
+}
+
+/* Fix empty state visibility */
+.yaml-maps-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  text-align: center;
+  font-size: 0.8rem;
+  height: 100%;
+  background: rgba(30, 40, 60, 0.3);
+  border-radius: 8px;
+  margin: 0 6px;
+  box-sizing: border-box;
+}
+
+
+
+.yaml-maps-empty-icon {
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(78, 111, 255, 0.15);
+  border-radius: 50%;
+  margin-bottom: 15px;
+  font-size: 1.2rem;
+  color: var(--primary, #4e6fff);
+  box-shadow: 0 4px 12px rgba(78, 111, 255, 0.1);
+}
+
+/* Fix YAML maps list */
+.yaml-maps-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  width: 100%;
+  padding-bottom: 20px;
+}
+
+.yaml-map-item {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  animation: slideIn 0.2s ease-in-out;
+  font-size: 0.7rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.yaml-map-item::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.03), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.4s;
+}
+
+.yaml-map-item:hover::after {
+  transform: translateX(100%);
+}
+
+.yaml-map-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--primary, #4e6fff);
+}
+
+.yaml-map-item.active {
+  background: rgba(78, 111, 255, 0.1);
+  border-color: var(--primary, #4e6fff);
+}
+
+/* Map detail styling */
+.yaml-map-detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 15px;
+  background: rgba(20, 24, 32, 0.5);
+  border-radius: 8px;
+  margin-left: 10px;
+  flex: 1;
+  overflow: auto;
+}
+
+.yaml-map-detail-header {
+  margin-bottom: 15px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.yaml-map-detail-header h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 5px 0;
+  color: white;
+}
+
+.yaml-map-detail-description {
+  margin-bottom: 15px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.yaml-map-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 15px;
+}
+
+.yaml-map-detail-content {
+  flex: 1;
+  margin-bottom: 15px;
+}
+
+.yaml-map-detail-content h4 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.yaml-map-code {
+  background: rgba(30, 30, 40, 0.6);
+  padding: 12px;
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.9);
+  overflow: auto;
+  max-height: 250px;
+  white-space: pre-wrap;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.yaml-map-detail-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 15px;
+}
+
+/* Button styles for the detail view */
+.copy-yaml-btn {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.use-yaml-btn {
+  flex: 1;
+}
+
+/* YAML maps list container */
+.yaml-maps-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 0;
+  margin-top: 0;
+}
+
+/* Community map card styling */
+.yaml-map-card {
+  background: rgba(59, 130, 246, 0.3);
+  border-radius: 10px;
+  padding: 14px;
+  box-sizing: border-box;
+  transition: all 0.25s ease;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 1em;
+}
+
+/* Add subtle accent on the left border */
+.yaml-map-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(to bottom, var(--primary, #4e6fff), rgba(78, 111, 255, 0.5));
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+/* Card header styling */
+.yaml-map-card-header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 8px;
+}
+
+.yaml-map-card-header h4 {
+  margin: 0 0 2px 0;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Add author info styling for public maps */
+.yaml-map-author {
+  font-size: 0.65rem;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0.9;
+}
+
+.yaml-map-author::before {
+  content: '\f007'; /* Font Awesome user icon */
+  font-family: 'Font Awesome 5 Free';
+  font-size: 0.6rem;
+}
+
+/* Card description styling */
+.yaml-map-card-description {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  margin-bottom: 12px;
+  flex-grow: 1;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* Card footer styling */
+.yaml-map-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+  font-size: 0.7rem;
+}
+
+.yaml-map-date {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.8;
+}
+
+.yaml-map-date i {
+  font-size: 0.65rem;
+}
+
+.yaml-map-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Tag styling */
+.yaml-map-tag {
+  background: rgba(255, 255, 255, 0.15);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  white-space: nowrap;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yaml-map-card:hover {
+  background: rgba(40, 44, 52, 0.8);
+  transform: translateY(-3px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.25);
+}
+
+.yaml-map-card:hover::before {
+  opacity: 1;
+}
+
+/* Selected card state */
+.yaml-map-card.selected {
+  background: rgba(50, 54, 62, 0.9);
+  border-color: rgba(78, 111, 255, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.yaml-map-card.selected::before {
+  opacity: 1;
+  width: 4px;
+}
+
+/* Make buttons more consistent with iOS style */
+.btn-primary, .create-map-btn, .create-first-map-btn, .yaml-new-map-btn {
+  background: var(--primary, #4e6fff) !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 6px !important;
+  padding: 6px 12px !important;
+  font-size: 0.75rem !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all 0.2s !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15) !important;
+}
+
+.create-first-map-btn {
+  margin-top: 15px !important;
+  padding: 8px 16px !important;
+  font-size: 0.8rem !important;
+  background: linear-gradient(135deg, #4e6fff, #845fff) !important;
+  box-shadow: 0 4px 12px rgba(78, 111, 255, 0.25) !important;
+}
+
+.btn-primary:hover, .create-map-btn:hover, .create-first-map-btn:hover, .yaml-new-map-btn:hover {
+  background: rgba(78, 111, 255, 0.85) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 3px 10px rgba(78, 111, 255, 0.25) !important;
+}
+
+.create-first-map-btn:hover {
+  background: linear-gradient(135deg, #5d7aff, #9169ff) !important;
+  box-shadow: 0 5px 15px rgba(78, 111, 255, 0.3) !important;
+}
+
+.btn-primary:active, .create-map-btn:active, .yaml-new-map-btn:active {
+  transform: translateY(0) !important;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Animation keyframes */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Removed pulse animation */
+
+/* Add consistent styling to buttons and inputs */
+.btn, button {
+  font-family: var(--font-family);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+/* SDK icon style */
+.sdk-icon {
+  background: var(--cyberpunk-purple) !important;
+}
+
+/* Remove pulse animation and just use subtle hover effect */
+.yaml-info-rotator {
+  transition: all 0.3s ease !important;
+  border: 1px solid rgba(78, 111, 255, 0.2) !important;
+}
+
+/* Add subtle hover effect to rotator */
+.yaml-info-rotator:hover {
+  border-color: rgba(78, 111, 255, 0.4) !important;
+  box-shadow: 0 4px 12px rgba(78, 111, 255, 0.15) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Loading spinner animation */
+.yaml-maps-loading i.fa-spin {
+  animation: spin 1s linear infinite !important;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Faster animation for compact mode */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Fix the layout issues in sidebar context */
+.yaml-maps-container, .yaml-maps-sidebar-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.yaml-maps-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 0.7rem !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+  width: 100% !important;
+  background: transparent !important;
+  margin-bottom: 10px;
+  border-radius: 8px;
+}
+
+.yaml-maps-search {
+  position: relative;
+  margin: 0 6px 6px 6px;
+  flex: 1 1 auto;
+}
+
+.yaml-maps-search i {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.75rem;
+}
+
+.yaml-maps-search input {
+  width: 100%;
+  padding: 7px !important;
+  padding-left: 28px !important;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: var(--text, #f0f0f0);
+  font-size: 0.8rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.yaml-maps-search input:focus {
+  outline: none;
+  border-color: var(--primary, #4e6fff);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Container for maps cards and detail */
+.yaml-maps-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 10px;
+  flex: 1;
+  overflow: auto;
+  padding: 0 5px;
+}
+
+/* Make the YAML maps section more compact */
+.yaml-maps-sidebar {
+  overflow-y: auto;
+  width: 100%;
+}
+
+#yaml-maps-section::-webkit-scrollbar {
+  width: 4px;
+}
+
+#yaml-maps-section::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
+
+#yaml-maps-section::-webkit-scrollbar-thumb {
+  background: rgba(78, 111, 255, 0.3);
+  border-radius: 4px;
+}
+
+#yaml-maps-section::-webkit-scrollbar-thumb:hover {
+  background: rgba(78, 111, 255, 0.5);
+}
+
+/* Better visibility for empty states */
+.yaml-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  color: #ff5e5e;
+  text-align: center;
+  font-size: 0.75rem;
+}
+
+.yaml-error i {
+  font-size: 1.5rem;
+  margin-bottom: 10px;
+}
+
+.yaml-error button {
+  margin-top: 15px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  padding: 5px 15px;
+  border-radius: 5px;
+  color: white;
+  cursor: pointer;
+}
+
+/* Fix tooltip display */
+.yaml-maps-help-tooltip {
+  position: relative;
+  display: inline-block;
+  margin-left: 5px;
+}
+
+.yaml-maps-help-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: 0.7rem;
+  cursor: help;
+}
+
+.yaml-maps-tooltip-content {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 250px;
+  background: var(--card-bg, rgba(28, 28, 28, 0.8));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  z-index: 10;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s;
+}
+
+.yaml-maps-help-tooltip:hover .yaml-maps-tooltip-content {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(-5px);
+}

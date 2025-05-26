@@ -1,0 +1,240 @@
+/* Timeline Section */
+.timeline-section {
+  position: relative;
+  padding: 100px 0;
+  background: #0a0a0a;
+  overflow: hidden;
+}
+
+.timeline-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+  position: relative;
+}
+
+.timeline-section h2 {
+  text-align: center;
+  font-size: 2.5rem;
+  margin-bottom: 60px;
+  background: linear-gradient(45deg, #7B4DFF, #00E5FF);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-weight: 800;
+  position: relative;
+  display: inline-block;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.timeline-section h2::after {
+  content: '';
+  position: absolute;
+  bottom: -15px;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, #7B4DFF, #00E5FF);
+  border-radius: 3px;
+}
+
+.timeline {
+  position: relative;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+/* Timeline animations */
+.timeline-item {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+
+.timeline-item.animate {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.timeline::after {
+  content: '';
+  position: absolute;
+  width: 4px;
+  background: linear-gradient(to bottom, #7B4DFF, #00E5FF);
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  margin-left: -2px;
+  border-radius: 2px;
+}
+
+.timeline-item {
+  padding: 10px 40px;
+  position: relative;
+  width: 50%;
+  opacity: 0;
+  transform: translateY(30px);
+  transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.timeline-item.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.timeline-item:nth-child(odd) {
+  left: 0;
+}
+
+.timeline-item:nth-child(even) {
+  left: 50%;
+}
+
+.timeline-content {
+  padding: 30px;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.timeline-item:hover .timeline-content {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+  border-color: rgba(123, 77, 255, 0.3);
+}
+
+.timeline-item::after {
+  content: '';
+  position: absolute;
+  width: 25px;
+  height: 25px;
+  right: -18px;
+  background: linear-gradient(45deg, #7B4DFF, #00E5FF);
+  border: 4px solid #0a0a0a;
+  top: 50%;
+  border-radius: 50%;
+  z-index: 1;
+  transform: translateY(-50%);
+  box-shadow: 0 0 0 5px rgba(123, 77, 255, 0.2);
+  transition: all 0.3s ease;
+  z-index: 1;
+}
+
+.timeline-item:nth-child(even)::after {
+  left: -14px;
+  z-index: 1;
+}
+
+.timeline-item:hover::after {
+  transform: translateY(-50%) scale(1.2);
+  box-shadow: 0 0 0 8px rgba(123, 77, 255, 0.3);
+}
+
+.timeline-date {
+  color: #7B4DFF;
+  font-weight: 700;
+  margin-bottom: 10px;
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+}
+
+.timeline-date i {
+  margin-right: 8px;
+  font-size: 1.1em;
+}
+
+.timeline-title {
+  font-size: 1.5rem;
+  margin: 0 0 15px;
+  color: white;
+  position: relative;
+  padding-bottom: 10px;
+}
+
+.timeline-title::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 50px;
+  height: 2px;
+  background: linear-gradient(90deg, #7B4DFF, #00E5FF);
+}
+
+.timeline-description {
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.6;
+  margin-bottom: 15px;
+}
+
+.timeline-features {
+  margin-top: 15px;
+  padding-left: 20px;
+}
+
+.timeline-features li {
+  margin-bottom: 8px;
+  color: rgba(255, 255, 255, 0.8);
+  position: relative;
+  list-style-type: none;
+  padding-left: 25px;
+}
+
+.timeline-features li::before {
+  content: '→';
+  position: absolute;
+  left: 0;
+  color: #7B4DFF;
+  font-weight: bold;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .timeline::after {
+    left: 31px;
+  }
+  
+  .timeline-item {
+    width: 100%;
+    padding-left: 70px;
+    padding-right: 25px;
+  }
+  
+  .timeline-item:nth-child(even) {
+    left: 0;
+  }
+  
+  .timeline-item::after {
+    left: 18.5px;
+  }
+  
+  .timeline-item:nth-child(even)::after {
+    left: 18.5px;
+  }
+}
+
+/* Animation Keyframes */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Add this to make the timeline items animate on scroll */
+.timeline-item.animate {
+  animation: fadeInUp 0.6s forwards;
+}

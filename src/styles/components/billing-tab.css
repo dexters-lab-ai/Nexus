@@ -1,0 +1,249 @@
+/**
+ * Billing Tab Styling
+ * Modern, futuristic styling for the billing/tokens tab in settings
+ */
+
+/* Billing stats section */
+.billing-stats {
+  margin-bottom: 25px;
+}
+
+.billing-stats-card {
+  background: rgba(40, 45, 95, 0.3);
+  border: 1px solid rgba(103, 111, 231, 0.2);
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 15px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.billing-stats-card h4 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: #fff;
+  font-size: 16px;
+}
+
+.token-balance {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.token-amount {
+  font-size: 28px;
+  font-weight: bold;
+  color: #3498db;
+  text-shadow: 0 0 10px rgba(52, 152, 219, 0.3);
+}
+
+.token-label {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+}
+
+/* Subscription plans */
+.billing-plans {
+  margin-bottom: 30px;
+}
+
+.billing-plans h4 {
+  margin-bottom: 15px;
+}
+
+.plan-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.plan-card {
+  background: rgba(40, 45, 95, 0.3);
+  border: 1px solid rgba(103, 111, 231, 0.2);
+  border-radius: 10px;
+  padding: 15px;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.plan-card:hover {
+  background: rgba(40, 45, 95, 0.5);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+.plan-card.active {
+  border: 2px solid #2ecc71;
+  box-shadow: 0 0 15px rgba(46, 204, 113, 0.2);
+}
+
+.plan-name {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.plan-price {
+  color: #3498db;
+  font-size: 20px;
+  margin-bottom: 15px;
+}
+
+.plan-features {
+  margin-bottom: 15px;
+}
+
+.plan-feature {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  margin-bottom: 5px;
+  position: relative;
+  padding-left: 20px;
+}
+
+.plan-feature:before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: #2ecc71;
+}
+
+.plan-status {
+  display: inline-block;
+  padding: 5px 10px;
+  background: rgba(46, 204, 113, 0.2);
+  color: #2ecc71;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.plan-button {
+  display: block;
+  width: 100%;
+  padding: 8px 0;
+  background: linear-gradient(to right, #3498db, #2980b9);
+  border: none;
+  border-radius: 5px;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.plan-button:hover {
+  background: linear-gradient(to right, #3498db, #2980b9);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(52, 152, 219, 0.3);
+}
+
+/* Purchase form */
+.token-purchase {
+  margin-bottom: 30px;
+}
+
+.token-purchase h4 {
+  margin-bottom: 15px;
+}
+
+.purchase-form {
+  background: rgba(40, 45, 95, 0.3);
+  border: 1px solid rgba(103, 111, 231, 0.2);
+  border-radius: 10px;
+  padding: 20px;
+}
+
+.input-group {
+  margin-bottom: 15px;
+}
+
+.input-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.input-with-prefix {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-prefix {
+  position: absolute;
+  left: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 16px;
+}
+
+.input-with-prefix input {
+  padding: 10px 10px 10px 25px;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(103, 111, 231, 0.3);
+  border-radius: 5px;
+  color: white;
+  font-size: 16px;
+}
+
+.token-estimate {
+  background: rgba(103, 111, 231, 0.1);
+  border: 1px solid rgba(103, 111, 231, 0.2);
+  border-radius: 5px;
+  padding: 10px 15px;
+  margin-bottom: 15px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.token-estimate span {
+  font-weight: bold;
+  color: #3498db;
+}
+
+.purchase-button {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(to right, #3498db, #2980b9);
+  border: none;
+  border-radius: 5px;
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.purchase-button:hover {
+  background: linear-gradient(to right, #3498db, #2980b9);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(52, 152, 219, 0.3);
+}
+
+/* Transaction history */
+.transaction-history h4 {
+  margin-bottom: 15px;
+}
+
+.no-transactions {
+  background: rgba(40, 45, 95, 0.3);
+  border: 1px solid rgba(103, 111, 231, 0.2);
+  border-radius: 10px;
+  padding: 25px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .plan-cards {
+    grid-template-columns: 1fr;
+  }
+  
+  .token-balance {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

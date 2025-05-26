@@ -1,0 +1,325 @@
+/* 
+ * settings-llm-tab.css
+ * Modern styling for LLM Settings tab in Settings Modal
+ */
+
+/* LLM Settings Tab Container */
+.settings-tab-content[data-tab="llm-engine"] {
+  padding: 15px;
+}
+
+/* Section Heading with Icon */
+.llm-section-title {
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  letter-spacing: 0.3px;
+}
+
+.llm-section-title i {
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+/* Processing Type Container */
+.processing-type-container {
+  background: rgba(20, 30, 50, 0.4);
+  border-radius: 4px;
+  padding: 16px;
+  margin-bottom: 15px;
+  border-left: 2px solid var(--accent);
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.processing-type-container:hover {
+  background: rgba(25, 35, 55, 0.5);
+}
+
+/* Processing Type Header */
+.processing-type-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+/* Radio Button Styling */
+.settings-radio-container {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.settings-radio-container input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+
+.settings-radio-custom {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(80, 120, 170, 0.5);
+  background: rgba(15, 25, 40, 0.5);
+  transition: all 0.2s ease;
+}
+
+.settings-radio-container input[type="radio"]:checked ~ .settings-radio-custom {
+  border-color: var(--accent);
+  background: rgba(157, 113, 234, 0.1);
+}
+
+.settings-radio-custom::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  transition: all 0.2s ease;
+}
+
+.settings-radio-container input[type="radio"]:checked ~ .settings-radio-custom::after {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+/* Processing Type Name */
+.processing-type-name {
+  font-weight: 500;
+  color: rgba(220, 230, 255, 0.95);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.processing-type-name i {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+/* Processing Type Label Tag */
+.processing-type-tag {
+  background: rgba(157, 113, 234, 0.15);
+  color: var(--accent);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: 8px;
+}
+
+/* Processing Type Description */
+.processing-type-description {
+  color: rgba(180, 190, 210, 0.8);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 8px 0 8px 28px;
+}
+
+/* Benefits List */
+.benefits-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 5px 28px;
+}
+
+.benefit-tag {
+  background: rgba(20, 40, 60, 0.5);
+  border: 1px solid rgba(80, 120, 170, 0.3);
+  color: rgba(200, 210, 230, 0.9);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.benefit-tag i {
+  color: rgba(100, 180, 255, 0.8);
+  font-size: 9px;
+}
+
+/* Model Selection Section */
+.model-selection-section {
+  background: rgba(20, 30, 50, 0.4);
+  border-radius: 4px;
+  padding: 16px;
+  margin-bottom: 15px;
+  border-left: 2px solid var(--accent);
+}
+
+/* Dropdown Style */
+.llm-dropdown-container {
+  margin-bottom: 15px;
+}
+
+.llm-dropdown-label {
+  display: block;
+  color: rgba(220, 230, 255, 0.9);
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.llm-dropdown {
+  width: 100%;
+  background: rgba(15, 25, 40, 0.7);
+  border: 1px solid rgba(80, 120, 170, 0.3);
+  border-radius: 3px;
+  color: rgba(220, 230, 255, 0.9);
+  padding: 8px 10px;
+  font-size: 13px;
+  appearance: none;
+  height: 36px;
+  transition: all 0.2s ease;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgba(220, 230, 255, 0.7)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 16px;
+  padding-right: 32px;
+}
+
+.llm-dropdown:focus {
+  border-color: rgba(157, 113, 234, 0.5);
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(157, 113, 234, 0.2);
+  background-color: rgba(20, 30, 50, 0.8);
+}
+
+#max-steps {
+  max-width: 80%;
+  box-sizing: border-box;
+}
+
+/* Model Card Style */
+.model-card {
+  background: rgba(25, 35, 55, 0.5);
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(80, 120, 170, 0.2);
+  transition: all 0.2s ease;
+}
+
+.model-card:hover {
+  border-color: rgba(157, 113, 234, 0.3);
+  background: rgba(30, 40, 60, 0.6);
+}
+
+.model-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.model-name {
+  font-weight: 500;
+  color: rgba(220, 230, 255, 0.95);
+}
+
+.model-provider {
+  font-size: 11px;
+  color: rgba(180, 190, 210, 0.7);
+  background: rgba(40, 50, 70, 0.5);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.model-description {
+  font-size: 12px;
+  color: rgba(180, 190, 210, 0.8);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.model-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.model-capability {
+  font-size: 10px;
+  background: rgba(157, 113, 234, 0.15);
+  color: rgba(200, 180, 255, 0.9);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+/* Save LLM Preferences Button Container */
+.save-llm-container {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+/* Enhanced Animation Effects */
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+.processing-type-container.selected {
+  border-left-color: #00ffaa;
+  box-shadow: 0 0 15px rgba(0, 255, 170, 0.15);
+  animation: pulse 0.5s ease;
+}
+
+/* Tooltip Styles */
+.llm-tooltip {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(80, 120, 170, 0.2);
+  color: rgba(180, 190, 210, 0.7);
+  font-size: 10px;
+  margin-left: 6px;
+  cursor: help;
+}
+
+.llm-tooltip::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 120%;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 200px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: rgba(15, 20, 30, 0.95);
+  color: rgba(220, 230, 255, 0.9);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: all 0.2s ease;
+  border: 1px solid rgba(80, 120, 170, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+}
+
+.llm-tooltip:hover::before {
+  opacity: 1;
+  bottom: 130%;
+}

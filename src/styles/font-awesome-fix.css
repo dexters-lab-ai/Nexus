@@ -1,0 +1,51 @@
+/**
+ * Font Awesome Fallback Fix
+ * Ensures Font Awesome icons display properly even if the local vendor version fails to load
+ */
+
+/* CDN Fallback for Font Awesome */
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css');
+
+/* Fix for Font Awesome icon rendering in Firefox */
+.fas, .far, .fab, .fa {
+  font-display: block;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Fix for missing icons - provide default icon fallbacks */
+.fas:empty::before, 
+.far:empty::before, 
+.fab:empty::before {
+  content: "\f013"; /* Default to gear icon if icon class is incorrect */
+  display: inline-block;
+}
+
+/* Fix for common icon classes that might be mistyped or incorrectly loaded */
+.fa-times:not([class*="fa-"]), 
+.fa-cog:not([class*="fa-"]),
+.fa-user:not([class*="fa-"]),
+.fa-save:not([class*="fa-"]),
+.fa-search:not([class*="fa-"]) {
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+}
+
+/* Fix for invalid selectors in various CSS files */
+.input-help::after, 
+.settings-section-title::before,
+.tab-content::before {
+  content: none !important; /* Prevent invalid content insertion */
+}
+
+/* General fixes for icon alignment */
+.fas, .far, .fab {
+  vertical-align: middle;
+  line-height: inherit;
+}
+
+/* Icon size consistency */
+.settings-modal .fas, 
+.profile-modal .fas, 
+.yaml-maps-container .fas {
+  font-size: inherit;
+}
