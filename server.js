@@ -390,15 +390,41 @@ const staticOptions = {
 };
 
 // Serve static files from multiple directories
-app.use(express.static(path.join(__dirname, 'dist'), staticOptions));
-app.use(express.static(path.join(__dirname, 'public'), staticOptions));
-app.use('/js', express.static(path.join(__dirname, 'public', 'js'), staticOptions));
-app.use('/css', express.static(path.join(__dirname, 'public', 'css'), staticOptions));
-app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), staticOptions));
-app.use('/vendors', express.static(path.join(__dirname, 'public', 'vendors'), staticOptions));
-app.use('/images', express.static(path.join(__dirname, 'public', 'assets', 'images'), staticOptions));
-app.use('/models', express.static(path.join(__dirname, 'public', 'models'), staticOptions));
-app.use('/draco', express.static(path.join(__dirname, 'public', 'draco'), staticOptions));
+const staticDirs = [
+  path.join(__dirname, 'dist'),
+  path.join(__dirname, 'public'),
+  path.join(__dirname, 'main-site'),
+  __dirname  // Add root directory for index.html
+];
+
+// Apply static file serving to all directories
+staticDirs.forEach(dir => {
+  if (fs.existsSync(dir)) {
+    app.use(express.static(dir, staticOptions));
+  } else {
+    console.warn(`Warning: Static directory does not exist: ${dir}`);
+  }
+});
+
+// Specific static routes with fallbacks
+const staticRoutes = [
+  { route: '/js', path: 'public/js' },
+  { route: '/css', path: 'public/css' },
+  { route: '/assets', path: 'public/assets' },
+  { route: '/vendors', path: 'public/vendors' },
+  { route: '/images', path: 'public/assets/images' },
+  { route: '/models', path: 'public/models' },
+  { route: '/draco', path: 'public/draco' }
+];
+
+staticRoutes.forEach(({ route, path }) => {
+  const fullPath = path.startsWith('/') ? path : path.join(__dirname, path);
+  if (fs.existsSync(fullPath)) {
+    app.use(route, express.static(fullPath, staticOptions));
+  } else {
+    console.warn(`Warning: Static route ${route} path does not exist: ${fullPath}`);
+  }
+});
 
 // Serve default favicon
 app.get('/favicon.ico', (req, res) => {
@@ -407,7 +433,24 @@ app.get('/favicon.ico', (req, res) => {
 
 // Serve index.html for all other GET requests
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  // Try multiple possible locations for index.html
+  const possibleIndexPaths = [
+    path.join(__dirname, 'public', 'index.html'),
+    path.join(__dirname, 'dist', 'index.html'),
+    path.join(__dirname, 'main-site', 'index.html'),
+    path.join(__dirname, 'index.html')
+  ];
+
+  // Find the first existing index.html file
+  const indexFile = possibleIndexPaths.find(filePath => fs.existsSync(filePath));
+
+  if (indexFile) {
+    console.log(`Serving index.html from: ${indexFile}`);
+    res.sendFile(indexFile);
+  } else {
+    console.error('Error: Could not find index.html in any expected location');
+    res.status(404).send('Page not found');
+  }
 });
 
 // Error handling middleware
@@ -5485,18 +5528,6 @@ const handleFinalResponse = async (userId, finalResponse) => {
   } catch (err) {
     console.error('[NLI] Error persisting final response:', err);
     // Consider adding retry logic here if needed
-  }
-};
-
-app.get('/api/nli', requireAuth, async (req, res) => {
-  // Get user ID from session first thing
-  const userId = req.session.user;
-  const prompt = req.query.prompt;
-  const requestedEngine = req.query.engine || req.session.browserEngine;
-  
-  if (typeof prompt !== 'string' || !prompt.trim()) {
-    res.status(400).json({ success: false, error: 'Prompt query parameter is required.' });
-    return;
   }
   
   // If engine is specified, validate it
