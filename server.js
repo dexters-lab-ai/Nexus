@@ -209,18 +209,25 @@ const app = express();
 
 // --- Security Headers Middleware ---
 app.use((req, res, next) => {
+  // Skip CSP for static files as they're handled by static middleware
+  if (req.path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|json)$/)) {
+    return next();
+  }
+
   // Set Content Security Policy
   const csp = [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com",
     "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
-    "img-src 'self' data: https: http:",
-    "font-src 'self' https://cdnjs.cloudflare.com data:",
+    "img-src 'self' data: blob: https: http:",
+    "font-src 'self' https: data:",
     "connect-src 'self' https://operator-344ej.ondigitalocean.app ws: wss:",
-    "frame-src 'self'",
+    "frame-src 'self' https://operator-344ej.ondigitalocean.app",
     "frame-ancestors 'self'",
     "form-action 'self'",
-    "base-uri 'self'"
+    "base-uri 'self'",
+    "object-src 'none'",
+    "upgrade-insecure-requests"
   ].join('; ');
 
   // Set security headers
@@ -229,6 +236,8 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
   
   next();
 });
@@ -393,7 +402,18 @@ app.use('/draco', express.static(path.join(__dirname, 'public', 'draco'), static
 
 // Serve default favicon
 app.get('/favicon.ico', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/assets/images/dail-fav.png'));
+  res.sendFile(path.join(__dirname, 'public', 'favicon.ico'));
+});
+
+// Serve index.html for all other GET requests
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send('Something broke!');
 });
 
 // ======================================
