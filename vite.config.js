@@ -3,12 +3,6 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Configure environment for production build
-process.env.NODE_ENV = 'production';
-
-// Configure for better compatibility
-process.env.VITE_APP_BUILD_AT = new Date().toISOString();
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -140,34 +134,10 @@ export default defineConfig({
     exclude: ['three/examples/js/libs/draco/draco_decoder.js']
   },
   build: {
-    outDir: 'dist',
+    cssCodeSplit: true,
+    assetsDir: 'vendors/webfonts',
+    outDir: 'dist',  // New interface output
     emptyOutDir: true,
-    sourcemap: false,
-    minify: 'terser',
-    ssr: false,
-    rollupOptions: {
-      // Ensure we don't try to use platform-specific binaries
-      external: [
-        /^@rollup\/.*-x64-gnu$/,
-        /^@rollup\/.*-x64-musl$/,
-        /^@rollup\/.*-arm64/,
-        /^@rollup\/.*-arm-gnueabihf$/,
-        /^@rollup\/.*-linux-x64/,
-        /^@rollup\/.*-win32-x64/,
-        /^@rollup\/.*-darwin-x64/,
-        /^@esbuild\/.*/,
-        'fsevents'
-      ],
-      plugins: []
-    },
-    commonjsOptions: {
-      include: /node_modules/,
-      transformMixedEsModules: true
-    },
-    rollupOptions: {
-      external: ['@rollup/rollup-linux-x64-gnu'],
-      plugins: []
-    },
     rollupOptions: {
       input: {
         modern: path.resolve(__dirname, 'src/modern.html')  // New entry
