@@ -214,23 +214,44 @@ app.use((req, res, next) => {
     return next();
   }
 
+  // Enhanced CORS configuration
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3420',
+    'https://your-production-domain.com'  // Replace with your production domain
+  ];
+
+  // CORS middleware
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+  res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type,authorization');
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   // Set Content Security Policy
   const csp = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com",
-    "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.skypack.dev",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https: http:",
-    "font-src 'self' https: data:",
-    "connect-src 'self' https://operator-344ej.ondigitalocean.app ws: wss:",
-    "frame-src 'self' https://operator-344ej.ondigitalocean.app",
-    "frame-ancestors 'self'",
-    "form-action 'self'",
-    "base-uri 'self'",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "connect-src 'self' ws: wss: http: https:",
+    "frame-src 'self' https://www.youtube.com",
+    "media-src 'self' data: blob: https:",
+    "worker-src 'self' blob:",
     "object-src 'none'",
-    "upgrade-insecure-requests"
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'self'"
   ].join('; ');
 
-  // Set security headers
   res.setHeader('Content-Security-Policy', csp);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
@@ -241,6 +262,8 @@ app.use((req, res, next) => {
   
   next();
 });
+
+// ...
 
 // --- CORS Configuration ---
 const allowedOrigins = [
@@ -306,15 +329,8 @@ const sessionConfig = {
   saveUninitialized: false,
   store: MongoStore.create({ 
     mongoUrl: mongoUri, 
-    collectionName: 'sessions',
-    mongoOptions: {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 10000,
-      connectTimeoutMS: 15000,
-      retryWrites: true,
-      w: 'majority'
-    }
+    retryWrites: true,
+    w: 'majority'
   }),
   cookie: {
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
@@ -389,68 +405,153 @@ const staticOptions = {
   }
 };
 
-// Serve static files from multiple directories
-const staticDirs = [
-  path.join(__dirname, 'dist'),
-  path.join(__dirname, 'public'),
-  path.join(__dirname, 'main-site'),
-  __dirname  // Add root directory for index.html
+// Function to serve static files with enhanced logging
+const serveStaticWithLogging = (basePath, mountPath = '/') => {
+  try {
+    if (!fs.existsSync(basePath)) {
+      console.warn(`⚠️  Directory not found: ${path.relative(process.cwd(), basePath)}`);
+      return false;
+    }
+    
+    const stats = fs.statSync(basePath);
+    if (!stats.isDirectory()) {
+      console.warn(`⚠️  Path is not a directory: ${path.relative(process.cwd(), basePath)}`);
+      return false;
+    }
+    
+    console.log(`🌐 Serving static files from: ${path.relative(process.cwd(), basePath)} at ${mountPath}`);
+    
+    app.use(mountPath, express.static(basePath, {
+      ...staticOptions,
+      setHeaders: (res, filePath) => {
+        // Set correct MIME types
+        if (filePath.endsWith('.js')) {
+          res.set('Content-Type', 'application/javascript');
+        } else if (filePath.endsWith('.css')) {
+          res.set('Content-Type', 'text/css');
+        } else if (filePath.endsWith('.json')) {
+          res.set('Content-Type', 'application/json');
+        } else if (filePath.endsWith('.woff2') || filePath.endsWith('.woff') || filePath.endsWith('.ttf')) {
+          res.set('Content-Type', `font/${path.extname(filePath).substring(1)}`);
+        } else if (filePath.endsWith('.png')) {
+          res.set('Content-Type', 'image/png');
+        } else if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
+          res.set('Content-Type', 'image/jpeg');
+        } else if (filePath.endsWith('.gif')) {
+          res.set('Content-Type', 'image/gif');
+        } else if (filePath.endsWith('.svg')) {
+          res.set('Content-Type', 'image/svg+xml');
+        }
+      }
+    }));
+    
+    return true;
+  } catch (error) {
+    console.error(`❌ Error serving static files from ${path.relative(process.cwd(), basePath)}:`, error.message);
+    return false;
+  }
+};
+
+// Configure static file serving - prioritize the main app in the root
+const staticConfigs = [
+  // Serve public directory first (for assets, vendor files, etc.)
+  {
+    basePath: path.join(__dirname, 'public'),
+    mountPath: '/',
+    subDirs: ['/assets', '/css', '/js', '/models', '/draco', '/fonts', '/vendors']
+  },
+  // Serve root directory for source files
+  {
+    basePath: __dirname,
+    mountPath: '/',
+    subDirs: ['/src', '/public']
+  },
+  // Serve node_modules for any required dependencies
+  {
+    basePath: path.join(__dirname, 'node_modules'),
+    mountPath: '/node_modules',
+    subDirs: []
+  },
+  // Serve main-site content under /main-site path
+  {
+    basePath: path.join(__dirname, 'main-site'),
+    mountPath: '/main-site',
+    subDirs: ['/js', '/css', '/images', '/assets', '/fonts']
+  }
 ];
 
-// Apply static file serving to all directories
-staticDirs.forEach(dir => {
-  if (fs.existsSync(dir)) {
-    app.use(express.static(dir, staticOptions));
-  } else {
-    console.warn(`Warning: Static directory does not exist: ${dir}`);
-  }
+// Apply static file serving configuration
+staticConfigs.forEach(config => {
+  const { basePath, mountPath, subDirs } = config;
+  
+  // Serve base directory
+  serveStaticWithLogging(basePath, mountPath);
+  
+  // Serve subdirectories
+  subDirs.forEach(dir => {
+    const dirPath = path.join(basePath, dir);
+    const dirMountPath = path.posix.join(mountPath === '/' ? '' : mountPath, dir);
+    serveStaticWithLogging(dirPath, dirMountPath);
+    
+    // Also serve some directories at root for backward compatibility
+    if (mountPath === '/public' && ['/js', '/css', '/assets', '/models', '/draco'].includes(dir)) {
+      serveStaticWithLogging(dirPath, dir);
+    }
+  });
 });
 
-// Specific static routes with fallbacks
-const staticRoutes = [
-  { route: '/js', path: 'public/js' },
-  { route: '/css', path: 'public/css' },
-  { route: '/assets', path: 'public/assets' },
-  { route: '/vendors', path: 'public/vendors' },
-  { route: '/images', path: 'public/assets/images' },
-  { route: '/models', path: 'public/models' },
-  { route: '/draco', path: 'public/draco' }
-];
-
-staticRoutes.forEach(({ route, path }) => {
-  const fullPath = path.startsWith('/') ? path : path.join(__dirname, path);
-  if (fs.existsSync(fullPath)) {
-    app.use(route, express.static(fullPath, staticOptions));
-  } else {
-    console.warn(`Warning: Static route ${route} path does not exist: ${fullPath}`);
-  }
-});
-
-// Serve default favicon
+// Serve favicon with fallback
 app.get('/favicon.ico', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'favicon.ico'));
+  const faviconPaths = [
+    path.join(mainSitePath, 'favicon.ico'),
+    path.join(mainSitePath, 'images', 'favicon.ico'),
+    path.join(publicPath, 'favicon.ico'),
+  ].filter(Boolean);
+  
+  for (const favPath of faviconPaths) {
+    if (favPath && fs.existsSync(favPath)) {
+      console.log(`Serving favicon from: ${path.relative(process.cwd(), favPath)}`);
+      return res.sendFile(favPath);
+    }
+  }
+  
+  console.warn('No favicon.ico found in any expected location');
+  res.status(204).end();
 });
 
-// Serve index.html for all other GET requests
+// Handle SPA routing - serve index.html for all other GET requests
 app.get('*', (req, res) => {
-  // Try multiple possible locations for index.html
-  const possibleIndexPaths = [
-    path.join(__dirname, 'public', 'index.html'),
-    path.join(__dirname, 'dist', 'index.html'),
-    path.join(__dirname, 'main-site', 'index.html'),
-    path.join(__dirname, 'index.html')
-  ];
-
-  // Find the first existing index.html file
-  const indexFile = possibleIndexPaths.find(filePath => fs.existsSync(filePath));
-
-  if (indexFile) {
-    console.log(`Serving index.html from: ${indexFile}`);
-    res.sendFile(indexFile);
-  } else {
-    console.error('Error: Could not find index.html in any expected location');
-    res.status(404).send('Page not found');
+  // First try to serve the requested file from root directory
+  const rootFile = path.join(__dirname, req.path);
+  if (fs.existsSync(rootFile) && !fs.statSync(rootFile).isDirectory()) {
+    return res.sendFile(rootFile);
   }
+  
+  // Then try public directory
+  if (publicPath) {
+    const publicFile = path.join(publicPath, req.path);
+    if (fs.existsSync(publicFile) && !fs.statSync(publicFile).isDirectory()) {
+      return res.sendFile(publicFile);
+    }
+  }
+  
+  // For any other route, serve the main index.html (React app will handle routing)
+  const indexPath = path.join(__dirname, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    console.log(`Serving SPA index from: ${path.relative(process.cwd(), indexPath)}`);
+    return res.sendFile(indexPath);
+  }
+  
+  // Fallback to public/index.html if exists
+  const publicIndexPath = path.join(publicPath, 'index.html');
+  if (fs.existsSync(publicIndexPath)) {
+    console.log(`Serving SPA index from: ${path.relative(process.cwd(), publicIndexPath)}`);
+    return res.sendFile(publicIndexPath);
+  }
+  
+  // If we get here, no index file was found
+  console.error('No index.html file found in root or public directory');
+  res.status(404).send('Not Found');
 });
 
 // Error handling middleware
@@ -532,6 +633,32 @@ import userRoutes from './src/routes/user.js';
 app.use('/api/billing', billingRoutes);
 app.use('/api/yaml-maps', yamlMapsRoutes);
 app.use('/api/user', userRoutes);
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  try {
+    // Add any additional health checks here (e.g., database connection)
+    const healthCheck = {
+      status: 'UP',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+      environment: process.env.NODE_ENV || 'development'
+    };
+    
+    // Set appropriate status code based on health
+    const statusCode = healthCheck.database === 'connected' ? 200 : 503;
+    
+    res.status(statusCode).json(healthCheck);
+  } catch (error) {
+    console.error('Health check failed:', error);
+    res.status(500).json({
+      status: 'DOWN',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
 
 // Loop over the other .html endpoints
 const pages = ['history', 'guide', 'settings'];
@@ -852,16 +979,52 @@ async function connectToMongoDB() {
     // Rebuild the connection string with encoded credentials
     mongoUri = `mongodb+srv://${username}:${password}@${host}${search}`;
     
-    const options = {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 10000,
-      connectTimeoutMS: 15000,
-      retryWrites: true,
-      w: 'majority'
+    const connectWithRetry = () => {
+      console.log('🔌 Attempting to connect to MongoDB...');
+      return mongoose.connect(mongoUri, {
+        serverSelectionTimeoutMS: 10000, // Increase timeout for initial connection
+        socketTimeoutMS: 45000,
+        connectTimeoutMS: 15000,
+        maxPoolSize: 10, // Maximum number of connections in the connection pool
+        retryWrites: true,
+        w: 'majority'
+      });
     };
+
+    // Handle initial connection
+    connectWithRetry()
+      .then(() => console.log('✅ MongoDB connected successfully'))
+      .catch(err => {
+        console.error('❌ MongoDB connection error:', err.message);
+        console.log('Retrying connection in 5 seconds...');
+        setTimeout(connectWithRetry, 5000);
+      });
+
+    // Handle connection events
+    mongoose.connection.on('connected', () => {
+      console.log('📊 MongoDB connected to database:', mongoose.connection.db.databaseName);
+    });
+
+    mongoose.connection.on('error', (err) => {
+      console.error('❌ MongoDB connection error:', err.message);
+    });
+
+    mongoose.connection.on('disconnected', () => {
+      console.log('ℹ️  MongoDB disconnected');
+    });
+
+    // Close the Mongoose connection when the Node process ends
+    process.on('SIGINT', async () => {
+      try {
+        await mongoose.connection.close();
+        console.log('MongoDB connection closed through app termination');
+        process.exit(0);
+      } catch (err) {
+        console.error('Error closing MongoDB connection:', err);
+        process.exit(1);
+      }
+    });
     
-    await mongoose.connect(mongoUri, options);
     console.log(`✅ MongoDB connected in ${Date.now() - startTime}ms`);
     return true;
   } catch (err) {
@@ -5528,6 +5691,18 @@ const handleFinalResponse = async (userId, finalResponse) => {
   } catch (err) {
     console.error('[NLI] Error persisting final response:', err);
     // Consider adding retry logic here if needed
+  }
+};
+
+app.get('/api/nli', requireAuth, async (req, res) => {
+  // Get user ID from session first thing
+  const userId = req.session.user;
+  const prompt = req.query.prompt;
+  const requestedEngine = req.query.engine || req.session.browserEngine;
+  
+  if (typeof prompt !== 'string' || !prompt.trim()) {
+    res.status(400).json({ success: false, error: 'Prompt query parameter is required.' });
+    return;
   }
   
   // If engine is specified, validate it
