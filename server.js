@@ -13,25 +13,25 @@ process.on('unhandledRejection', (reason, promise) => {
   }
 });
 
-import path             from 'path';
-import fs               from 'fs';
+import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { dirname }      from 'path';
+import { dirname } from 'path';
 
-import express          from 'express';
+import express from 'express';
 import { createServer } from 'http';
-import session          from 'express-session';
-import MongoStore       from 'connect-mongo';
-import mongoose         from 'mongoose';
-import winston          from 'winston';
+import session from 'express-session';
+import MongoStore from 'connect-mongo';
+import mongoose from 'mongoose';
+import winston from 'winston';
 import { WebSocketServer, WebSocket } from 'ws';
-import pRetry           from 'p-retry';
+import pRetry from 'p-retry';
 import { v4 as uuidv4 } from 'uuid';
-import { Semaphore }    from 'async-mutex';
+import { Semaphore } from 'async-mutex';
 
 // Puppeteer extras
-import puppeteerExtra   from 'puppeteer-extra';
-import StealthPlugin    from 'puppeteer-extra-plugin-stealth';
+import puppeteerExtra from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { PuppeteerAgent } from '@midscene/web/puppeteer';
 
 // OpenAI SDK
@@ -43,21 +43,21 @@ import { AbortError } from 'p-retry';
 // ======================================
 // 3) MODEL IMPORTS
 // ======================================
-import User        from './src/models/User.js';
-import Message     from './src/models/Message.js';
-import Task        from './src/models/Task.js';
+import User from './src/models/User.js';
+import Message from './src/models/Message.js';
+import Task from './src/models/Task.js';
 import ChatHistory from './src/models/ChatHistory.js';
-import Billing     from './src/models/Billing.js';
+import Billing from './src/models/Billing.js';
 
 // ======================================
 // 4) UTILS & REPORT GENERATORS
 // ======================================
-import { stripLargeFields }         from './src/utils/stripLargeFields.js';
-import { generateReport }           from './src/utils/reportGenerator.js';
-import { editMidsceneReport }       from './src/utils/midsceneReportEditor.js';
+import { stripLargeFields } from './src/utils/stripLargeFields.js';
+import { generateReport } from './src/utils/reportGenerator.js';
+import { editMidsceneReport } from './src/utils/midsceneReportEditor.js';
 import reportHandlers from './src/utils/reportFileFixer.js';
-import executionHelper               from './src/utils/execution-helper.js';
-const { determineExecutionMode }     = executionHelper;
+import executionHelper from './src/utils/execution-helper.js';
+const { determineExecutionMode } = executionHelper;
 
 // ======================================
 // 5) GLOBAL CONFIGURATION
@@ -65,7 +65,7 @@ const { determineExecutionMode }     = executionHelper;
 mongoose.set('strictQuery', true);
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname  = dirname(__filename);
+const __dirname = dirname(__filename);
 
 const OPENAI_API_KAIL = process.env.OPENAI_API_KAIL;
 
@@ -202,17 +202,35 @@ global.NEXUS_PATHS = {
   ARTIFACTS_DIR: ARTIFACTS_DIR
 };
 
-
 // ======================================
 // 6) EXPRESS + HTTP SERVER
 // ======================================
 const app    = express();
 
-// Configure CORS
+// --- CORS Configuration ---
+const allowedOrigins = [
+  'https://operator-344ej.ondigitalocean.app',
+  'https://your-production-domain.com' // Add your production domain here
+];
+
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  const origin = req.headers.origin;
+  
+  // Allow all localhost origins for development
+  if (origin && origin.startsWith('http://localhost')) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  } 
+  // Check allowed origins for production
+  else if (origin && allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  }
+  
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
@@ -236,7 +254,7 @@ mongoUri = mongoUri.replace(/^['"]|['"]$/g, '');
 const safeMongoUri = mongoUri ? mongoUri.replace(/(mongodb\+srv:\/\/[^:]+:)[^@]+@/, '$1*****@') : 'undefined';
 console.log('Session store connecting to MongoDB with URI:', safeMongoUri);
 
-app.use(session({
+const sessionConfig = {
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
@@ -252,29 +270,24 @@ app.use(session({
       w: 'majority'
     }
   }),
-  cookie: { 
-    maxAge: 24 * 60 * 60 * 1000,
+  cookie: {
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production'
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    domain: process.env.NODE_ENV === 'production' ? '.ondigitalocean.app' : undefined
   }
-}));
+};
+
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1); // Trust first proxy
+}
+
+app.use(session(sessionConfig));
 
 // 7.3 Debug logger for sessions
 app.use((req, res, next) => {
   console.log('👉 Session:', req.sessionID, req.session);
-  next();
-});
-
-// --- CORS for front-end dev server (allow requests from localhost) ---
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin && origin.startsWith('http://localhost')) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-  }
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
 
