@@ -353,31 +353,13 @@ const staticOptions = {
     }
     
     // Set CORS headers for all static files
-    res.setHeader('Access-Control-Allow-Origin', req => {
-      const origin = req.headers.origin;
-      return allowedOrigins.includes(origin) ? origin : '';
-    });
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-  }
-};
-
-// Serve static files from multiple directories
-app.use(express.static(path.join(__dirname, 'dist'), staticOptions));
-app.use(express.static(path.join(__dirname, 'public'), staticOptions));
-app.use('/js', express.static(path.join(__dirname, 'public', 'js'), staticOptions));
-app.use('/css', express.static(path.join(__dirname, 'public', 'css'), staticOptions));
-app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), staticOptions));
-app.use('/vendors', express.static(path.join(__dirname, 'public', 'vendors'), {
-  ...staticOptions,
-  setHeaders: (res, path) => {
-    staticOptions.setHeaders(res, path);
-    // Additional headers for vendor files
-    if (path.match(/\.(woff2?|ttf|otf|eot)$/)) {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET');
-      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-    }
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    const origin = res.req.headers.origin;
+    if (allowedOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      
       // Set proper MIME types for font files
       if (path.endsWith('.ttf')) {
         res.setHeader('Content-Type', 'font/ttf');
@@ -390,13 +372,24 @@ app.use('/vendors', express.static(path.join(__dirname, 'public', 'vendors'), {
       } else if (path.endsWith('.otf')) {
         res.setHeader('Content-Type', 'font/otf');
       }
+      
+      if (path.match(/\.(woff2?|ttf|otf|eot)$/)) {
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      }
     }
   }
-}));
-app.use('/assets', express.static(path.join(__dirname, 'public', 'assets')));
-app.use('/images', express.static(path.join(__dirname, 'public', 'assets', 'images')));
-app.use('/models', express.static('public/models'));
-app.use('/draco', express.static('public/draco'));
+};
+
+// Serve static files from multiple directories
+app.use(express.static(path.join(__dirname, 'dist'), staticOptions));
+app.use(express.static(path.join(__dirname, 'public'), staticOptions));
+app.use('/js', express.static(path.join(__dirname, 'public', 'js'), staticOptions));
+app.use('/css', express.static(path.join(__dirname, 'public', 'css'), staticOptions));
+app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), staticOptions));
+app.use('/vendors', express.static(path.join(__dirname, 'public', 'vendors'), staticOptions));
+app.use('/images', express.static(path.join(__dirname, 'public', 'assets', 'images'), staticOptions));
+app.use('/models', express.static(path.join(__dirname, 'public', 'models'), staticOptions));
+app.use('/draco', express.static(path.join(__dirname, 'public', 'draco'), staticOptions));
 
 // Serve default favicon
 app.get('/favicon.ico', (req, res) => {
