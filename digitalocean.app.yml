@@ -1,22 +1,88 @@
-name: nexus-app
+name: operator-agent
 services:
 - name: web
   github:
     branch: main
     deploy_on_push: true
-    repo: your-username/nexus-repo
+    repo: dexters-lab-ai/Nexus  # Updated to match your GitHub repository
   dockerfile_path: Dockerfile
   http_port: 3000
-  instance_size_slug: basic-xxs
+  instance_size_slug: professional-xs
   instance_count: 1
+  
+  # Environment Variables
   envs:
-  - key: NODE_ENV
-    value: production
-  - key: PORT
-    value: '3000'
+    # Server Configuration
+    - key: NODE_ENV
+      value: production
+    - key: PORT
+      value: '3000'
+    
+    # API Configuration
+    - key: VITE_API_URL
+      value: https://operator-344ej.ondigitalocean.app
+    - key: VITE_WS_URL
+      value: wss://operator-344ej.ondigitalocean.app
+    - key: API_URL
+      value: https://operator-344ej.ondigitalocean.app
+    - key: FRONTEND_URL
+      value: https://operator-344ej.ondigitalocean.app
+    
+    # Database
+    - key: MONGO_URI
+      value: ${MONGO_URI}  # Will be set in DigitalOcean dashboard
+      scope: RUN_AND_BUILD_TIME
+    
+    # Session & Security
+    - key: SESSION_SECRET
+      value: ${SESSION_SECRET}  # Will be set in DigitalOcean dashboard
+      scope: RUN_AND_BUILD_TIME
+    - key: COOKIE_DOMAIN
+      value: operator-344ej.ondigitalocean.app
+    - key: SECURE_COOKIES
+      value: 'true'
+    
+    # API Keys
+    - key: OPENAI_API_KEY
+      value: ${OPENAI_API_KEY}  # Will be set in DigitalOcean dashboard
+      scope: RUN_AND_BUILD_TIME
+    - key: HF_API_KEY
+      value: ${HF_API_KEY}  # Will be set in DigitalOcean dashboard
+      scope: RUN_AND_BUILD_TIME
+    - key: GOOGLE_API_KEY_FILE
+      value: config/google-key.json  # Will be uploaded as a secret file
+    
+    # Webhook & WebSocket
+    - key: WEBHOOK_URL
+      value: https://operator-344ej.ondigitalocean.app/api/webhook
+    - key: WEBHOOK_SECRET
+      value: ${WEBHOOK_SECRET}  # Will be set in DigitalOcean dashboard
+      scope: RUN_AND_BUILD_TIME
+    - key: OPERATOR_APP_WS_URL
+      value: wss://operator-344ej.ondigitalocean.app/ws
+    - key: WS_SECRET
+      value: ${WS_SECRET}  # Will be set in DigitalOcean dashboard
+      scope: RUN_AND_BUILD_TIME
+    
+    # Midscene Configuration
+    - key: MIDSCENE_MODEL_NAME
+      value: gpt-4o-mini
+    - key: MIDSCENE_RUN_DIR
+      value: nexus_run
+  
+  # Health Check Configuration
   health_check:
-    http_path: /
+    http_path: /health
     initial_delay_seconds: 30
+    period_seconds: 10
+    timeout_seconds: 5
+    success_threshold: 1
+    failure_threshold: 3
+  
+  # Resource Configuration
+  resources:
+    cpu: 1000m
+    memory: 2048
     period_seconds: 10
     timeout_seconds: 5
     success_threshold: 1
