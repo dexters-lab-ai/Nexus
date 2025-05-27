@@ -329,7 +329,8 @@ async function startApp() {
     });
     console.log('✅ MongoDB connected');
     app.listen(PORT, () => {
-      console.log(`\n--- OPERATOR Modern Interface Server ---\nServer running at http://localhost:${PORT}\nModern interface available at http://localhost:${PORT}/modern.html\nSPA shell at / (protected)\n`);
+      const baseUrl = process.env.FRONTEND_URL || `http://localhost:${PORT}`;
+      console.log(`\n--- OPERATOR Modern Interface Server ---\nServer running at ${baseUrl}\nModern interface available at ${baseUrl}/modern.html\nSPA shell at / (protected)\n`);
     });
   } catch (err) {
     console.error('Failed to start application:', err);

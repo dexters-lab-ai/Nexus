@@ -3,21 +3,22 @@
  * Now with all CSS imports managed by Vite
  */
 
-// Core Styles
-import '@/styles/main.css';
-import '@/styles/components/command-center.css';
-import '@/styles/components/layouts.css';
-import '@/styles/components/timeline.css';
+// Core Styles - Using relative paths
+import './styles/main.css';
 import './styles/futuristic.css';
+
+// Component styles
+import './styles/components/command-center.css';
 import './styles/components/components.css';
 import './styles/components/futuristic.css';
-import './styles/components/command-center.css';
+import './styles/components/layouts.css';
 import './styles/components/settings-modal.css';
 import './styles/components/guide-overlay.css';
 import './styles/components/profile-modal.css';
 import './styles/components/history-overlay.css';
 import './styles/components/user-menu.css';
 import './styles/components/timeline-filters.css';
+import './styles/components/timeline.css';
 
 // Vendor CSS (must remain in HTML)
 // <link rel="stylesheet" href="/vendors/fontawesome/all.min.css">

@@ -217,7 +217,8 @@ export async function processYamlMapTask(options) {
   // Declare key variables at the top
   let yamlMap = null;           // Will hold the fetched YAML map
   let yamlMapUrl = 'N/A';       // Default value if no URL is set
-  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  const isProduction = process.env.NODE_ENV === 'production';
+  const baseUrl = isProduction ? '' : (process.env.BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'));
   const reportDir = path.resolve(runDir, 'report');
   let reportPath = null;
   let nexusReportUrl = null; // Initialized
@@ -696,7 +697,7 @@ export async function processYamlMapTask(options) {
               
               // Set URLs based on the same filename
               currentNexusReportUrl = `/external-report/${reportFilename}`;
-              const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+              const baseUrl = process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? '' : (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'));
               currentRawReportUrl = `${baseUrl}/raw-report/${reportFilename}`;
               
               logYaml(`[YamlProcessor] Created consistent report URLs:`);
@@ -721,7 +722,7 @@ export async function processYamlMapTask(options) {
           const fallbackFilename = `web-fallback-${timestamp}.html`;
           
           currentNexusReportUrl = `/external-report/${fallbackFilename}`;
-          const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+          const baseUrl = isProduction ? '' : (process.env.BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'));
           currentRawReportUrl = `${baseUrl}/raw-report/${fallbackFilename}`;
           
           logYaml(`[YamlProcessor] Using fallback URLs due to error:`);

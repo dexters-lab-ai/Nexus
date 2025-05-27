@@ -15,8 +15,23 @@ const RETRY_DELAY = 5000;
 // Function to initialize WebSocket connection
 function initWebSocket(userId) {
   if (ws && ws.readyState === WebSocket.OPEN) return;
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  const wsUrl = `${protocol}://${window.location.host}/ws?userId=${encodeURIComponent(userId)}`;
+  
+  // Use environment configuration if available, otherwise fall back to current host
+  let wsUrl;
+  if (window.__ENV__ && window.__ENV__.wsUrl) {
+    // Use the WebSocket URL from environment config
+    wsUrl = window.__ENV__.wsUrl;
+  } else {
+    // Fallback to current host with appropriate protocol
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    wsUrl = `${protocol}://${window.location.host}/ws`;
+  }
+  
+  // Add userId as query parameter
+  const separator = wsUrl.includes('?') ? '&' : '?';
+  wsUrl = `${wsUrl}${separator}userId=${encodeURIComponent(userId)}`;
+  
+  console.log('[WebSocket] Connecting to:', wsUrl);
   ws = new WebSocket(wsUrl);
   ws.addEventListener('open', () => {
     console.log('WebSocket connected at', new Date().toISOString());

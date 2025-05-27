@@ -1,8 +1,13 @@
 // ======================================
 // 1) ENV & CORE LIBRARIES
-// Initialize dotenv for environment variables
+// Import environment configuration
 import dotenv from 'dotenv';
 dotenv.config();
+import env from './src/config/env.js';
+
+// Set default port from environment or config
+const PORT = env.port;
+const NODE_ENV = env.nodeEnv;
 
 // Global unhandled promise rejection handler for Puppeteer "Request is already handled!" errors
 process.on('unhandledRejection', (reason, promise) => {
@@ -227,32 +232,78 @@ const server = createServer(app);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Import environment config
+import config from './src/config/env.js';
+
+// Log environment info
+console.log('Environment:', config.nodeEnv);
+console.log('API URL:', config.apiUrl);
+console.log('WebSocket URL:', config.wsUrl);
+console.log('Frontend URL:', config.frontendUrl);
+
 // 7.2 Session store (must come before any route that reads/writes req.session)
-const MONGO_URI = process.env.MONGO_URI;
+const MONGO_URI = process.env.MONGO_URI || (
+  process.env.NODE_ENV === 'production' 
+    ? 'mongodb://mongodb:27017/nexus' 
+    : 'mongodb://localhost:27017/nexus'
+);
+
 app.use(session({
-  secret: process.env.SESSION_SECRET,
+  secret: process.env.SESSION_SECRET || 'your-secret-key',
   resave: false,
   saveUninitialized: false,
-  store: MongoStore.create({ mongoUrl: MONGO_URI, collectionName: 'sessions' }),
-  cookie: { maxAge: 24 * 60 * 60 * 1000 }
+  cookie: {
+    secure: config.secureCookies, // Set based on environment
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    httpOnly: true,
+    sameSite: config.isProduction ? 'lax' : 'lax',
+    domain: config.cookieDomain === 'localhost' ? undefined : config.cookieDomain
+  },
+  store: MongoStore.create({
+    mongoUrl: MONGO_URI,
+    ttl: 24 * 60 * 60 // 24 hours
+  })
 }));
 
-// 7.3 Debug logger for sessions
-app.use((req, res, next) => {
-  console.log('👉 Session:', req.sessionID, req.session);
-  next();
-});
+// CORS configuration - combine development and production URLs
+const allowedOrigins = [
+  // Development URLs (only in non-production)
+  ...(process.env.NODE_ENV !== 'production' ? [
+    'http://localhost:3000',  // Frontend development server
+    'http://localhost:3420',  // Backend development server
+    'http://127.0.0.1:3000',  // Frontend development server (IPv4)
+    'http://127.0.0.1:3420'  // Backend development server (IPv4)
+  ] : [
+    // Production URLs
+    'https://operator-344ej.ondigitalocean.app',
+    'wss://operator-344ej.ondigitalocean.app'
+  ]),
+  
+  // Production URLs from environment
+  config.frontendUrl,
+  
+  // Add any additional allowed origins from environment
+  ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').filter(Boolean) : [])
+].filter((value, index, self) => {
+  // Remove duplicates
+  return value && self.indexOf(value) === index;
+}); // Remove any undefined/null values
 
-// --- CORS for front-end dev server (allow requests from localhost) ---
+// Apply CORS middleware with dynamic origin
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && origin.startsWith('http://localhost')) {
+  if (origin && (allowedOrigins.includes(origin) || env.isDevelopment)) {
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
   }
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  
   next();
 });
 
@@ -523,15 +574,13 @@ async function startApp() {
     await clearDatabaseOnce();
     await ensureIndexes();
     
-    const PORT = process.env.PORT || 3420;
-    server.listen(PORT, async () => {
-      const { address, port } = server.address();
-      console.log(`🚀 Nexus server running at http://${address === '::' ? 'localhost' : address}:${port}`);
-
-      // TEMPORARILY DISABLED: Fix all existing report HTML files
-      // console.log('Fixing any problematic HTML reports...');
-      // const fixedCount = fixAllReports();
-      // console.log(`Fixed ${fixedCount || 0} HTML report files`);
+    // Start the server
+    const server = app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+      console.log(`Environment: ${NODE_ENV}`);
+      console.log(`API URL: ${env.apiUrl}`);
+      console.log(`Frontend URL: ${env.frontendUrl}`);
+      console.log(`WebSocket URL: ${env.wsUrl}`);
     });
   } catch (err) {
     console.error('Failed to start application:', err);
@@ -1159,18 +1208,6 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
           // Edit the midscene report first
           midsceneReportPath = await editMidsceneReport(midsceneReportPath);
           console.log(`[MidsceneReport] Updated report at ${midsceneReportPath}`);
-          
-          // Get the correct nexusReportUrl from the edited report
-          const reportFilename = path.basename(midsceneReportPath);
-          nexusReportUrl = `/external-report/${reportFilename}`;
-          
-          // Create matching raw report URL with the same filename
-          const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-          reportRawUrl = `${baseUrl}/raw-report/${reportFilename}`;
-          
-          console.log(`[TaskCompletion] Extracted URLs from midscene report:`);
-          console.log(`[TaskCompletion] Nexus report URL: ${nexusReportUrl}`);
-          console.log(`[TaskCompletion] Raw report URL: ${reportRawUrl}`);
         } catch (error) {
           console.warn(`[MidsceneReport] Error editing report: ${error.message}`);
         }
