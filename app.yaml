@@ -84,6 +84,18 @@ services:
     failure_threshold: 3
     port: 3420
   
+  # Static asset configuration
+  static_sites:
+    - build_command: npm run build
+      catchall_document: index.html
+      environment_slug: node-js
+      name: static-assets
+      source_dir: dist
+      routes:
+        - /assets
+        - /models
+        - /textures
+  
   # Resource Configuration
   resources:
     cpu: 1000m
