@@ -49,17 +49,23 @@ COPY --from=builder /usr/src/app/package*.json ./
 RUN npm ci --only=production
 
 # Copy built files and required directories
-COPY --from=builder /usr/src/app/server.js .
 COPY --from=builder /usr/src/app/dist ./dist
 COPY --from=builder /usr/src/app/public ./public
-COPY --from=builder /usr/src/app/nexus_run ./nexus_run
+COPY --from=builder /usr/src/app/server.js .
+COPY --from=builder /usr/src/app/package*.json .
+
+# Copy source files for development mode and dynamic imports
+COPY --from=builder /usr/src/app/src ./src
+
+# Create necessary directories
+RUN mkdir -p /usr/src/app/nexus_run
 
 # Set environment to production
 ENV NODE_ENV=production
-ENV PORT=3420
+ENV PORT=3000
 
 # Expose the app port
-EXPOSE 3420
+EXPOSE 3000
 
 # Install curl for healthcheck
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
@@ -69,4 +75,4 @@ HEALTHCHECK --interval=30s --timeout=3s \
   CMD curl -f http://localhost:${PORT}/api/health || exit 1
 
 # Command to run the application
-CMD ["node", "server.js"]
+CMD ["node", "--max-old-space-size=4096", "server.js"]
