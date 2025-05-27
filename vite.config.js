@@ -24,7 +24,18 @@ export default defineConfig(({ mode }) => {
   return {
     mode,
     root: __dirname,
-    publicDir: 'public',
+    publicDir: {
+    // Copy all files from public directory to the root of the build output
+    // This ensures static assets are available at the root URL
+    copy: [
+      {
+        src: 'public/**/*',
+        dest: ''
+      }
+    ]
+  },
+  // Base public path when served in production
+  base: './',
     logLevel: 'info',
     plugins: [
       react(),
@@ -58,10 +69,11 @@ export default defineConfig(({ mode }) => {
           entryFileNames: 'assets/[name]-[hash].js',
           chunkFileNames: 'assets/[name]-[hash].js',
           assetFileNames: (assetInfo) => {
-            const ext = assetInfo.name.split('.').pop();
+            const ext = assetInfo.name.split('.').pop().toLowerCase();
             if (ext === 'css') return 'assets/css/[name]-[hash][extname]';
             if (['woff', 'woff2', 'ttf', 'eot'].includes(ext)) return 'assets/fonts/[name]-[hash][extname]';
             if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'assets/images/[name]-[hash][extname]';
+            if (['glb', 'gltf', 'hdr', 'bin'].includes(ext)) return 'assets/models/[name]-[hash][extname]';
             return 'assets/[name]-[hash][extname]';
           }
         }
