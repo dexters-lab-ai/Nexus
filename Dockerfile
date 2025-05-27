@@ -1,5 +1,5 @@
-# Use Node.js LTS with slim variant for better compatibility
-FROM node:18-slim AS builder
+# Use full Node.js LTS image for build stage
+FROM node:18 AS builder
 
 # Create app directory
 WORKDIR /usr/src/app
@@ -13,15 +13,13 @@ RUN apt-get update && apt-get install -y \
 
 # Copy package files first for better layer caching
 COPY package*.json ./
+COPY pnpm-lock.yaml* ./
 
-# Install all dependencies (including devDependencies)
-RUN npm install
+# Install dependencies with legacy peer deps to avoid conflicts
+RUN npm ci --legacy-peer-deps
 
 # Copy app source
 COPY . .
-
-# Fix Rollup issue by forcing the correct binary
-RUN npm rebuild @rollup/rollup-linux-x64-gnu --update-binary
 
 # Build the application
 RUN npm run build
@@ -34,7 +32,7 @@ WORKDIR /usr/src/app
 
 # Install production dependencies only
 COPY --from=builder /usr/src/app/package*.json ./
-RUN npm install --production
+RUN npm ci --only=production
 
 # Copy built files and required directories
 COPY --from=builder /usr/src/app/server.js .
