@@ -6,9 +6,16 @@ services:
     deploy_on_push: true
     repo: dexters-lab-ai/Nexus  # Updated to match your GitHub repository
   dockerfile_path: Dockerfile
-  http_port: 3000
+  http_port: 3420
   instance_size_slug: professional-xs
   instance_count: 1
+  health_check:
+    http_path: /
+    initial_delay_seconds: 30
+    period_seconds: 10
+    timeout_seconds: 5
+    success_threshold: 1
+    failure_threshold: 3
   
   # Environment Variables
   envs:
@@ -16,7 +23,7 @@ services:
     - key: NODE_ENV
       value: production
     - key: PORT
-      value: '3000'
+      value: '3420'
     
     # API Configuration
     - key: VITE_API_URL
@@ -27,6 +34,8 @@ services:
       value: https://operator-344ej.ondigitalocean.app
     - key: FRONTEND_URL
       value: https://operator-344ej.ondigitalocean.app
+    - key: NODE_OPTIONS
+      value: --max-old-space-size=4096
     
     # Database
     - key: MONGO_URI
