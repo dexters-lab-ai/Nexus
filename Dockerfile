@@ -1,5 +1,5 @@
-# Use full Node.js LTS image for build stage
-FROM node:18 AS builder
+# Use Node.js 18 LTS for better compatibility
+FROM node:18.20.3-bullseye-slim AS builder
 
 # Create app directory
 WORKDIR /usr/src/app

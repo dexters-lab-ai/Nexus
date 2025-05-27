@@ -4,11 +4,13 @@ services:
   github:
     branch: main
     deploy_on_push: true
-    repo: dexters-lab-ai/Nexus  # Updated to match your GitHub repository
+    repo: dexters-lab-ai/Nexus
   dockerfile_path: Dockerfile
   http_port: 3420
   instance_size_slug: professional-xs
   instance_count: 1
+  build_command: npm install --legacy-peer-deps && npm run build
+  run_command: node --max-old-space-size=4096 server.js
   # Environment Variables
   envs:
     # Server Configuration
