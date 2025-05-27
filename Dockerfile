@@ -14,17 +14,24 @@ RUN apt-get update && apt-get install -y \
 # Copy package files first for better layer caching
 COPY package*.json ./
 
-# Copy lockfile if it exists (npm or pnpm)
-COPY package-lock.json* ./
-COPY pnpm-lock.yaml* ./
+# Create a script to handle lock files and install dependencies
+RUN echo '#!/bin/sh\n\
+# Check for lock files\
+if [ -f "package-lock.json" ]; then\
+  echo "Found package-lock.json, using npm ci"\
+  npm ci --legacy-peer-deps\
+elif [ -f "pnpm-lock.yaml" ]; then\
+  echo "Found pnpm-lock.yaml, using pnpm install"\
+  npm install -g pnpm\
+  pnpm install --frozen-lockfile\
+else\
+  echo "No lock file found, using npm install"\
+  npm install --legacy-peer-deps\
+fi' > /tmp/install-deps.sh && \
+  chmod +x /tmp/install-deps.sh
 
-# Install dependencies with legacy peer deps to avoid conflicts
-# Use npm ci if package-lock.json exists, otherwise use npm install
-RUN if [ -f "package-lock.json" ]; then \
-      npm ci --legacy-peer-deps; \
-    else \
-      npm install --legacy-peer-deps; \
-    fi
+# Run the installation script
+RUN /tmp/install-deps.sh
 
 # Copy app source
 COPY . .
