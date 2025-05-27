@@ -254,15 +254,28 @@
 
   // Check if the server is ready
   function checkServerReady() {
-    return fetch('/api/health')
-      .then(response => {
+    return fetch('/api/health', {
+      headers: {
+        'Accept': 'application/json',
+        'Cache-Control': 'no-cache'
+      }
+    })
+      .then(async response => {
         if (!response.ok) {
-          throw new Error(`Server responded with status: ${response.status}`);
+          const text = await response.text();
+          throw new Error(`Server responded with status: ${response.status} - ${text}`);
         }
-        return response.json();
-      })
-      .then(data => {
-        return data.serverReady === true;
+        try {
+          const data = await response.json();
+          // Handle different response formats
+          if (typeof data === 'object' && data !== null) {
+            return data.serverReady === true || data.status === 'ok';
+          }
+          return false;
+        } catch (e) {
+          console.warn('Invalid JSON response from server, retrying...');
+          return false;
+        }
       })
       .catch(error => {
         console.log('Server not ready yet:', error.message);

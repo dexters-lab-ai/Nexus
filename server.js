@@ -13,25 +13,25 @@ process.on('unhandledRejection', (reason, promise) => {
   }
 });
 
-import path from 'path';
-import fs from 'fs';
+import path             from 'path';
+import fs               from 'fs';
 import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+import { dirname }      from 'path';
 
-import express from 'express';
+import express          from 'express';
 import { createServer } from 'http';
-import session from 'express-session';
-import MongoStore from 'connect-mongo';
-import mongoose from 'mongoose';
-import winston from 'winston';
+import session          from 'express-session';
+import MongoStore       from 'connect-mongo';
+import mongoose         from 'mongoose';
+import winston          from 'winston';
 import { WebSocketServer, WebSocket } from 'ws';
-import pRetry from 'p-retry';
+import pRetry           from 'p-retry';
 import { v4 as uuidv4 } from 'uuid';
-import { Semaphore } from 'async-mutex';
+import { Semaphore }    from 'async-mutex';
 
 // Puppeteer extras
-import puppeteerExtra from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import puppeteerExtra   from 'puppeteer-extra';
+import StealthPlugin    from 'puppeteer-extra-plugin-stealth';
 import { PuppeteerAgent } from '@midscene/web/puppeteer';
 
 // OpenAI SDK
@@ -43,21 +43,21 @@ import { AbortError } from 'p-retry';
 // ======================================
 // 3) MODEL IMPORTS
 // ======================================
-import User from './src/models/User.js';
-import Message from './src/models/Message.js';
-import Task from './src/models/Task.js';
+import User        from './src/models/User.js';
+import Message     from './src/models/Message.js';
+import Task        from './src/models/Task.js';
 import ChatHistory from './src/models/ChatHistory.js';
-import Billing from './src/models/Billing.js';
+import Billing     from './src/models/Billing.js';
 
 // ======================================
 // 4) UTILS & REPORT GENERATORS
 // ======================================
-import { stripLargeFields } from './src/utils/stripLargeFields.js';
-import { generateReport } from './src/utils/reportGenerator.js';
-import { editMidsceneReport } from './src/utils/midsceneReportEditor.js';
+import { stripLargeFields }         from './src/utils/stripLargeFields.js';
+import { generateReport }           from './src/utils/reportGenerator.js';
+import { editMidsceneReport }       from './src/utils/midsceneReportEditor.js';
 import reportHandlers from './src/utils/reportFileFixer.js';
-import executionHelper from './src/utils/execution-helper.js';
-const { determineExecutionMode } = executionHelper;
+import executionHelper               from './src/utils/execution-helper.js';
+const { determineExecutionMode }     = executionHelper;
 
 // ======================================
 // 5) GLOBAL CONFIGURATION
@@ -65,7 +65,7 @@ const { determineExecutionMode } = executionHelper;
 mongoose.set('strictQuery', true);
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const __dirname  = dirname(__filename);
 
 const OPENAI_API_KAIL = process.env.OPENAI_API_KAIL;
 
@@ -202,105 +202,18 @@ global.NEXUS_PATHS = {
   ARTIFACTS_DIR: ARTIFACTS_DIR
 };
 
+
 // ======================================
 // 6) EXPRESS + HTTP SERVER
 // ======================================
-const app = express();
+const app    = express();
 
-// --- Security Headers Middleware ---
+// Configure CORS
 app.use((req, res, next) => {
-  // Skip CSP for static files as they're handled by static middleware
-  if (req.path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|json)$/)) {
-    return next();
-  }
-
-  // Enhanced CORS configuration
-  const allowedOrigins = [
-    'http://localhost:3000',
-    'http://localhost:3420',
-    'https://your-production-domain.com'  // Replace with your production domain
-  ];
-
-  // CORS middleware
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-  res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type,authorization');
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  
-  // Handle preflight
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  // Set Content Security Policy
-  const csp = [
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.skypack.dev",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "img-src 'self' data: blob: https: http:",
-    "font-src 'self' data: https://fonts.gstatic.com",
-    "connect-src 'self' ws: wss: http: https:",
-    "frame-src 'self' https://www.youtube.com",
-    "media-src 'self' data: blob: https:",
-    "worker-src 'self' blob:",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "frame-ancestors 'self'"
-  ].join('; ');
-
-  res.setHeader('Content-Security-Policy', csp);
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-  res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
-  
-  next();
-});
-
-// ...
-
-// --- CORS Configuration ---
-const allowedOrigins = [
-  'https://operator-344ej.ondigitalocean.app',
-  'https://your-production-domain.com' // Add your production domain here
-];
-
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  const requestHeaders = req.headers['access-control-request-headers'];
-  
-  // Allow all localhost origins for development
-  if (origin && origin.startsWith('http://localhost')) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', requestHeaders || 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    res.header('Access-Control-Expose-Headers', 'Set-Cookie');
-    res.header('Vary', 'Origin');
-  } 
-  // Check allowed origins for production
-  else if (origin && allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', requestHeaders || 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    res.header('Access-Control-Expose-Headers', 'Set-Cookie');
-    res.header('Vary', 'Origin');
-  }
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    // Cache preflight requests for 2 hours (Chromium default)
-    res.header('Access-Control-Max-Age', '7200');
-    return res.status(204).end();
-  }
-  
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
 
@@ -315,43 +228,31 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // 7.2 Session store (must come before any route that reads/writes req.session)
-let mongoUri = process.env.MONGO_URI;
-// Remove surrounding quotes if present
-mongoUri = mongoUri.replace(/^['"]|['"]$/g, '');
-
-// Log the connection string (with sensitive info redacted)
-const safeMongoUri = mongoUri ? mongoUri.replace(/(mongodb\+srv:\/\/[^:]+:)[^@]+@/, '$1*****@') : 'undefined';
-console.log('Session store connecting to MongoDB with URI:', safeMongoUri);
-
-const sessionConfig = {
+const MONGO_URI = process.env.MONGO_URI;
+app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  store: MongoStore.create({ 
-    mongoUrl: mongoUri, 
-    retryWrites: true,
-    w: 'majority'
-  }),
-  cookie: {
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    httpOnly: true,
-    secure: true, // Always use secure in production
-    sameSite: 'none', // Required for cross-site cookies
-    // Remove domain setting to let the browser handle it
-  },
-  proxy: true, // Trust the reverse proxy (Cloudflare)
-  name: 'nexus.sid' // Custom session cookie name
-};
-
-if (process.env.NODE_ENV === 'production') {
-  app.set('trust proxy', 1); // Trust first proxy
-}
-
-app.use(session(sessionConfig));
+  store: MongoStore.create({ mongoUrl: MONGO_URI, collectionName: 'sessions' }),
+  cookie: { maxAge: 24 * 60 * 60 * 1000 }
+}));
 
 // 7.3 Debug logger for sessions
 app.use((req, res, next) => {
   console.log('👉 Session:', req.sessionID, req.session);
+  next();
+});
+
+// --- CORS for front-end dev server (allow requests from localhost) ---
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && origin.startsWith('http://localhost')) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
 
@@ -369,22 +270,18 @@ app.use('/midscene_run', (req, res, next) => {
 });
 
 // === GENERAL STATIC ASSETS ===
-// Serve static files with proper caching and security headers
-const staticOptions = {
+app.use(express.static(path.join(__dirname, 'dist')));
+app.use(express.static(path.join(__dirname, 'public')));
+// app.use('/css', express.static(path.join(__dirname, 'public', 'css'))); // REMOVED - Handled by dist serving
+app.use('/js', express.static(path.join(__dirname, 'public', 'js')));
+app.use('/vendors', express.static(path.join(__dirname, 'public', 'vendors'), {
   setHeaders: (res, path) => {
-    // Cache static assets for 1 year (immutable)
-    if (path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/)) {
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    }
-    
-    // Set CORS headers for all static files
-    const origin = res.req.headers.origin;
-    if (allowedOrigins.includes(origin)) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-      
+    if (path.match(/\.(woff2?|ttf|otf|eot)$/)) {
+      // Add CORS headers for font files
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET');
+      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       // Set proper MIME types for font files
       if (path.endsWith('.ttf')) {
         res.setHeader('Content-Type', 'font/ttf');
@@ -397,167 +294,17 @@ const staticOptions = {
       } else if (path.endsWith('.otf')) {
         res.setHeader('Content-Type', 'font/otf');
       }
-      
-      if (path.match(/\.(woff2?|ttf|otf|eot)$/)) {
-        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-      }
     }
   }
-};
+}));
+app.use('/assets', express.static(path.join(__dirname, 'public', 'assets')));
+app.use('/images', express.static(path.join(__dirname, 'public', 'assets', 'images')));
+app.use('/models', express.static('public/models'));
+app.use('/draco', express.static('public/draco'));
 
-// Function to serve static files with enhanced logging
-const serveStaticWithLogging = (basePath, mountPath = '/') => {
-  try {
-    if (!fs.existsSync(basePath)) {
-      console.warn(`⚠️  Directory not found: ${path.relative(process.cwd(), basePath)}`);
-      return false;
-    }
-    
-    const stats = fs.statSync(basePath);
-    if (!stats.isDirectory()) {
-      console.warn(`⚠️  Path is not a directory: ${path.relative(process.cwd(), basePath)}`);
-      return false;
-    }
-    
-    console.log(`🌐 Serving static files from: ${path.relative(process.cwd(), basePath)} at ${mountPath}`);
-    
-    app.use(mountPath, express.static(basePath, {
-      ...staticOptions,
-      setHeaders: (res, filePath) => {
-        // Set correct MIME types
-        if (filePath.endsWith('.js')) {
-          res.set('Content-Type', 'application/javascript');
-        } else if (filePath.endsWith('.css')) {
-          res.set('Content-Type', 'text/css');
-        } else if (filePath.endsWith('.json')) {
-          res.set('Content-Type', 'application/json');
-        } else if (filePath.endsWith('.woff2') || filePath.endsWith('.woff') || filePath.endsWith('.ttf')) {
-          res.set('Content-Type', `font/${path.extname(filePath).substring(1)}`);
-        } else if (filePath.endsWith('.png')) {
-          res.set('Content-Type', 'image/png');
-        } else if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
-          res.set('Content-Type', 'image/jpeg');
-        } else if (filePath.endsWith('.gif')) {
-          res.set('Content-Type', 'image/gif');
-        } else if (filePath.endsWith('.svg')) {
-          res.set('Content-Type', 'image/svg+xml');
-        }
-      }
-    }));
-    
-    return true;
-  } catch (error) {
-    console.error(`❌ Error serving static files from ${path.relative(process.cwd(), basePath)}:`, error.message);
-    return false;
-  }
-};
-
-// Configure static file serving - prioritize the main app in the root
-const staticConfigs = [
-  // Serve public directory first (for assets, vendor files, etc.)
-  {
-    basePath: path.join(__dirname, 'public'),
-    mountPath: '/',
-    subDirs: ['/assets', '/css', '/js', '/models', '/draco', '/fonts', '/vendors']
-  },
-  // Serve root directory for source files
-  {
-    basePath: __dirname,
-    mountPath: '/',
-    subDirs: ['/src', '/public']
-  },
-  // Serve node_modules for any required dependencies
-  {
-    basePath: path.join(__dirname, 'node_modules'),
-    mountPath: '/node_modules',
-    subDirs: []
-  },
-  // Serve main-site content under /main-site path
-  {
-    basePath: path.join(__dirname, 'main-site'),
-    mountPath: '/main-site',
-    subDirs: ['/js', '/css', '/images', '/assets', '/fonts']
-  }
-];
-
-// Apply static file serving configuration
-staticConfigs.forEach(config => {
-  const { basePath, mountPath, subDirs } = config;
-  
-  // Serve base directory
-  serveStaticWithLogging(basePath, mountPath);
-  
-  // Serve subdirectories
-  subDirs.forEach(dir => {
-    const dirPath = path.join(basePath, dir);
-    const dirMountPath = path.posix.join(mountPath === '/' ? '' : mountPath, dir);
-    serveStaticWithLogging(dirPath, dirMountPath);
-    
-    // Also serve some directories at root for backward compatibility
-    if (mountPath === '/public' && ['/js', '/css', '/assets', '/models', '/draco'].includes(dir)) {
-      serveStaticWithLogging(dirPath, dir);
-    }
-  });
-});
-
-// Serve favicon with fallback
+// Serve default favicon
 app.get('/favicon.ico', (req, res) => {
-  const faviconPaths = [
-    path.join(mainSitePath, 'favicon.ico'),
-    path.join(mainSitePath, 'images', 'favicon.ico'),
-    path.join(publicPath, 'favicon.ico'),
-  ].filter(Boolean);
-  
-  for (const favPath of faviconPaths) {
-    if (favPath && fs.existsSync(favPath)) {
-      console.log(`Serving favicon from: ${path.relative(process.cwd(), favPath)}`);
-      return res.sendFile(favPath);
-    }
-  }
-  
-  console.warn('No favicon.ico found in any expected location');
-  res.status(204).end();
-});
-
-// Handle SPA routing - serve index.html for all other GET requests
-app.get('*', (req, res) => {
-  // First try to serve the requested file from root directory
-  const rootFile = path.join(__dirname, req.path);
-  if (fs.existsSync(rootFile) && !fs.statSync(rootFile).isDirectory()) {
-    return res.sendFile(rootFile);
-  }
-  
-  // Then try public directory
-  if (publicPath) {
-    const publicFile = path.join(publicPath, req.path);
-    if (fs.existsSync(publicFile) && !fs.statSync(publicFile).isDirectory()) {
-      return res.sendFile(publicFile);
-    }
-  }
-  
-  // For any other route, serve the main index.html (React app will handle routing)
-  const indexPath = path.join(__dirname, 'index.html');
-  if (fs.existsSync(indexPath)) {
-    console.log(`Serving SPA index from: ${path.relative(process.cwd(), indexPath)}`);
-    return res.sendFile(indexPath);
-  }
-  
-  // Fallback to public/index.html if exists
-  const publicIndexPath = path.join(publicPath, 'index.html');
-  if (fs.existsSync(publicIndexPath)) {
-    console.log(`Serving SPA index from: ${path.relative(process.cwd(), publicIndexPath)}`);
-    return res.sendFile(publicIndexPath);
-  }
-  
-  // If we get here, no index file was found
-  console.error('No index.html file found in root or public directory');
-  res.status(404).send('Not Found');
-});
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).send('Something broke!');
+  res.sendFile(path.join(__dirname, 'public/assets/images/dail-fav.png'));
 });
 
 // ======================================
@@ -633,32 +380,6 @@ import userRoutes from './src/routes/user.js';
 app.use('/api/billing', billingRoutes);
 app.use('/api/yaml-maps', yamlMapsRoutes);
 app.use('/api/user', userRoutes);
-
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  try {
-    // Add any additional health checks here (e.g., database connection)
-    const healthCheck = {
-      status: 'UP',
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-      environment: process.env.NODE_ENV || 'development'
-    };
-    
-    // Set appropriate status code based on health
-    const statusCode = healthCheck.database === 'connected' ? 200 : 503;
-    
-    res.status(statusCode).json(healthCheck);
-  } catch (error) {
-    console.error('Health check failed:', error);
-    res.status(500).json({
-      status: 'DOWN',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
 
 // Loop over the other .html endpoints
 const pages = ['history', 'guide', 'settings'];
@@ -948,85 +669,14 @@ async function clearDatabaseOnce() {
 async function connectToMongoDB() {
   const startTime = Date.now();
   try {
-    // Get the connection string from environment and ensure it's properly formatted
-    let mongoUri = process.env.MONGO_URI;
-    
-    // Log the connection string (with sensitive info redacted)
-    const safeMongoUri = mongoUri ? mongoUri.replace(/(mongodb\+srv:\/\/[^:]+:)[^@]+@/, '$1*****@') : 'undefined';
-    console.log(`Attempting to connect to MongoDB with URI: ${safeMongoUri}`);
-    
-    // Ensure the connection string has the correct prefix
-    if (!mongoUri) {
-      throw new Error('MONGO_URI is not defined in environment variables');
-    }
-    
-    // Remove any surrounding quotes from the connection string
-    mongoUri = mongoUri.replace(/^['"]|['"]$/g, '');
-    
-    // Extract components using regex instead of URL
-    const match = mongoUri.match(/^mongodb\+srv:\/\/([^:]+):([^@]+)@([^?]+)(\?.*)?$/);
-    
-    if (!match) {
-      throw new Error('Invalid MongoDB connection string format');
-    }
-    
-    // Encode username and password
-    const username = encodeURIComponent(match[1]);
-    const password = encodeURIComponent(match[2]);
-    const host = match[3];
-    const search = match[4] || '';
-    
-    // Rebuild the connection string with encoded credentials
-    mongoUri = `mongodb+srv://${username}:${password}@${host}${search}`;
-    
-    const connectWithRetry = () => {
-      console.log('🔌 Attempting to connect to MongoDB...');
-      return mongoose.connect(mongoUri, {
-        serverSelectionTimeoutMS: 10000, // Increase timeout for initial connection
-        socketTimeoutMS: 45000,
-        connectTimeoutMS: 15000,
-        maxPoolSize: 10, // Maximum number of connections in the connection pool
-        retryWrites: true,
-        w: 'majority'
-      });
-    };
-
-    // Handle initial connection
-    connectWithRetry()
-      .then(() => console.log('✅ MongoDB connected successfully'))
-      .catch(err => {
-        console.error('❌ MongoDB connection error:', err.message);
-        console.log('Retrying connection in 5 seconds...');
-        setTimeout(connectWithRetry, 5000);
-      });
-
-    // Handle connection events
-    mongoose.connection.on('connected', () => {
-      console.log('📊 MongoDB connected to database:', mongoose.connection.db.databaseName);
+    await mongoose.connect(process.env.MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 10000,
     });
-
-    mongoose.connection.on('error', (err) => {
-      console.error('❌ MongoDB connection error:', err.message);
-    });
-
-    mongoose.connection.on('disconnected', () => {
-      console.log('ℹ️  MongoDB disconnected');
-    });
-
-    // Close the Mongoose connection when the Node process ends
-    process.on('SIGINT', async () => {
-      try {
-        await mongoose.connection.close();
-        console.log('MongoDB connection closed through app termination');
-        process.exit(0);
-      } catch (err) {
-        console.error('Error closing MongoDB connection:', err);
-        process.exit(1);
-      }
-    });
-    
-    console.log(`✅ MongoDB connected in ${Date.now() - startTime}ms`);
-    return true;
+    console.log(`Connected to MongoDB in ${Date.now() - startTime}ms`);
+    return true; // Successfully connected
   } catch (err) {
     console.error('Mongoose connection error:', err);
     
