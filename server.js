@@ -272,7 +272,6 @@ app.use('/midscene_run', (req, res, next) => {
 // === GENERAL STATIC ASSETS ===
 app.use(express.static(path.join(__dirname, 'dist')));
 app.use(express.static(path.join(__dirname, 'public')));
-// app.use('/css', express.static(path.join(__dirname, 'public', 'css'))); // REMOVED - Handled by dist serving
 app.use('/js', express.static(path.join(__dirname, 'public', 'js')));
 
 // Serve static files from src directory with proper MIME types
@@ -280,9 +279,22 @@ app.use('/src', express.static(path.join(__dirname, 'src'), {
   setHeaders: (res, path) => {
     if (path.endsWith('.css')) {
       res.setHeader('Content-Type', 'text/css');
+    } else if (path.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript');
     }
   }
 }));
+
+// Handle model imports in development
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/models', express.static(path.join(__dirname, 'src', 'models'), {
+    setHeaders: (res) => {
+      res.setHeader('Content-Type', 'application/javascript');
+    }
+  }));
+}
+
+// In production, models should be imported from the built files in dist
 
 // Serve static files from node_modules directory with proper MIME types
 app.use('/node_modules', express.static(path.join(__dirname, 'node_modules'), {
