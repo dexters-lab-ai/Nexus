@@ -82,6 +82,7 @@ services:
     timeout_seconds: 5
     success_threshold: 1
     failure_threshold: 3
+    port: 3420
   
   # Resource Configuration
   resources:

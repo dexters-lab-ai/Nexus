@@ -46,8 +46,8 @@ WORKDIR /usr/src/app
 # Copy package files
 COPY --from=builder /usr/src/app/package*.json ./
 
-# Install production dependencies only using npm install to avoid lockfile issues
-RUN npm install --only=production --legacy-peer-deps
+# Install all dependencies (including devDependencies needed for build)
+RUN npm install --legacy-peer-deps
 
 # Copy built app from builder
 COPY --from=builder /usr/src/app/dist ./dist
