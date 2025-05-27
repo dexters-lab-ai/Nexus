@@ -19,8 +19,14 @@ RUN echo "Installing dependencies..." && \
     npm install --legacy-peer-deps && \
     echo "Dependency installation complete"
 
+# Fix Rollup binary issue
+RUN npm install -g @rollup/rollup-linux-x64-gnu
+
 # Copy app source
 COPY . .
+
+# Set environment to use the correct Rollup binary
+ENV ROLLUP_INLINE_RUN=1
 
 # Build the application
 RUN npm run build
