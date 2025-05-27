@@ -136,23 +136,25 @@ export default defineConfig({
   build: {
     cssCodeSplit: true,
     assetsDir: 'vendors/webfonts',
-    outDir: 'dist',  // New interface output
+    outDir: 'dist',
     emptyOutDir: true,
+    sourcemap: true,
     rollupOptions: {
       input: {
-        modern: path.resolve(__dirname, 'src/modern.html')  // New entry
+        main: path.resolve(__dirname, 'index.html')
       },
       output: {
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: (assetInfo) => {
+          if (assetInfo.name === 'index.html') return 'index.html';
           if (assetInfo.name.includes('Room') || 
               assetInfo.name.includes('3d') ||
               assetInfo.name.match(/\.(glb|gltf)$/)) {
             return 'assets/[name].[hash][extname]';
           }
-          return 'assets/[name][extname]';
-        },
-        chunkFileNames: 'assets/[name]-[hash].js',
-        entryFileNames: 'assets/[name]-[hash].js'
+          return 'assets/[name]-[hash][extname]';
+        }
       }
     }
   }

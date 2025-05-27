@@ -274,6 +274,24 @@ app.use(express.static(path.join(__dirname, 'dist')));
 app.use(express.static(path.join(__dirname, 'public')));
 // app.use('/css', express.static(path.join(__dirname, 'public', 'css'))); // REMOVED - Handled by dist serving
 app.use('/js', express.static(path.join(__dirname, 'public', 'js')));
+
+// Serve static files from src directory with proper MIME types
+app.use('/src', express.static(path.join(__dirname, 'src'), {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.css')) {
+      res.setHeader('Content-Type', 'text/css');
+    }
+  }
+}));
+
+// Serve static files from node_modules directory with proper MIME types
+app.use('/node_modules', express.static(path.join(__dirname, 'node_modules'), {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.css')) {
+      res.setHeader('Content-Type', 'text/css');
+    }
+  }
+}));
 app.use('/vendors', express.static(path.join(__dirname, 'public', 'vendors'), {
   setHeaders: (res, path) => {
     if (path.match(/\.(woff2?|ttf|otf|eot)$/)) {
