@@ -20,7 +20,7 @@ RUN rm -rf node_modules package-lock.json pnpm-lock.yaml
 # Install dependencies with the correct Rollup binary
 RUN echo "Installing dependencies..." && \
     npm install --legacy-peer-deps && \
-    npm install @rollup/rollup-linux-x64-gnu --save-dev && \
+    npm install @rollup/rollup-linux-x64-gnu rollup-plugin-visualizer@5.9.2 --save-dev && \
     echo "Dependency installation complete"
 
 # Verify Rollup installation
@@ -39,28 +39,23 @@ ENV ROLLUP_INLINE_RUN=1
 RUN npm run build
 
 # Production stage
-FROM node:18-slim
+FROM node:18.20.3-bullseye-slim
 
-# Create app directory
 WORKDIR /usr/src/app
 
-# Install production dependencies only
+# Copy package files
 COPY --from=builder /usr/src/app/package*.json ./
-RUN npm ci --only=production
 
-# Copy built files and required directories
+# Install production dependencies only using npm install to avoid lockfile issues
+RUN npm install --only=production --legacy-peer-deps
+
+# Copy built app from builder
 COPY --from=builder /usr/src/app/dist ./dist
 COPY --from=builder /usr/src/app/public ./public
 COPY --from=builder /usr/src/app/server.js .
-COPY --from=builder /usr/src/app/package*.json .
-
-# Copy source files for development mode and dynamic imports
 COPY --from=builder /usr/src/app/src ./src
 
-# Create necessary directories
-RUN mkdir -p /usr/src/app/nexus_run
-
-# Set environment to production
+# Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3000
 
