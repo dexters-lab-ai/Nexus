@@ -4,7 +4,6 @@ import Button from './base/Button.jsx';
 import { eventBus } from '../utils/events.js';
 import { stores } from '../store/index.js';
 import YamlMapEditor from './YamlMapEditor.js';
-import { version } from '../../package.json';
 
 // Prevent auto-execution of YamlMaps.js
 let preventYamlMapsAutoInit = true;
@@ -225,7 +224,7 @@ export default function Sidebar(props = {}) {
   // Click handler for installation
   sdkPromotion.addEventListener('click', (e) => {
     e.stopPropagation();
-    showNotification(' Preparing O.P.E.R.A.T.O.R Nexus SDK installation...', 'info');
+    showNotification('Preparing Nexus SDK installation...', 'info');
     // TODO: Add actual installation logic when SDK is ready
   });
   
@@ -238,7 +237,7 @@ export default function Sidebar(props = {}) {
   
   const sdkTitle = document.createElement('div');
   sdkTitle.className = 'sdk-title';
-  sdkTitle.innerHTML = `Nexus SDK <span class="coming-soon-badge">v${version}</span>`;
+  sdkTitle.innerHTML = 'Nexus SDK <span class="coming-soon-badge">v1.0.0</span>';
   
   const sdkDescription = document.createElement('div');
   sdkDescription.className = 'sdk-description';

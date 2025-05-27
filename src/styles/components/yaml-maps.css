@@ -1,0 +1,811 @@
+/* YAML Maps Component Styles */
+.yaml-maps-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg);
+  border-radius: 10px;
+  overflow: hidden;
+  color: var(--text);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  position: relative;
+}
+
+.yaml-maps-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: white;
+}
+
+.yaml-maps-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 500;
+}
+
+.yaml-maps-actions {
+  display: flex;
+  gap: 10px;
+  margin: 15px 20px;
+}
+
+.yaml-maps-search {
+  flex: 1;
+  position: relative;
+}
+
+.yaml-maps-search input {
+  width: 100%;
+  padding: 10px 15px 10px 40px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.yaml-maps-search i {
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--primary);
+}
+
+.yaml-maps-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.yaml-maps-sidebar {
+  width: 300px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 15px 0;
+}
+
+.yaml-maps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 15px;
+}
+
+.yaml-map-item {
+  padding: 15px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.yaml-map-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--primary);
+}
+
+.yaml-map-item.active {
+  background: rgba(var(--primary-rgb), 0.1);
+  border-color: var(--primary);
+}
+
+.yaml-map-name {
+  font-weight: 600;
+  font-size: 1.1rem;
+  margin-bottom: 5px;
+  color: var(--text);
+}
+
+.yaml-map-description {
+  font-size: 0.85rem;
+  margin-bottom: 10px;
+  color: rgba(var(--text-rgb), 0.8);
+  line-height: 1.4;
+}
+
+.yaml-map-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.yaml-map-tag {
+  padding: 3px 8px;
+  background: rgba(var(--primary-rgb), 0.2);
+  border-radius: 12px;
+  font-size: 0.7rem;
+  color: var(--text);
+}
+
+.yaml-map-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  font-size: 0.8rem;
+  color: rgba(var(--text-rgb), 0.7);
+}
+
+.yaml-map-usage {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.yaml-map-date {
+  font-style: italic;
+}
+
+.yaml-map-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.yaml-map-badge.public {
+  background: rgba(0, 255, 0, 0.1);
+  color: rgb(100, 255, 100);
+}
+
+.yaml-map-badge.private {
+  background: rgba(255, 0, 0, 0.1);
+  color: rgb(255, 100, 100);
+}
+
+.yaml-map-badge.owner {
+  background: rgba(0, 150, 255, 0.1);
+  color: rgb(100, 200, 255);
+}
+
+/* YAML Map Detail View */
+.yaml-map-detail {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.yaml-map-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.yaml-map-detail-title h3 {
+  margin: 0 0 5px 0;
+  font-size: 1.8rem;
+  font-weight: 500;
+}
+
+.yaml-map-detail-meta {
+  font-size: 0.9rem;
+  color: rgba(var(--text-rgb), 0.7);
+}
+
+.yaml-map-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.yaml-map-detail-description {
+  margin-bottom: 20px;
+  line-height: 1.6;
+  font-size: 0.95rem;
+}
+
+.yaml-map-detail-content {
+  flex: 1;
+}
+
+.yaml-map-code {
+  position: relative;
+  border-radius: 8px;
+  background: var(--background);
+  overflow: hidden;
+}
+
+.yaml-map-code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  background: rgba(0, 0, 0, 0.3);
+  font-family: monospace;
+  font-size: 0.9rem;
+}
+
+.yaml-map-code pre {
+  margin: 0;
+  padding: 15px;
+  overflow-x: auto;
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.yaml-map-code code {
+  color: #e6e6e6;
+}
+
+/* YAML Map Editor */
+.yaml-editor-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.yaml-editor {
+  width: 90%;
+  max-width: 1200px;
+  height: 90%;
+  background: var(--card-bg);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.yaml-editor-header {
+  padding: 15px 20px;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.yaml-editor-title {
+  font-size: 1.3rem;
+  font-weight: 500;
+}
+
+.yaml-editor-close {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.5rem;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.yaml-editor-close:hover {
+  opacity: 1;
+}
+
+.yaml-editor-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.yaml-editor-form {
+  width: 350px;
+  padding: 20px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.yaml-editor-field {
+  margin-bottom: 20px;
+}
+
+.yaml-editor-field label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.yaml-editor-field input,
+.yaml-editor-field textarea {
+  width: 100%;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.yaml-editor-field textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.yaml-editor-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.yaml-editor-tag {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: rgba(var(--primary-rgb), 0.2);
+  border-radius: 15px;
+  font-size: 0.8rem;
+}
+
+.yaml-editor-tag button {
+  background: none;
+  border: none;
+  color: rgba(var(--text-rgb), 0.8);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.yaml-editor-add-tag {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.yaml-editor-add-tag input {
+  flex: 1;
+}
+
+.yaml-editor-code {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.yaml-editor-code-header {
+  padding: 10px 15px;
+  background: rgba(0, 0, 0, 0.3);
+  font-family: monospace;
+  font-size: 0.9rem;
+  display: flex;
+  justify-content: space-between;
+}
+
+.yaml-editor-code-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.yaml-editor-code-content textarea {
+  width: 100%;
+  height: 100%;
+  padding: 15px;
+  border: none;
+  background: var(--background);
+  color: #e6e6e6;
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: none;
+}
+
+.yaml-editor-footer {
+  padding: 15px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.yaml-editor-status {
+  font-size: 0.9rem;
+  color: rgba(var(--text-rgb), 0.7);
+}
+
+.yaml-editor-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* Buttons */
+.btn-primary {
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 15px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover);
+  transform: translateY(-2px);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 15px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.btn-danger {
+  background: #ff4757;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 15px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-danger:hover {
+  background: #ff6b81;
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  padding: 8px 15px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-outline:hover {
+  background: rgba(var(--primary-rgb), 0.1);
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 1.1rem;
+  padding: 5px;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--primary);
+}
+
+/* Empty state */
+.yaml-maps-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  padding: 20px;
+}
+
+.yaml-maps-empty-icon {
+  font-size: 3rem;
+  margin-bottom: 20px;
+  color: rgba(var(--text-rgb), 0.3);
+}
+
+.yaml-maps-empty h3 {
+  margin: 0 0 10px 0;
+  font-size: 1.3rem;
+  font-weight: 500;
+}
+
+.yaml-maps-empty p {
+  margin: 0 0 20px 0;
+  color: rgba(var(--text-rgb), 0.7);
+  max-width: 400px;
+}
+
+/* Responsiveness */
+@media (max-width: 768px) {
+  .yaml-maps-content {
+    flex-direction: column;
+  }
+  
+  .yaml-maps-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: 40vh;
+  }
+  
+  .yaml-editor-content {
+    flex-direction: column;
+  }
+  
+  .yaml-editor-form {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideInUp {
+  from { 
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.yaml-maps-container {
+  animation: fadeIn 0.3s ease;
+}
+
+.yaml-map-item {
+  animation: slideInUp 0.3s ease;
+  animation-fill-mode: both;
+}
+
+.yaml-map-item:nth-child(1) { animation-delay: 0.05s; }
+.yaml-map-item:nth-child(2) { animation-delay: 0.1s; }
+.yaml-map-item:nth-child(3) { animation-delay: 0.15s; }
+.yaml-map-item:nth-child(4) { animation-delay: 0.2s; }
+.yaml-map-item:nth-child(5) { animation-delay: 0.25s; }
+.yaml-map-item:nth-child(6) { animation-delay: 0.3s; }
+.yaml-map-item:nth-child(7) { animation-delay: 0.35s; }
+.yaml-map-item:nth-child(8) { animation-delay: 0.4s; }
+.yaml-map-item:nth-child(9) { animation-delay: 0.45s; }
+.yaml-map-item:nth-child(10) { animation-delay: 0.5s; }
+
+/* Informative Rotator */
+.yaml-info-rotator {
+  position: relative;
+  background: linear-gradient(135deg, rgba(78, 111, 255, 0.1), rgba(138, 79, 255, 0.1));
+  border: 1px solid rgba(78, 111, 255, 0.2);
+  border-radius: 8px;
+  padding: 12px 15px;
+  margin: 15px;
+  overflow: hidden;
+}
+
+.yaml-info-rotator::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+}
+
+.yaml-info-slide {
+  display: none;
+  animation: fadeInSlide 0.5s ease;
+}
+
+.yaml-info-slide.active {
+  display: block;
+}
+
+.yaml-info-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 8px;
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+}
+
+.yaml-info-title i {
+  margin-right: 8px;
+}
+
+.yaml-info-content {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.yaml-info-navigation {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.yaml-info-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.yaml-info-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.yaml-info-dot.active {
+  background: var(--primary);
+  transform: scale(1.3);
+}
+
+.yaml-info-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.yaml-info-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 5px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.yaml-info-btn:hover {
+  color: var(--primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+@keyframes fadeInSlide {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Model comparison badge */
+.model-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  margin-right: 5px;
+  margin-bottom: 5px;
+}
+
+.model-badge.gpt4o {
+  background: rgba(74, 222, 128, 0.2);
+  color: rgb(74, 222, 128);
+}
+
+.model-badge.qwen {
+  background: rgba(238, 96, 156, 0.2);
+  color: rgb(238, 96, 156);
+}
+
+.model-badge.gemini {
+  background: rgba(56, 189, 248, 0.2);
+  color: rgb(56, 189, 248);
+}
+
+.model-badge.uitars {
+  background: rgba(250, 204, 21, 0.2);
+  color: rgb(250, 204, 21);
+}
+
+/* Help tooltip styles */
+.yaml-maps-help-tooltip {
+  position: relative;
+  display: inline-block;
+  margin-left: 8px;
+}
+
+.yaml-maps-help-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: 0.8rem;
+  cursor: help;
+}
+
+.yaml-maps-tooltip-content {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 15px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+  z-index: 10;
+  color: var(--text);
+  font-size: 0.85rem;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s;
+  pointer-events: none;
+}
+
+.yaml-maps-help-tooltip:hover .yaml-maps-tooltip-content {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(-10px);
+}
+
+.yaml-maps-tooltip-content::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 8px;
+  border-style: solid;
+  border-color: var(--border) transparent transparent transparent;
+}
