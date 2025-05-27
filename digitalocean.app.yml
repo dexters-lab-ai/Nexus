@@ -9,14 +9,6 @@ services:
   http_port: 3420
   instance_size_slug: professional-xs
   instance_count: 1
-  health_check:
-    http_path: /
-    initial_delay_seconds: 30
-    period_seconds: 10
-    timeout_seconds: 5
-    success_threshold: 1
-    failure_threshold: 3
-  
   # Environment Variables
   envs:
     # Server Configuration
@@ -92,7 +84,3 @@ services:
   resources:
     cpu: 1000m
     memory: 2048
-    period_seconds: 10
-    timeout_seconds: 5
-    success_threshold: 1
-    failure_threshold: 3

@@ -15,13 +15,6 @@ export default defineConfig(({ mode }) => {
     root: __dirname,
     publicDir: 'public',
     plugins: [react()],
-    
-export default defineConfig(({ mode }) => {
-  // Set NODE_ENV based on mode
-  process.env.NODE_ENV = mode;
-  
-  return {
-    // Silence specific build warnings
     logLevel: 'warn',
     build: {
       outDir: 'dist',
