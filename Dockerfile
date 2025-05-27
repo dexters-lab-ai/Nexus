@@ -7,7 +7,7 @@ WORKDIR /usr/src/app
 # Install system dependencies
 RUN apk --no-cache add --virtual .gyp python3 make g++
 
-# Copy package files
+# Copy package files first for better layer caching
 COPY package*.json ./
 
 # Install all dependencies (including devDependencies)
@@ -16,13 +16,8 @@ RUN npm install
 # Copy app source
 COPY . .
 
-# Build the application if needed
-RUN if [ -f "package.json" ] && [ -d "main-site" ]; then \
-      cd main-site && \
-      npm install && \
-      npm run build && \
-      cp -r dist/* ../public/; \
-    fi
+# Build the application
+RUN npm run build
 
 # Production stage
 FROM node:18-alpine
@@ -36,9 +31,8 @@ RUN npm install --production
 
 # Copy built files and required directories
 COPY --from=builder /usr/src/app/server.js .
-COPY --from=builder /usr/src/app/src ./src
+COPY --from=builder /usr/src/app/dist ./dist
 COPY --from=builder /usr/src/app/public ./public
-COPY --from=builder /usr/src/app/main-site ./main-site
 COPY --from=builder /usr/src/app/nexus_run ./nexus_run
 
 # Set environment to production
