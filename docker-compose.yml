@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: nexus-app
+    ports:
+      - "3420:3420"
+    environment:
+      - NODE_ENV=production
+      - PORT=3420
+      # Add your MongoDB connection string if using MongoDB
+      # - MONGODB_URI=mongodb://mongo:27017/nexus
+      # Add other required environment variables
+      # - OPENAI_API_KEY=your_openai_key
+      # - SESSION_SECRET=your_session_secret
+    volumes:
+      # Persist data between container restarts
+      - ./nexus_run:/usr/src/app/nexus_run
+      # If using MongoDB, uncomment the following:
+      # - mongo-data:/data/db
+    restart: unless-stopped
+    # Uncomment the following if you have a MongoDB service
+    # depends_on:
+    #   - mongo
+    # Uncomment the healthcheck if needed
+    # healthcheck:
+    #   test: ["CMD", "wget", "--spider", "http://localhost:3420/api/health"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+
+  # Uncomment and configure if you need MongoDB
+  # mongo:
+  #   image: mongo:latest
+  #   container_name: nexus-mongo
+  #   ports:
+  #     - "27017:27017"
+  #   volumes:
+  #     - mongo-data:/data/db
+  #   restart: unless-stopped
+  #   environment:
+  #     - MONGO_INITDB_DATABASE=nexus
+  #     - MONGO_INITDB_ROOT_USERNAME=admin
+  #     - MONGO_INITDB_ROOT_PASSWORD=your_mongo_password
+
+# Uncomment if using MongoDB volumes
+# volumes:
+#   mongo-data:
