@@ -14,13 +14,17 @@ RUN apt-get update && apt-get install -y \
 # Copy package files first for better layer caching
 COPY package*.json ./
 
-# Install dependencies
+# Clean up any existing node_modules and lock files
+RUN rm -rf node_modules package-lock.json pnpm-lock.yaml
+
+# Install dependencies with the correct Rollup binary
 RUN echo "Installing dependencies..." && \
     npm install --legacy-peer-deps && \
+    npm install @rollup/rollup-linux-x64-gnu --save-dev && \
     echo "Dependency installation complete"
 
-# Fix Rollup binary issue
-RUN npm install -g @rollup/rollup-linux-x64-gnu
+# Verify Rollup installation
+RUN ls -la node_modules/@rollup/
 
 # Copy app source
 COPY . .
