@@ -46,8 +46,10 @@ WORKDIR /usr/src/app
 # Copy package files
 COPY --from=builder /usr/src/app/package*.json ./
 
-# Install all dependencies (including devDependencies needed for build)
+# Install all dependencies including MongoDB and build tools
 RUN npm install --legacy-peer-deps
+# Ensure MongoDB driver and other required packages are installed
+RUN npm install mongodb@5.9.0 --save-exact
 
 # Copy built app from builder
 COPY --from=builder /usr/src/app/dist ./dist
