@@ -26,6 +26,9 @@ RUN echo "Installing dependencies..." && \
 # Verify Rollup installation
 RUN ls -la node_modules/@rollup/
 
+# Create nexus_run directory if it doesn't exist
+RUN mkdir -p nexus_run
+
 # Copy app source
 COPY . .
 
