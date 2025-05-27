@@ -190,8 +190,9 @@ export async function processYamlMapTask(options) {
   const stepIndex = 0; // YAML map is treated as a single step in the task flow
   let currentProgress = 0; // Track progress percentage
   
-  // Standard base URL for all URLs in this system - define once at the top
-  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  // Standard base URL for all URLs - use relative URLs in production
+  const isProduction = process.env.NODE_ENV === 'production';
+  const baseUrl = isProduction ? '' : (process.env.BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'));
   
   // Initialize all variables at the function scope level to prevent reference errors
   let rawExtractedText = '';
@@ -695,7 +696,8 @@ export async function processYamlMapTask(options) {
       
       // Notify UI about screenshot if successful - matching handleBrowserAction format
       if (finalScreenshotPath) {
-        const screenshotUrl = `${process.env.BASE_URL || 'http://localhost:3000'}/nexus_run/${screenshotFilename}`;
+        const baseScreenshotUrl = process.env.BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+        const screenshotUrl = `${baseScreenshotUrl}/nexus_run/${screenshotFilename}`;
         // Log the screenshot
         logYaml(`Screenshot captured successfully`, { screenshotUrl });
         

@@ -571,10 +571,13 @@ export async function generateReport(prompt, results, screenshotPath, runId, rep
       const reportFilename = `web-${currentDate}.html`;
       
       // Create consistent URLs for both raw and nexus reports
-      const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+      const isProduction = process.env.NODE_ENV === 'production';
+      const baseUrl = isProduction ? '' : (process.env.BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'));
       
-      // Raw URL (unprocessed report) - use absolute URL with protocol and host
-      reportRawUrl = `${baseUrl}/raw-report/${reportFilename}`;
+      // Raw URL (unprocessed report) - use relative URL in production
+      reportRawUrl = isProduction 
+        ? `/raw-report/${reportFilename}`
+        : `${baseUrl}/raw-report/${reportFilename}`;
       
       // Nexus URL (processed report) - use relative URL for consistency
       reportNexusUrl = `/external-report/${reportFilename}`;
@@ -584,8 +587,10 @@ export async function generateReport(prompt, results, screenshotPath, runId, rep
       console.error('[LandingReport] Error creating report URLs:', error);
       // Create fallback URLs with current timestamp
       const timestamp = Date.now();
-      const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-      reportRawUrl = `${baseUrl}/raw-report/web-fallback-${timestamp}.html`;
+      const baseUrl = isProduction ? '' : (process.env.BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'));
+      reportRawUrl = isProduction 
+        ? `/raw-report/web-fallback-${timestamp}.html`
+        : `${baseUrl}/raw-report/web-fallback-${timestamp}.html`;
       reportNexusUrl = `/external-report/web-fallback-${timestamp}.html`;
     }
   } else {
@@ -1239,7 +1244,7 @@ export async function generateReport(prompt, results, screenshotPath, runId, rep
   fs.writeFileSync(outPath, reportHTML, 'utf8');
   console.log(`[LandingReport] Saved landing report to ${outPath}`);
 
-  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+  const baseUrl = process.env.BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
   const landingReportWebPath = path.join('nexus_run', runId, 'report', filename).replace(/\\/g, '/');
   const currentLandingReportUrl = `${baseUrl}/${landingReportWebPath}`;
 

@@ -521,11 +521,28 @@ export function CommandCenter(props = {}) {
       ws.close(1000, 'Reinitializing connection');
     }
 
-    const wsUrl = `${WS_URL}?userId=${encodeURIComponent(userId)}`;
-    console.log(`[DEBUG] CommandCenter: Attempting WebSocket connection to: ${wsUrl}`);
+    // Use environment configuration if available, otherwise fall back to WS_URL or current host
+    let wsUrl;
+    if (window.__ENV__ && window.__ENV__.wsUrl) {
+      // Use the WebSocket URL from environment config
+      wsUrl = window.__ENV__.wsUrl;
+    } else if (WS_URL) {
+      // Fallback to the existing WS_URL constant if defined
+      wsUrl = WS_URL;
+    } else {
+      // Last resort: construct from current host
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      wsUrl = `${protocol}://${window.location.host}/ws`;
+    }
+
+    // Add userId as query parameter
+    const separator = wsUrl.includes('?') ? '&' : '?';
+    wsUrl = `${wsUrl}${separator}userId=${encodeURIComponent(userId)}`;
+    
+    console.log(`[CommandCenter] Connecting to WebSocket: ${wsUrl}`);
     try {
       ws = new WebSocket(wsUrl);
-      console.log('[DEBUG] CommandCenter: WebSocket object created.');
+      console.log('[CommandCenter] WebSocket connection established.');
     } catch (e) {
       connecting = false;
       console.error('[DEBUG] CommandCenter: Error creating WebSocket object:', e);
