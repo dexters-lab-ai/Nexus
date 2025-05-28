@@ -428,7 +428,40 @@ app.use('/api/yaml-maps',   requireAuth, yamlMapsRouter);
 
 // Health check endpoint - no auth required
 app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok', serverReady: true });
+  try {
+    const healthCheck = {
+      status: 'ok',
+      serverReady: true,
+      timestamp: new Date().toISOString(),
+      nodeEnv: process.env.NODE_ENV || 'not set',
+      port: process.env.PORT || 'not set',
+      mongoConnected: mongoose.connection.readyState === 1,
+      memoryUsage: process.memoryUsage(),
+      uptime: process.uptime(),
+      platform: process.platform,
+      arch: process.arch,
+      versions: {
+        node: process.version,
+        v8: process.versions.v8,
+        openssl: process.versions.openssl
+      }
+    };
+    
+    // Check MongoDB connection
+    if (mongoose.connection.readyState !== 1) {
+      healthCheck.status = 'warning';
+      healthCheck.message = 'MongoDB connection not ready';
+    }
+    
+    res.status(200).json(healthCheck);
+  } catch (error) {
+    console.error('Health check failed:', error);
+    res.status(500).json({
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Support legacy /logout path
