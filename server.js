@@ -4861,6 +4861,11 @@ function ensureUserId(req, res, next) {
   next();
 }
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // --- API: Who Am I (userId sync endpoint) ---
 app.get('/api/whoami', (req, res) => {
   try {
