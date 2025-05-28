@@ -67,20 +67,32 @@ void main() {
 `;
 
 const MODEL_PATHS = {
-  room: { primary: '/assets/roomModel.glb', fallback: '/assets/room-low.glb' },
-  googleLeds: { primary: '/assets/googleHomeLedsModel.glb', fallback: '/assets/googleHomeLeds-low.glb' },
-  loupedeck: { primary: '/assets/loupedeckButtonsModel.glb', fallback: '/assets/loupedeckButtons-low.glb' },
-  topChair: { primary: '/assets/topChairModel.glb', fallback: '/assets/topChair-low.glb' },
-  elgatoLight: { primary: '/assets/elgatoLightModel.glb', fallback: '/assets/elgatoLight-low.glb' },
-  pcScreen: { primary: '/assets/pcScreenModel.glb', fallback: '/assets/pcScreen-low.glb' },
-  macScreen: { primary: '/assets/macScreenModel.glb', fallback: '/assets/macScreen-low.glb' }
+  room: { primary: '/bruno_demo_temp/static/assets/roomModel.glb', fallback: '/bruno_demo_temp/static/assets/room-low.glb' },
+  googleLeds: { primary: '/bruno_demo_temp/static/assets/googleHomeLedsModel.glb', fallback: '/bruno_demo_temp/static/assets/googleHomeLeds-low.glb' },
+  loupedeck: { primary: '/bruno_demo_temp/static/assets/loupedeckButtonsModel.glb', fallback: '/bruno_demo_temp/static/assets/loupedeckButtons-low.glb' },
+  topChair: { primary: '/bruno_demo_temp/static/assets/topChairModel.glb', fallback: '/bruno_demo_temp/static/assets/topChair-low.glb' },
+  elgatoLight: { primary: '/bruno_demo_temp/static/assets/elgatoLightModel.glb', fallback: '/bruno_demo_temp/static/assets/elgatoLight-low.glb' },
+  pcScreen: { primary: '/bruno_demo_temp/static/assets/pcScreenModel.glb', fallback: '/bruno_demo_temp/static/assets/pcScreen-low.glb' },
+  macScreen: { primary: '/bruno_demo_temp/static/assets/macScreenModel.glb', fallback: '/bruno_demo_temp/static/assets/macScreen-low.glb' }
 };
 
 export default class RoomExperience extends EventEmitter {
   constructor(props = {}) {
     super();
     this.props = {
-
+      assetPaths: {
+        room: '/models/roomModel.glb',
+        googleLeds: '/models/googleHomeLedsModel.glb',
+        loupedeck: '/models/loupedeckButtonsModel.glb',
+        topChair: '/models/topChairModel.glb',
+        elgatoLight: '/models/elgatoLightModel.glb',
+        pcScreen: '/models/pcScreenModel.glb',
+        macScreen: '/models/macScreenModel.glb',
+        bakedDay: '/assets/bakedDay.jpg',
+        bakedNight: '/assets/bakedNight.jpg',
+        bakedNeutral: '/assets/bakedNeutral.jpg',
+        lightMap: '/assets/lightMap.jpg',
+        googleLedMask: '/assets/googleHomeLedMask.png'
       },
       ...props
     };
@@ -91,7 +103,8 @@ export default class RoomExperience extends EventEmitter {
     this.textureLoader = new THREE.TextureLoader(this.loadingManager);
     this.textureLoader.crossOrigin = 'anonymous';
     this.dracoLoader = new DRACOLoader(this.loadingManager);
-    this.dracoLoader.setDecoderPath('/public/draco/');
+    // In Vite, files in public directory are served from root
+    this.dracoLoader.setDecoderPath('/draco/');
     this.dracoLoader.setDecoderConfig({ type: 'wasm' });
     this.loader = new GLTFLoader(this.loadingManager);
     this.gltfLoader = this.loader;
@@ -615,28 +628,57 @@ export default class RoomExperience extends EventEmitter {
   }
 
   async loadGLB(name) {
-    // Exact filenames from our assets folder
+    // First try the path from assetPaths if it exists
+    if (this.props.assetPaths && this.props.assetPaths[name]) {
+      try {
+        const gltf = await this.gltfLoader.loadAsync(this.props.assetPaths[name]);
+        console.log(`✅ Loaded ${name} from ${this.props.assetPaths[name]}`);
+        return gltf;
+      } catch (err) {
+        console.log(`❌ Failed to load ${name} from asset path: ${this.props.assetPaths[name]}`);
+      }
+    }
+    
+    // Extract the base name if a full path was provided
+    let modelName = name;
+    if (name.includes('/')) {
+      modelName = name.split('/').pop().replace('.glb', '');
+    }
+    
+    // Fallback to the old path structure if asset path fails or doesn't exist
     const modelMap = {
       room: 'roomModel',
+      roomModel: 'roomModel',
       googleLeds: 'googleHomeLedsModel',
+      googleHomeLedsModel: 'googleHomeLedsModel',
       loupedeck: 'loupedeckButtonsModel',
+      loupedeckButtonsModel: 'loupedeckButtonsModel',
       topChair: 'topChairModel',
+      topChairModel: 'topChairModel',
       elgatoLight: 'elgatoLightModel',
+      elgatoLightModel: 'elgatoLightModel',
       pcScreen: 'pcScreenModel',
-      macScreen: 'macScreenModel'
+      pcScreenModel: 'pcScreenModel',
+      macScreen: 'macScreenModel',
+      macScreenModel: 'macScreenModel'
     };
     
+    const modelFile = modelMap[modelName] || modelName;
+    
     const paths = [
-      `/assets/${modelMap[name]}.glb`
+      `/bruno_demo_temp/static/assets/${modelFile}.glb`,
+      `/static/assets/${modelFile}.glb`,
+      `/models/${modelFile}.glb`,
+      `/${modelFile}.glb`
     ];
     
     for (const path of paths) {
       try {
         const gltf = await this.gltfLoader.loadAsync(path);
-        console.log(`✅ Loaded ${name} from ${path}`);
+        console.log(`✅ Loaded ${modelName} from fallback path: ${path}`);
         return gltf;
       } catch (err) {
-        console.log(`❌ Failed ${name} from ${path}`);
+        console.log(`❌ Failed to load ${modelName} from fallback path: ${path}`);
       }
     }
     
@@ -720,7 +762,85 @@ export default class RoomExperience extends EventEmitter {
     this.scene.add(this.coffeeSteam.particles);
   }
 
+  async loadElgatoLight() {
+    const gltf = await this.loadGLB('elgatoLight');
+    if (!gltf) return;
+    // Only add Elgato model (no extra spotlights)
+    this.scene.add(gltf.scene);
+  }
 
+  async loadTopChair() {
+    const gltf = await this.loadGLB('topChair');
+    if (!gltf) return;
+    // Use Bruno's original group and assign baked material
+    const chair = gltf.scene.children[0] || gltf.scene;
+    chair.renderOrder = 0;
+    // Assign baked shader material to all meshes in the chair
+    if (this.bakedMaterial) {
+      chair.traverse(child => {
+        if (child.isMesh) {
+          child.material = this.bakedMaterial;
+        }
+      });
+    }
+    this.topChair = {
+      group: chair,
+      swingSpeed: 0.5,
+      swingAmount: 0.3
+    };
+    this.scene.add(this.topChair.group);
+  }
+
+  async loadBouncingLogo() {
+    this.bouncingLogo = {
+      mesh: new THREE.Mesh(
+        new THREE.SphereGeometry(0.1, 32, 32),
+        new THREE.MeshStandardMaterial({ 
+          color: 0x196aff,
+          metalness: 0.3,
+          roughness: 0.1
+        })
+      ),
+      velocity: new THREE.Vector3(0, 0, 0),
+      position: new THREE.Vector3(0.5, 2, 0.5)
+    };
+    
+    this.bouncingLogo.mesh.position.copy(this.bouncingLogo.position);
+    this.bouncingLogo.mesh.castShadow = true;
+    this.scene.add(this.bouncingLogo.mesh);
+  }
+
+  async loadScreens() {
+    // PC Screen - Bruno's exact positioning
+    const pcGltf = await this.gltfLoader.loadAsync('/bruno_demo_temp/static/assets/pcScreenModel.glb');
+    const pcMesh = pcGltf.scene.children[0];
+    // Set up correct material/layering
+    pcMesh.renderOrder = 10;
+    pcMesh.material.depthTest = true;
+    pcMesh.material.depthWrite = false;
+    pcMesh.material.transparent = true;
+    this.pcScreen = new Screen(pcMesh, '/bruno_demo_temp/static/assets/videoPortfolio.mp4', this.scene);
+    // Only add mesh ONCE (Screen will add to scene)
+
+    // Mac Screen - Bruno's exact positioning
+    const macGltf = await this.gltfLoader.loadAsync('/bruno_demo_temp/static/assets/macScreenModel.glb');
+    const macMesh = macGltf.scene.children[0];
+    macMesh.renderOrder = 10;
+    macMesh.material.depthTest = true;
+    macMesh.material.depthWrite = false;
+    macMesh.material.transparent = true;
+    this.macScreen = new Screen(macMesh, '/bruno_demo_temp/static/assets/videoStream.mp4', this.scene);
+    // Only add mesh ONCE (Screen will add to scene)
+  }
+
+  setupBaseLighting() {
+    // Bruno's ambient light (subtle, only if absolutely needed)
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.025);
+    this.scene.add(ambientLight);
+    // Directional/ceiling light removed for pure baked lighting look.
+  }
+
+  setupAccentLights() {
     // Accent spotlights are disabled to use pure baked lighting
   }
 
