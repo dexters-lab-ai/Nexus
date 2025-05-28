@@ -24,18 +24,10 @@ export default defineConfig(({ mode }) => {
   return {
     mode,
     root: __dirname,
-    publicDir: {
-    // Copy all files from public directory to the root of the build output
-    // This ensures static assets are available at the root URL
-    copy: [
-      {
-        src: 'public/**/*',
-        dest: ''
-      }
-    ]
-  },
+    // Serve static files from public directory
+  publicDir: 'public',
   // Base public path when served in production
-  base: './',
+  base: '/',
     logLevel: 'info',
     plugins: [
       react(),
