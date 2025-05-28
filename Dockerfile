@@ -26,8 +26,11 @@ RUN echo "Installing dependencies..." && \
 # Verify Rollup installation
 RUN ls -la node_modules/@rollup/
 
-# Create nexus_run directory if it doesn't exist
-RUN mkdir -p nexus_run
+# Create necessary directories
+RUN mkdir -p nexus_run && \
+    mkdir -p public/assets && \
+    mkdir -p public/models && \
+    mkdir -p public/textures
 
 # Copy app source
 COPY . .
@@ -43,25 +46,33 @@ FROM node:18.20.3-bullseye-slim
 
 WORKDIR /usr/src/app
 
-# Copy package files
-COPY --from=builder /usr/src/app/package*.json ./
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y curl && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install all dependencies including MongoDB and build tools
-RUN npm install --legacy-peer-deps
-# Ensure MongoDB driver and other required packages are installed
-RUN npm install mongodb@5.9.0 --save-exact
+# Copy package files and install production dependencies
+COPY package*.json ./
+RUN npm install --only=production --legacy-peer-deps
 
 # Copy built app from builder
 COPY --from=builder /usr/src/app/dist ./dist
 
-# Copy public files and bruno_demo_temp directory
-COPY public/ ./public/
-COPY bruno_demo_temp/ ./bruno_demo_temp/
+# Copy server files
+COPY server.js .
+COPY modern-server.js .
 
-# Copy other necessary files
-COPY --from=builder /usr/src/app/node_modules ./node_modules
-COPY --from=builder /usr/src/app/package*.json ./
+# Copy public directory and its contents
+COPY --from=builder /usr/src/app/public ./public
+
+# Copy bruno_demo_temp assets
+COPY --from=builder /usr/src/app/bruno_demo_temp ./bruno_demo_temp
+
+# Copy source files
 COPY --from=builder /usr/src/app/src ./src
+
+# Ensure the server has the correct permissions
+RUN chmod +x server.js
 
 # Set environment variables
 ENV NODE_ENV=production
@@ -70,12 +81,9 @@ ENV PORT=3000
 # Expose the app port
 EXPOSE 3000
 
-# Install curl for healthcheck
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
-
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s \
   CMD curl -f http://localhost:${PORT}/api/health || exit 1
 
-# Command to run the application
+# Start the application
 CMD ["node", "--max-old-space-size=4096", "server.js"]
