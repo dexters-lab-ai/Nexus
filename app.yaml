@@ -97,7 +97,7 @@ services:
     - name: Permissions-Policy
       value: "camera=(), microphone=(), geolocation=()"
     - name: Set-Cookie
-      value: "__cf_bm=; Path=/; Domain=.ondigitalocean.app; Secure; HttpOnly; SameSite=None; Max-Age=14400"
+      value: "__cf_bm=; Path=/; Domain=operator-344ej.ondigitalocean.app; Secure; HttpOnly; SameSite=None; Max-Age=14400"
 
   # Static file serving configuration
   static_assets:
@@ -106,6 +106,15 @@ services:
       headers:
         - name: Cache-Control
           value: "public, max-age=31536000, immutable"
+    
+    # Serve bruno_demo_temp directory
+    - path: /bruno_demo_temp
+      directory: /app/bruno_demo_temp
+      headers:
+        - name: Cache-Control
+          value: "public, max-age=31536000, immutable"
+    
+    # Other static assets
     - path: /js
       directory: /app/public/js
       headers:
@@ -120,11 +129,6 @@ services:
       directory: /app/public/models
     - path: /textures
       directory: /app/public/textures
-    - path: /bruno_demo_temp/static/assets
-      directory: /app/bruno_demo_temp/static/assets
-      headers:
-        - name: Cache-Control
-          value: "public, max-age=31536000, immutable"
     - path: /assets
       directory: /app/public/assets
       headers:

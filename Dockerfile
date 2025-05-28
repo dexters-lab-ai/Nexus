@@ -68,6 +68,10 @@ COPY --from=builder /usr/src/app/public ./public
 # Copy bruno_demo_temp assets
 COPY --from=builder /usr/src/app/bruno_demo_temp ./bruno_demo_temp
 
+# Ensure proper permissions for bruno_demo_temp
+RUN chown -R node:node /usr/src/app/bruno_demo_temp && \
+    chmod -R 755 /usr/src/app/bruno_demo_temp
+
 # Copy source files
 COPY --from=builder /usr/src/app/src ./src
 
