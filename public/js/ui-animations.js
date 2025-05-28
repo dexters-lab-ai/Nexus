@@ -276,7 +276,7 @@ function setupThreeJSBackground() {
     const loader = new GLTFLoader();
     loader.setDRACOLoader(dracoLoader);
     
-    const modelPath = '/models/room.glb';
+    const modelPath = '/models/roomModel.glb';
     
     loader.load(
       modelPath,

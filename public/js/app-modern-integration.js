@@ -47,7 +47,7 @@ export async function initializeModernUI(options = {}) {
     rootElement = document.body,
     skipRoomExperience = false,
     initialLayoutPreset = 'default',
-    modelPath = '/models/room.glb'
+    modelPath = '/models/roomModel.glb'  // Files in public/ are served from root
   } = options;
 
   // Initialize debug panel first
