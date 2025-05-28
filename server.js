@@ -348,12 +348,57 @@ const allowedOrigins = [
   return value && self.indexOf(value) === index;
 }); // Remove any undefined/null values
 
-// Apply CORS middleware with dynamic origin
+// Apply CORS middleware with dynamic origin and enhanced security headers
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin && (allowedOrigins.includes(origin) || env.isDevelopment)) {
+    // Set CORS headers
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    
+    // Security headers
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+    
+    // Add request logging for non-asset requests
+    if (!req.path.match(/\.(js|css|jpg|jpeg|png|gif|ico|woff|woff2|ttf|eot|svg)$/)) {
+      const start = Date.now();
+      const { method, url, headers } = req;
+      
+      res.on('finish', () => {
+        const duration = Date.now() - start;
+        const logData = {
+          timestamp: new Date().toISOString(),
+          method,
+          url,
+          status: res.statusCode,
+          duration: `${duration}ms`,
+          ip: req.ip || req.connection.remoteAddress,
+          userAgent: headers['user-agent']
+        };
+        
+        // Log to console with color coding based on status code
+        const statusColor = res.statusCode >= 500 ? '\x1b[31m' : res.statusCode >= 400 ? '\x1b[33m' : '\x1b[32m';
+        console.log(`[${logData.timestamp}] ${method} ${url} - ${statusColor}${res.statusCode}\x1b[0m ${duration}ms`);
+        
+        // Log detailed request info in development
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Request Headers:', headers);
+          console.log('Response Headers:', res.getHeaders());
+        }
+      });
+    }
+    
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Session-ID');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Expose-Headers', 'X-Session-ID');
@@ -417,32 +462,128 @@ app.use('/midscene_run', (req, res, next) => {
 });
 
 // === GENERAL STATIC ASSETS ===
-// Serve static files from multiple possible locations with proper caching and security headers
+// Enhanced static file serving with security headers and cache control
 const staticOptions = {
   setHeaders: (res, path) => {
-    // Security headers for static files
-    res.header('X-Content-Type-Options', 'nosniff');
-    res.header('X-Frame-Options', 'DENY');
-    res.header('X-XSS-Protection', '1; mode=block');
+    // Security headers
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    
+    // Prevent Cloudflare from setting cookies
+    res.setHeader('Set-Cookie', [
+      `__cf_bm=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=None`,
+      `__cfruid=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=None`,
+      `_cfuvid=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=None`
+    ].join(', '));
     
     // Cache control (1 year for assets)
-    if (path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/)) {
-      res.header('Cache-Control', 'public, max-age=31536000');
+    if (path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|wasm|glb|hdr)$/i)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     }
   }
 };
 
+// Helper function to set common static file headers
+const setStaticFileHeaders = (res, filePath) => {
+  // Set security headers
+  setCSPHeaders(res);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  
+  // Set CORS headers for cross-origin requests
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
+  // Set content type based on file extension
+  const ext = path.extname(filePath).toLowerCase();
+  const mimeTypes = {
+    '.js': 'application/javascript',
+    '.css': 'text/css',
+    '.json': 'application/json',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2',
+    '.ttf': 'font/ttf',
+    '.eot': 'font/eot',
+    '.wasm': 'application/wasm',
+    '.glb': 'model/gltf-binary',
+    '.hdr': 'application/octet-stream'
+  };
+  
+  if (mimeTypes[ext]) {
+    res.setHeader('Content-Type', mimeTypes[ext]);
+  }
+  
+  // Set caching headers for static assets (1 year for immutable assets)
+  const immutableExts = ['.js', '.css', '.woff', '.woff2', '.ttf', '.eot', '.wasm', '.glb', '.hdr', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico'];
+  if (immutableExts.some(immutableExt => filePath.endsWith(immutableExt))) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  } else {
+    // No cache for HTML and other files
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+};
+
+// Define static directories to serve with their options
 const staticDirs = [
-  path.join(__dirname, 'dist'),
-  path.join(__dirname, 'public'),
-  path.join(__dirname, 'bruno_demo_temp/static')
+  { 
+    path: path.join(__dirname, 'public'), 
+    route: '/public',
+    options: {
+      setHeaders: (res, path) => setStaticFileHeaders(res, path)
+    }
+  },
+  { 
+    path: path.join(__dirname, 'public', 'assets'), 
+    route: '/public/assets',
+    options: {
+      setHeaders: (res, path) => setStaticFileHeaders(res, path)
+    }
+  },
+  { 
+    path: path.join(__dirname, 'public', 'models'), 
+    route: '/public/models',
+    options: {
+      setHeaders: (res, path) => setStaticFileHeaders(res, path)
+    }
+  },
+  { 
+    path: path.join(__dirname, 'public', 'draco'), 
+    route: '/public/draco',
+    options: {
+      setHeaders: (res, path) => setStaticFileHeaders(res, path)
+    }
+  },
+  { 
+    path: path.join(__dirname, 'node_modules'), 
+    route: '/node_modules',
+    options: {
+      setHeaders: (res, path) => setStaticFileHeaders(res, path)
+    }
+  }
 ];
 
+// Serve index.html for the root route
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 // Mount each static directory with options
-staticDirs.forEach(dir => {
-  if (fs.existsSync(dir)) {
-    app.use(express.static(dir, staticOptions));
-    console.log(`Serving static files from: ${dir}`);
+staticDirs.forEach(({ path: dirPath, route, options }) => {
+  if (fs.existsSync(dirPath)) {
+    app.use(route, express.static(dirPath, options));
+    console.log(`Serving static files from: ${dirPath} at ${route}`);
+  } else {
+    console.warn(`Static directory not found: ${dirPath}`);
   }
 });
 
@@ -489,41 +630,92 @@ if (process.env.NODE_ENV !== 'production') {
 
 // In production, models should be imported from the built files in dist
 
-// Serve static files from node_modules directory with proper MIME types
-app.use('/node_modules', express.static(path.join(__dirname, 'node_modules'), {
-  setHeaders: (res, path) => {
-    if (path.endsWith('.css')) {
-      res.setHeader('Content-Type', 'text/css');
+// Helper function to set CSP headers
+const setCSPHeaders = (res) => {
+  // Allow Web Workers from blob: and self
+  // Allow WebGL and other necessary features
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net cdn.skypack.dev",
+    "style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data: https://cdnjs.cloudflare.com",
+    "connect-src 'self' ws: wss:",
+    "worker-src 'self' blob: data:",
+    "child-src 'self' blob:",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    "base-uri 'self'"
+  ].join('; ');
+  
+  res.setHeader('Content-Security-Policy', csp);
+  
+  // Additional headers for CORS and other security
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+};
+
+// Vendor files handler with CORS and CSP
+const vendorFileHandler = (res, path) => {
+  setCSPHeaders(res);
+  if (path.match(/\.(woff2?|ttf|otf|eot)$/)) {
+    // Add CORS headers for font files
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET');
+    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    // Set proper MIME types for font files
+    if (path.endsWith('.ttf')) {
+      res.setHeader('Content-Type', 'font/ttf');
+    } else if (path.endsWith('.woff')) {
+      res.setHeader('Content-Type', 'font/woff');
+    } else if (path.endsWith('.woff2')) {
+      res.setHeader('Content-Type', 'font/woff2');
+    } else if (path.endsWith('.eot')) {
+      res.setHeader('Content-Type', 'application/vnd.ms-fontobject');
+    } else if (path.endsWith('.otf')) {
+      res.setHeader('Content-Type', 'font/otf');
     }
   }
-}));
-app.use('/vendors', express.static(path.join(__dirname, 'public', 'vendors'), {
-  setHeaders: (res, path) => {
-    if (path.match(/\.(woff2?|ttf|otf|eot)$/)) {
-      // Add CORS headers for font files
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET');
-      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-      // Set proper MIME types for font files
-      if (path.endsWith('.ttf')) {
-        res.setHeader('Content-Type', 'font/ttf');
-      } else if (path.endsWith('.woff')) {
-        res.setHeader('Content-Type', 'font/woff');
-      } else if (path.endsWith('.woff2')) {
-        res.setHeader('Content-Type', 'font/woff2');
-      } else if (path.endsWith('.eot')) {
-        res.setHeader('Content-Type', 'application/vnd.ms-fontobject');
-      } else if (path.endsWith('.otf')) {
-        res.setHeader('Content-Type', 'font/otf');
+};
+
+// Add vendor files handler to staticDirs
+staticDirs.push({
+  path: path.join(__dirname, 'public', 'vendors'),
+  route: '/vendors',
+  options: {
+    setHeaders: vendorFileHandler
+  }
+});
+
+// Handle model imports in development
+if (process.env.NODE_ENV !== 'production') {
+  staticDirs.push({
+    path: path.join(__dirname, 'src', 'models'),
+    route: '/models',
+    options: {
+      setHeaders: (res) => {
+        res.setHeader('Content-Type', 'application/javascript');
+        setCSPHeaders(res);
       }
     }
-  }
-}));
-app.use('/assets', express.static(path.join(__dirname, 'public', 'assets')));
-app.use('/images', express.static(path.join(__dirname, 'public', 'assets', 'images')));
-app.use('/models', express.static('public/models'));
-app.use('/draco', express.static('public/draco'));
+  });
+}
+
+// Serve all static directories
+try {
+  staticDirs.forEach(({ path: dirPath, route, options = {} }) => {
+    if (fs.existsSync(dirPath)) {
+      app.use(route, express.static(dirPath, options));
+      console.log(`Serving static files from: ${dirPath} at ${route}`);
+    } else {
+      console.warn(`Static directory not found: ${dirPath}`);
+    }
+  });
+} catch (error) {
+  console.error('Error setting up static directories:', error);
+}
 
 // Serve default favicon
 app.get('/favicon.ico', (req, res) => {

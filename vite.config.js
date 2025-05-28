@@ -25,10 +25,27 @@ export default defineConfig(({ mode }) => {
     mode,
     root: __dirname,
     // Serve static files from public directory
-  publicDir: 'public',
-  // Base public path when served in production
-  base: '/',
+    publicDir: 'public',
+    // Base public path when served in production
+    base: '/',
     logLevel: 'info',
+    optimizeDeps: {
+      include: [
+        'lil-gui',
+        'react',
+        'react-dom',
+        'react-router-dom',
+        '@mantine/core',
+        '@mantine/hooks',
+        '@mantine/notifications',
+        '@floating-ui/react',
+        '@floating-ui/react/dom'
+      ],
+      exclude: ['@babel/runtime'],
+      esbuildOptions: {
+        target: 'es2020',
+      },
+    },
     plugins: [
       react(),
       visualizer({
@@ -98,9 +115,13 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, 'src'),
         '@components': path.resolve(__dirname, 'src/components'),
         '@store': path.resolve(__dirname, 'src/store'),
-        '@fortawesome/fontawesome-free/webfonts': path.resolve(__dirname, 'node_modules/@fortawesome/fontawesome-free/webfonts'),
+        // Static assets
+        '/models': path.resolve(__dirname, 'public/models'),
+        '/assets': path.resolve(__dirname, 'public/assets'),
+        '/draco': path.resolve(__dirname, 'public/draco'),
         // Ensure Mantine uses the correct Floating UI version
         '@floating-ui/react': path.resolve(__dirname, 'node_modules/@floating-ui/react'),
+        '@fortawesome/fontawesome-free/webfonts': path.resolve(__dirname, 'node_modules/@fortawesome/fontawesome-free/webfonts'),
         '@floating-ui/react-dom': path.resolve(__dirname, 'node_modules/@floating-ui/react-dom')
       },
       dedupe: ['@mantine/core', '@mantine/hooks', '@mantine/notifications', '@floating-ui/react', '@floating-ui/react-dom']
@@ -140,18 +161,6 @@ export default defineConfig(({ mode }) => {
       'process.env.VITE_API_URL': JSON.stringify(process.env.VITE_API_URL || 'http://localhost:3420'),
       'process.env.VITE_WS_URL': JSON.stringify(process.env.VITE_WS_URL || 'ws://localhost:3420')
     },
-    optimizeDeps: {
-      include: [
-        'react',
-        'react-dom',
-        'react-router-dom',
-        '@mantine/core',
-        '@mantine/hooks',
-        '@mantine/notifications',
-        '@floating-ui/react',
-        '@floating-ui/react/dom'
-      ],
-      exclude: ['@babel/runtime']
-    }
+    // OptimizeDeps configuration is now at the top of the config
   };
 });
