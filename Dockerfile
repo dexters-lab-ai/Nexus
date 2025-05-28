@@ -54,8 +54,9 @@ RUN npm install mongodb@5.9.0 --save-exact
 # Copy built app from builder
 COPY --from=builder /usr/src/app/dist ./dist
 
-# Copy public files
+# Copy public files and bruno_demo_temp directory
 COPY public/ ./public/
+COPY bruno_demo_temp/ ./bruno_demo_temp/
 
 # Copy other necessary files
 COPY --from=builder /usr/src/app/node_modules ./node_modules
