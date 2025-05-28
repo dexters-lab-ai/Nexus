@@ -80,14 +80,14 @@ RUN chmod +x server.js
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=3420
 
 # Expose the app port
-EXPOSE 3000
+EXPOSE 3420
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s \
-  CMD curl -f http://localhost:${PORT}/api/health || exit 1
+  CMD curl -f http://localhost:3420/api/health || exit 1
 
 # Start the application
 CMD ["node", "--max-old-space-size=4096", "server.js"]

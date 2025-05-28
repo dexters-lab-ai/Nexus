@@ -8,10 +8,7 @@ services:
   dockerfile_path: Dockerfile
   http_port: 3420
   instance_size_slug: professional-xs
-  instance_count: 1
-  build_command: |
-    npm install --legacy-peer-deps
-    npm run build
+  instance_count: 2
   run_command: node --max-old-space-size=4096 server.js
   envs:
     # Server Configuration
