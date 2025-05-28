@@ -53,8 +53,13 @@ RUN npm install mongodb@5.9.0 --save-exact
 
 # Copy built app from builder
 COPY --from=builder /usr/src/app/dist ./dist
-COPY --from=builder /usr/src/app/public ./public
-COPY --from=builder /usr/src/app/server.js .
+
+# Copy public files
+COPY public/ ./public/
+
+# Copy other necessary files
+COPY --from=builder /usr/src/app/node_modules ./node_modules
+COPY --from=builder /usr/src/app/package*.json ./
 COPY --from=builder /usr/src/app/src ./src
 
 # Set environment variables
