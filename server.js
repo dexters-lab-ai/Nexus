@@ -288,6 +288,10 @@ app.use(express.urlencoded({ extended: true }));
 
 // Import environment config
 import config from './src/config/env.js';
+import { cdnAndCookieFixer } from './src/middleware/cdnFixer.js';
+
+// Apply CDN and cookie fixer middleware
+app.use(cdnAndCookieFixer);
 
 // Log environment info
 console.log('Environment:', config.nodeEnv);
@@ -412,17 +416,31 @@ app.use('/midscene_run', (req, res, next) => {
 });
 
 // === GENERAL STATIC ASSETS ===
-// Serve static files from multiple possible locations
+// Serve static files from multiple possible locations with proper caching and security headers
+const staticOptions = {
+  setHeaders: (res, path) => {
+    // Security headers for static files
+    res.header('X-Content-Type-Options', 'nosniff');
+    res.header('X-Frame-Options', 'DENY');
+    res.header('X-XSS-Protection', '1; mode=block');
+    
+    // Cache control (1 year for assets)
+    if (path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/)) {
+      res.header('Cache-Control', 'public, max-age=31536000');
+    }
+  }
+};
+
 const staticDirs = [
   path.join(__dirname, 'dist'),
   path.join(__dirname, 'public'),
-  path.join(__dirname, 'bruno_demo_temp/static') // Add this line for production assets
+  path.join(__dirname, 'bruno_demo_temp/static')
 ];
 
-// Mount each static directory
+// Mount each static directory with options
 staticDirs.forEach(dir => {
   if (fs.existsSync(dir)) {
-    app.use(express.static(dir));
+    app.use(express.static(dir, staticOptions));
     console.log(`Serving static files from: ${dir}`);
   }
 });
