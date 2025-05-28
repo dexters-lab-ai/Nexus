@@ -282,16 +282,17 @@ wss.on('connection', (ws, req) => {
 // ======================================
 // 7) MIDDLEWARE (ORDER MATTERS)
 // ======================================
-// 7.1 Body parsers
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Import environment config
+// Import environment config first
 import config from './src/config/env.js';
 import { cdnAndCookieFixer } from './src/middleware/cdnFixer.js';
 
-// Apply CDN and cookie fixer middleware
+// 7.1 Apply CDN and cookie fixer middleware FIRST
+// This needs to be before any other middleware to properly handle static assets
 app.use(cdnAndCookieFixer);
+
+// 7.2 Body parsers
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Log environment info
 console.log('Environment:', config.nodeEnv);
