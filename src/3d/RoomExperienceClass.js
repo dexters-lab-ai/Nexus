@@ -81,18 +81,18 @@ export default class RoomExperience extends EventEmitter {
     super();
     this.props = {
       assetPaths: {
-        room: '/bruno_demo_temp/static/assets/roomModel.glb',
-        googleLeds: '/bruno_demo_temp/static/assets/googleHomeLedsModel.glb',
-        loupedeck: '/bruno_demo_temp/static/assets/loupedeckButtonsModel.glb',
-        topChair: '/bruno_demo_temp/static/assets/topChairModel.glb',
-        elgatoLight: '/bruno_demo_temp/static/assets/elgatoLightModel.glb',
-        pcScreen: '/bruno_demo_temp/static/assets/pcScreenModel.glb',
-        macScreen: '/bruno_demo_temp/static/assets/macScreenModel.glb',
-        bakedDay: '/bruno_demo_temp/static/assets/bakedDay.jpg',
-        bakedNight: '/bruno_demo_temp/static/assets/bakedNight.jpg',
-        bakedNeutral: '/bruno_demo_temp/static/assets/bakedNeutral.jpg',
-        lightMap: '/bruno_demo_temp/static/assets/lightMap.jpg',
-        googleLedMask: '/bruno_demo_temp/static/assets/googleHomeLedMask.png'
+        room: '/models/roomModel.glb',
+        googleLeds: '/models/googleHomeLedsModel.glb',
+        loupedeck: '/models/loupedeckButtonsModel.glb',
+        topChair: '/models/topChairModel.glb',
+        elgatoLight: '/models/elgatoLightModel.glb',
+        pcScreen: '/models/pcScreenModel.glb',
+        macScreen: '/models/macScreenModel.glb',
+        bakedDay: '/assets/bakedDay.jpg',
+        bakedNight: '/assets/bakedNight.jpg',
+        bakedNeutral: '/assets/bakedNeutral.jpg',
+        lightMap: '/assets/lightMap.jpg',
+        googleLedMask: '/assets/googleHomeLedMask.png'
       },
       ...props
     };
@@ -103,7 +103,7 @@ export default class RoomExperience extends EventEmitter {
     this.textureLoader = new THREE.TextureLoader(this.loadingManager);
     this.textureLoader.crossOrigin = 'anonymous';
     this.dracoLoader = new DRACOLoader(this.loadingManager);
-    this.dracoLoader.setDecoderPath('/draco/');
+    this.dracoLoader.setDecoderPath('/public/draco/');
     this.dracoLoader.setDecoderConfig({ type: 'wasm' });
     this.loader = new GLTFLoader(this.loadingManager);
     this.gltfLoader = this.loader;
@@ -385,40 +385,70 @@ export default class RoomExperience extends EventEmitter {
   }
 
   async loadEnvironment() {
-    // Only use HDR, do not fallback to any color or neutral environment
-    const path = '/bruno_demo_temp/static/assets/environment.hdr';
-    try {
-      const hdrEquirect = await new RGBELoader().loadAsync(path);
-      const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
-      pmremGenerator.compileEquirectangularShader();
-      const envMap = pmremGenerator.fromEquirectangular(hdrEquirect).texture;
-      this.scene.environment = envMap;
-      // Bruno: Use HDR for environment, keep background black for visual pop
-      this.scene.background = null;
-      hdrEquirect.dispose();
-      pmremGenerator.dispose();
-      console.log(`✅ Loaded HDR from ${path}`);
-    } catch (err) {
-      console.error(`❌ Failed to load HDR from ${path}`, err);
-      // No fallback: background remains null for maximum fidelity
+    // Try loading from the new path first
+    const paths = [
+      '/assets/environment.hdr',
+      '/bruno_demo_temp/static/assets/environment.hdr'  // Fallback to old path
+    ];
+    
+    let envMap = null;
+    
+    for (const path of paths) {
+      try {
+        console.log(`[Environment] Attempting to load HDR from: ${path}`);
+        const hdrEquirect = await new RGBELoader().loadAsync(path);
+        const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
+        pmremGenerator.compileEquirectangularShader();
+        envMap = pmremGenerator.fromEquirectangular(hdrEquirect).texture;
+        
+        this.scene.environment = envMap;
+        this.scene.background = null;
+        
+        hdrEquirect.dispose();
+        pmremGenerator.dispose();
+        
+        console.log(`✅ Loaded HDR environment from ${path}`);
+        return; // Success, exit the function
+      } catch (err) {
+        console.warn(`⚠️ Could not load HDR from ${path}:`, err.message);
+        // Continue to next path or fallback
+      }
     }
+    
+    // If we get here, all HDR loads failed
+    console.warn('❌ All HDR load attempts failed, using fallback color');
+    this.scene.background = new THREE.Color(0x111111);
+    this.scene.environment = null;
   }
 
   async loadAsset(asset) {
-    if (!this.loader) throw new Error('Loader not initialized');
-    
     try {
-      const gltf = await this.loader.loadAsync(asset.path);
-      this.loadedAssets++;
-      const progress = Math.floor((this.loadedAssets / this.totalAssets) * 100);
-      this.emit('asset-loaded', { 
-        name: asset.name,
-        progress: progress
-      });
-      return gltf;
+      const assetPath = this.props.assetPaths[asset];
+      console.log(`[Model] Loading ${asset} from ${assetPath}`);
+      
+      // Check if this is a required asset
+      const requiredAssets = ['room', 'pcScreen'];
+      const isRequired = requiredAssets.includes(asset);
+      
+      try {
+        const gltf = await this.loadGLB(assetPath);
+        return gltf;
+      } catch (error) {
+        if (isRequired) {
+          console.error(`[Model] Failed to load required asset ${asset}:`, error);
+          throw error;
+        } else {
+          console.warn(`[Model] Non-critical asset ${asset} failed to load, continuing without it`);
+          return null;
+        }
+      }
     } catch (error) {
-      this.emit('load-error', error);
-      throw error;
+      console.error(`[Model] Error in loadAsset for ${asset}:`, error);
+      // Only throw if this is a required asset
+      if (requiredAssets.includes(asset)) {
+        throw error;
+      }
+      return null;
     }
   }
 
@@ -427,21 +457,64 @@ export default class RoomExperience extends EventEmitter {
     
     try {
       // Load main room
-      const roomGLTF = await this.loadAsset({ name: 'room', path: MODEL_PATHS.room.primary });
+      const roomGLTF = await this.loadAsset('room');
       if (roomGLTF?.scene) {
         this.room = roomGLTF.scene;
         this.roomContainer.add(this.room);
         
-        // Load textures
-        const textures = await Promise.all([
-          this.textureLoader.loadAsync('/bruno_demo_temp/static/assets/bakedDay.jpg'),
-          this.textureLoader.loadAsync('/bruno_demo_temp/static/assets/bakedNight.jpg'),
-          this.textureLoader.loadAsync('/bruno_demo_temp/static/assets/bakedNeutral.jpg'),
-          this.textureLoader.loadAsync('/bruno_demo_temp/static/assets/lightMap.jpg')
-        ]);
-        
-        this.bakedTextures = textures;
-        this.applyBakedMaterials(...textures);
+        // Try to load baked textures
+        try {
+          const texturePaths = [
+            '/assets/bakedDay.jpg',
+            '/assets/bakedNight.jpg',
+            '/assets/bakedNeutral.jpg',
+            '/assets/lightMap.jpg'
+          ];
+          
+          // Fallback to old paths if needed
+          const fallbackPaths = [
+            '/bruno_demo_temp/static/assets/bakedDay.jpg',
+            '/bruno_demo_temp/static/assets/bakedNight.jpg',
+            '/bruno_demo_temp/static/assets/bakedNeutral.jpg',
+            '/bruno_demo_temp/static/assets/lightMap.jpg'
+          ];
+          
+          const textures = [];
+          
+          // Try to load each texture with fallback
+          for (let i = 0; i < texturePaths.length; i++) {
+            try {
+              const texture = await this.textureLoader.loadAsync(texturePaths[i]);
+              textures.push(texture);
+              console.log(`✅ Loaded texture ${texturePaths[i]}`);
+            } catch (error) {
+              console.warn(`⚠️ Could not load texture ${texturePaths[i]}, trying fallback`);
+              try {
+                const fallbackTexture = await this.textureLoader.loadAsync(fallbackPaths[i]);
+                textures.push(fallbackTexture);
+                console.log(`✅ Loaded fallback texture ${fallbackPaths[i]}`);
+              } catch (fallbackError) {
+                // Create a solid color texture as final fallback
+                console.warn(`⚠️ Could not load fallback texture, using solid color`);
+                const color = [0x333333, 0x111111, 0x222222, 0x000000][i];
+                const canvas = document.createElement('canvas');
+                canvas.width = 4;
+                canvas.height = 4;
+                const context = canvas.getContext('2d');
+                context.fillStyle = `#${color.toString(16).padStart(6, '0')}`;
+                context.fillRect(0, 0, 4, 4);
+                const texture = new THREE.CanvasTexture(canvas);
+                textures.push(texture);
+              }
+            }
+          }
+          
+          this.bakedTextures = textures;
+          this.applyBakedMaterials(...textures);
+        } catch (error) {
+          console.error('Error loading baked textures:', error);
+          // Continue without baked textures if they can't be loaded
+        }
       }
       
       // Load interactive elements via dedicated loaders

@@ -211,7 +211,7 @@ global.NEXUS_PATHS = {
 // ======================================
 // 6) EXPRESS + HTTP SERVER
 // ======================================
-const app    = express();
+const app = express();
 
 // Configure CORS
 app.use((req, res, next) => {
@@ -222,8 +222,71 @@ app.use((req, res, next) => {
   next();
 });
 
-// Configure session middleware
+// Create HTTP server and WebSocket server
 const server = createServer(app);
+const wss = new WebSocketServer({ server, path: '/ws' });
+
+// WebSocket connection handling
+const userConnections = new Map();
+const unsentMessages = new Map();
+
+wss.on('connection', (ws, req) => {
+  let userIdParam = req.url.split('userId=')[1]?.split('&')[0];
+  const userId = decodeURIComponent(userIdParam || '');
+  console.debug('[DEBUG] WebSocket connection received for userId:', userId);
+  
+  if (!userId) {
+    console.error('[WebSocket] Connection rejected: Missing userId');
+    ws.send(JSON.stringify({ event: 'error', message: 'Missing userId' }));
+    ws.close();
+    return;
+  }
+  
+  ws.userId = userId;
+  const userWsSet = userConnections.get(userId) || new Set();
+  userWsSet.add(ws);
+  userConnections.set(userId, userWsSet);
+  console.log(`[WebSocket] Connected: userId=${userId}, total connections=${userWsSet.size}`);
+
+  // Send any queued messages
+  if (unsentMessages.has(userId)) {
+    const queuedMessages = unsentMessages.get(userId);
+    queuedMessages.forEach(message => {
+      try {
+        ws.send(JSON.stringify(message));
+      } catch (error) {
+        console.error(`[WebSocket] Failed to send queued message to userId=${userId}:`, error);
+      }
+    });
+    unsentMessages.delete(userId);
+  }
+
+  ws.on('close', () => {
+    const userWsSet = userConnections.get(userId);
+    if (userWsSet) {
+      userWsSet.delete(ws);
+      if (userWsSet.size === 0) {
+        userConnections.delete(userId);
+      }
+      console.log(`[WebSocket] Disconnected: userId=${userId}, remaining connections=${userWsSet?.size || 0}`);
+    }
+  });
+
+  ws.on('error', (error) => {
+    console.error(`[WebSocket] Error for userId=${userId}:`, error);
+  });
+
+  ws.on('message', (message) => {
+    try {
+      const data = JSON.parse(message);
+      if (data.event === 'debugLog') {
+        console.log('[CLIENT DEBUG]', data.message, data.data);
+      }
+    } catch (e) {
+      console.error('WS message parse error:', e);
+    }
+  });
+});
 
 // ======================================
 // 7) MIDDLEWARE (ORDER MATTERS)
@@ -515,66 +578,10 @@ app.get('/', guard, (req, res) => {
 })
 
 // ======================================
-// 11) WEBSOCKET SETUP
+// 11) WEBSOCKET SETUP (moved to section 6)
 // ======================================
-const userConnections = new Map();
-const unsentMessages  = new Map();
-const wss = new WebSocketServer({ server, path: '/ws' });
-
-wss.on('connection', (ws, req) => {
-  let userIdParam = req.url.split('userId=')[1]?.split('&')[0];
-  const userId = decodeURIComponent(userIdParam || '');
-  console.debug('[DEBUG] WebSocket connection received for userId:', userId);
-  if (!userId) {
-    console.error('[WebSocket] Connection rejected: Missing userId');
-    ws.send(JSON.stringify({ event: 'error', message: 'Missing userId' }));
-    ws.close();
-    return;
-  }
-  ws.userId = userId;
-  const userWsSet = userConnections.get(userId) || new Set();
-  userWsSet.add(ws);
-  userConnections.set(userId, userWsSet);
-  console.log(`[WebSocket] Connected: userId=${userId}, total connections=${userWsSet.size}`);
-
-  if (unsentMessages.has(userId)) {
-    const queuedMessages = unsentMessages.get(userId);
-    queuedMessages.forEach(message => {
-      try {
-        ws.send(JSON.stringify(message));
-      } catch (error) {
-        console.error(`[WebSocket] Failed to send queued message to userId=${userId}:`, error);
-      }
-    });
-    unsentMessages.delete(userId);
-  }
-
-  ws.on('close', () => {
-    const userWsSet = userConnections.get(userId);
-    if (userWsSet) {
-      userWsSet.delete(ws);
-      if (userWsSet.size === 0) {
-        userConnections.delete(userId);
-      }
-      console.log(`[WebSocket] Disconnected: userId=${userId}, remaining connections=${userWsSet.size}`);
-    }
-  });
-
-  ws.on('error', (error) => {
-    console.error(`[WebSocket] Error for userId=${userId}:`, error);
-  });
-
-  ws.on('message', (message) => {
-    try {
-      const data = JSON.parse(message);
-      if (data.event === 'debugLog') {
-        console.log('[CLIENT DEBUG]', data.message, data.data);
-      }
-    } catch (e) {
-      console.error('WS message parse error:', e);
-    }
-  });
-});
+// WebSocket server is now initialized with the HTTP server
+// See section 6 for WebSocket server setup and connection handling
 
 // ======================================
 // 12) LOGGER
@@ -594,6 +601,8 @@ if (process.env.NODE_ENV !== 'production') {
 // ======================================
 // 13) STARTUP: DB CONNECT & SERVER LISTEN
 // ======================================
+let httpServer;
+
 async function startApp() {
   try {
     await pRetry(connectToMongoDB, {
@@ -608,12 +617,15 @@ async function startApp() {
     await ensureIndexes();
     
     // Start the server
-    const server = app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log(`Environment: ${NODE_ENV}`);
-      console.log(`API URL: ${env.apiUrl}`);
-      console.log(`Frontend URL: ${env.frontendUrl}`);
-      console.log(`WebSocket URL: ${env.wsUrl}`);
+    return new Promise((resolve) => {
+      httpServer = server.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+        console.log(`Environment: ${NODE_ENV}`);
+        console.log(`API URL: ${env.apiUrl}`);
+        console.log(`Frontend URL: ${env.frontendUrl}`);
+        console.log(`WebSocket URL: ${env.wsUrl}`);
+        resolve(httpServer);
+      });
     });
   } catch (err) {
     console.error('Failed to start application:', err);
@@ -621,17 +633,47 @@ async function startApp() {
   }
 }
 
-await startApp();
+// Start the application
+startApp().catch(err => {
+  console.error('Failed to start application:', err);
+  process.exit(1);
+});
 
 // Graceful shutdown on SIGINT.
 process.on('SIGINT', async () => {
   console.log('SIGINT received. Shutting down gracefully...');
   try {
-    server.close(() => {
-      console.log('HTTP server closed.');
-    });
-    await mongoose.connection.close();
-    console.log('Mongoose connection closed.');
+    // Close the WebSocket server first
+    if (wss) {
+      console.log('Closing WebSocket server...');
+      wss.close(() => {
+        console.log('WebSocket server closed.');
+      });
+      
+      // Close all WebSocket connections
+      wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.close();
+        }
+      });
+    }
+    
+    // Close the HTTP server
+    if (httpServer) {
+      httpServer.close(() => {
+        console.log('HTTP server closed.');
+      });
+    }
+    
+    // Close MongoDB connection
+    if (mongoose.connection.readyState === 1) {
+      await mongoose.connection.close();
+      console.log('Mongoose connection closed.');
+    }
+    
+    // Clear any intervals
+    clearInterval(browserSessionHeartbeat);
+    
   } catch (error) {
     console.error('Error during shutdown:', error);
   } finally {
