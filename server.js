@@ -213,18 +213,9 @@ global.NEXUS_PATHS = {
 // ======================================
 const app = express();
 
-// Configure CORS
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
-  next();
-});
-
 // Create HTTP server and WebSocket server
 const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({ noServer: true });
 
 // WebSocket connection handling
 const userConnections = new Map();
@@ -358,16 +349,53 @@ app.use((req, res, next) => {
   if (origin && (allowedOrigins.includes(origin) || env.isDevelopment)) {
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
-  }
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Session-ID');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Expose-Headers', 'X-Session-ID');
+    
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+  } else if (origin) {
+    // Origin not allowed
+    console.warn(`Blocked request from disallowed origin: ${origin}`);
+    return res.status(403).json({ error: 'Not allowed by CORS' });
   }
   
   next();
+});
+
+// Handle WebSocket upgrade requests with CORS
+server.on('upgrade', (request, socket, head) => {
+  const origin = request.headers.origin;
+  const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+  
+  // Only handle /ws path for WebSocket connections
+  if (pathname !== '/ws') {
+    socket.destroy();
+    return;
+  }
+  
+  // Check origin
+  if (origin && (allowedOrigins.includes(origin) || env.isDevelopment)) {
+    // Add CORS headers to the response
+    const responseHeaders = [
+      'HTTP/1.1 101 Web Socket Protocol Handshake',
+      'Upgrade: WebSocket',
+      'Connection: Upgrade',
+      `Access-Control-Allow-Origin: ${origin}`,
+      'Access-Control-Allow-Credentials: true'
+    ];
+    
+    // Handle the WebSocket upgrade
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else {
+    console.warn(`Blocked WebSocket connection from disallowed origin: ${origin}`);
+    socket.destroy();
+  }
 });
 
 // === REPORT & RUN STATIC SERVING (MUST COME FIRST) ===
@@ -384,9 +412,41 @@ app.use('/midscene_run', (req, res, next) => {
 });
 
 // === GENERAL STATIC ASSETS ===
-app.use(express.static(path.join(__dirname, 'dist')));
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static files from multiple possible locations
+const staticDirs = [
+  path.join(__dirname, 'dist'),
+  path.join(__dirname, 'public'),
+  path.join(__dirname, 'bruno_demo_temp/static') // Add this line for production assets
+];
+
+// Mount each static directory
+staticDirs.forEach(dir => {
+  if (fs.existsSync(dir)) {
+    app.use(express.static(dir));
+    console.log(`Serving static files from: ${dir}`);
+  }
+});
+
+// Specific route for JS files
 app.use('/js', express.static(path.join(__dirname, 'public', 'js')));
+
+// Specific route for assets that might be in different locations
+app.use('/assets', (req, res, next) => {
+  // First try the main public directory
+  const publicPath = path.join(__dirname, 'public', req.path);
+  if (fs.existsSync(publicPath)) {
+    return express.static(path.join(__dirname, 'public'))(req, res, next);
+  }
+  
+  // Then try the bruno_demo_temp directory if in production
+  const demoPath = path.join(__dirname, 'bruno_demo_temp/static/assets', req.path);
+  if (fs.existsSync(demoPath)) {
+    return express.static(path.join(__dirname, 'bruno_demo_temp/static/assets'))(req, res, next);
+  }
+  
+  // If not found, continue to next middleware
+  next();
+});
 
 // Serve static files from src directory with proper MIME types
 app.use('/src', express.static(path.join(__dirname, 'src'), {
