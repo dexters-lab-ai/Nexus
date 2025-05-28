@@ -120,6 +120,16 @@ services:
       directory: /app/public/models
     - path: /textures
       directory: /app/public/textures
+    - path: /bruno_demo_temp/static/assets
+      directory: /app/bruno_demo_temp/static/assets
+      headers:
+        - name: Cache-Control
+          value: "public, max-age=31536000, immutable"
+    - path: /assets
+      directory: /app/public/assets
+      headers:
+        - name: Cache-Control
+          value: "public, max-age=31536000, immutable"
   
   # Resource Configuration
   resources:
