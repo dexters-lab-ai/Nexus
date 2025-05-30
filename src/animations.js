@@ -90,10 +90,21 @@ function loadEnvironmentMap() {
   const rgbeLoader = new RGBELoader();
   rgbeLoader.setDataType(THREE.HalfFloatType);
   
-  rgbeLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/equirectangular/venice_sunset_1k.hdr', function(texture) {
+  // Load from local assets
+  rgbeLoader.load('/assets/hdri/venice_sunset_1k.hdr', function(texture) {
     const envMap = new THREE.PMREMGenerator(renderer).fromEquirectangular(texture).texture;
     scene.environment = envMap;
     texture.dispose();
+  }, undefined, function(error) {
+    console.error('Error loading HDR environment map:', error);
+    // Fallback to a basic environment map if loading fails
+    scene.environment = new THREE.CubeTextureLoader()
+      .setPath('/assets/hdri/')
+      .load([
+        'px.png', 'nx.png',
+        'py.png', 'ny.png',
+        'pz.png', 'nz.png'
+      ]);
   });
 }
 

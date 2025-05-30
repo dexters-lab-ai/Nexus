@@ -836,6 +836,7 @@ export function RoomExperience(props = {}) {
     }
   }
   
+  
   // Return public API
   return {
     init,

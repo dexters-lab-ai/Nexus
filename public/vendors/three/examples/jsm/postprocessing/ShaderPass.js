@@ -1,4 +1,7 @@
-import * as THREE from 'three';
+import {
+	ShaderMaterial,
+	UniformsUtils
+} from 'three';
 import { Pass, FullScreenQuad } from './Pass.js';
 
 /**
@@ -49,7 +52,7 @@ class ShaderPass extends Pass {
 		 */
 		this.material = null;
 
-		if ( shader instanceof THREE.ShaderMaterial ) {
+		if ( shader instanceof ShaderMaterial ) {
 
 			this.uniforms = shader.uniforms;
 
@@ -57,9 +60,9 @@ class ShaderPass extends Pass {
 
 		} else if ( shader ) {
 
-			this.uniforms = THREE.UniformsUtils.clone( shader.uniforms );
+			this.uniforms = UniformsUtils.clone( shader.uniforms );
 
-			this.material = new THREE.ShaderMaterial( {
+			this.material = new ShaderMaterial( {
 
 				name: ( shader.name !== undefined ) ? shader.name : 'unspecified',
 				defines: Object.assign( {}, shader.defines ),

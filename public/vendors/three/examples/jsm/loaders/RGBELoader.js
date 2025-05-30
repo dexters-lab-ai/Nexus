@@ -1,5 +1,11 @@
-import * as THREE from 'three';
-const { DataTextureLoader, HalfFloatType, FloatType, LinearSRGBColorSpace, LinearFilter } = THREE;
+import {
+	DataTextureLoader,
+	DataUtils,
+	FloatType,
+	HalfFloatType,
+	LinearFilter,
+	LinearSRGBColorSpace
+} from 'three';
 
 /**
  * A loader for the RGBE HDR texture format.
@@ -29,9 +35,9 @@ class RGBELoader extends DataTextureLoader {
 		 * The texture type.
 		 *
 		 * @type {(HalfFloatType|FloatType)}
-		 * @default FloatType
+		 * @default HalfFloatType
 		 */
-		this.type = FloatType;
+		this.type = HalfFloatType;
 
 	}
 
@@ -454,9 +460,9 @@ class RGBELoader extends DataTextureLoader {
 				case FloatType:
 				case HalfFloatType:
 
-					texture.colorSpace = THREE.LinearSRGBColorSpace;
-					texture.minFilter = THREE.LinearFilter;
-					texture.magFilter = THREE.LinearFilter;
+					texture.colorSpace = LinearSRGBColorSpace;
+					texture.minFilter = LinearFilter;
+					texture.magFilter = LinearFilter;
 					texture.generateMipmaps = false;
 					texture.flipY = true;
 

@@ -156,52 +156,42 @@ export function CommandCenter(props = {}) {
     // Clear input
     textarea.value = '';
     
-    // Add user message to timeline
-    const userMessage = {
-      role: 'user',
-      type: 'chat',
-      content: inputText,
-      timestamp: new Date()
-    };
-    
-    // Add to store
-    const { timeline } = messagesStore.getState();
-    messagesStore.setState({ timeline: [...timeline, userMessage] });
+    // Don't add user message to timeline here - wait for server response
+    // The server will handle persisting the message and will send it back via WebSocket
     
     try {
-      // Send message to API
+      // Disable send button while processing
+      const sendBtn = nliForm.querySelector('button[type="submit"]');
+      if (sendBtn) sendBtn.disabled = true;
+      
+      // Send message to API - server will handle persistence
       const response = await api.post('/chat', { prompt: inputText });
       
-      if (response.success && response.assistantReply) {
-        // Add assistant response to timeline
-        const assistantMessage = {
-          role: 'assistant',
-          type: 'chat',
-          content: response.assistantReply,
-          timestamp: new Date()
-        };
-        
-        // Update store with response
-        const { timeline } = messagesStore.getState();
-        messagesStore.setState({ timeline: [...timeline, assistantMessage] });
-      } else {
+      if (!response.success) {
         throw new Error(response.error || 'Failed to get response');
       }
+      
+      // The server will send the message back via WebSocket
+      // We don't need to add it here to avoid duplicates
+      
     } catch (error) {
       console.error('Chat error:', error);
       
-      // Add error message
+      // Add error message to timeline
       const errorMessage = {
         role: 'system',
         type: 'error',
-        content: 'Failed to send message',
-        error: error.message,
-        timestamp: new Date()
+        content: `Failed to send message: ${error.message}`,
+        timestamp: new Date().toISOString()
       };
       
-      // Update store with error
+      // Add error to store
       const { timeline } = messagesStore.getState();
       messagesStore.setState({ timeline: [...timeline, errorMessage] });
+    } finally {
+      // Re-enable send button
+      const sendBtn = nliForm.querySelector('button[type="submit"]');
+      if (sendBtn) sendBtn.disabled = false;
     }
   });
   

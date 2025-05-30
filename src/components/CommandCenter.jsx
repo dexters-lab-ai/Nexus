@@ -103,30 +103,49 @@ export function CommandCenter(props = {}) {
       const data = await response.json();
       console.log('[DEBUG] DB fetch result:', data);
       
-      // Clear any cached messages from memory and use only DB results
-      sessionStorage.removeItem('messageCache');
-      localStorage.removeItem('messageHistory');
-      
       // Get messages array from response
       const messagesArray = data.items || data.messages || [];
       
       if (Array.isArray(messagesArray) && messagesArray.length > 0) {
-        // Filter valid messages and ensure freshness (newer than yesterday)
+        // Filter valid messages (last 24 hours, valid roles, and required fields)
         const yesterday = Date.now() - (24 * 60 * 60 * 1000);
-        const validMessages = messagesArray.filter(msg => 
-          msg && typeof msg === 'object' && 
-          msg.role && msg.content && msg.timestamp &&
-          new Date(msg.timestamp).getTime() > yesterday
-        );
-        
-        console.log(`[DEBUG] Found ${validMessages.length} valid recent messages out of ${messagesArray.length} total`);
-        
-        // Sort with newest messages at the bottom
-        const sortedMessages = [...validMessages].sort((a, b) => {
-          return new Date(a.timestamp) - new Date(b.timestamp);
+        const validMessages = messagesArray.filter(msg => {
+          try {
+            return (
+              msg && 
+              typeof msg === 'object' && 
+              msg.role && 
+              msg.content && 
+              msg.timestamp &&
+              ['system', 'assistant', 'user'].includes(msg.role) &&
+              new Date(msg.timestamp).getTime() > yesterday
+            );
+          } catch (e) {
+            console.warn('Invalid message format:', msg, e);
+            return false;
+          }
         });
         
-        // Clean replacement of timeline
+        // Deduplicate messages by content and timestamp (within 1 minute)
+        const uniqueMessages = [];
+        const seenMessages = new Set();
+        
+        validMessages.forEach(msg => {
+          const messageKey = `${msg.role}:${msg.content}:${Math.floor(new Date(msg.timestamp).getTime() / 60000)}`; // Rounded to minute
+          if (!seenMessages.has(messageKey)) {
+            seenMessages.add(messageKey);
+            uniqueMessages.push(msg);
+          }
+        });
+        
+        console.log(`[DEBUG] Found ${uniqueMessages.length} unique messages out of ${messagesArray.length} total`);
+        
+        // Sort by timestamp (oldest first)
+        const sortedMessages = [...uniqueMessages].sort((a, b) => 
+          new Date(a.timestamp) - new Date(b.timestamp)
+        );
+        
+        // Update store with filtered and sorted messages
         messagesStore.setState({ 
           timeline: sortedMessages,
           isLoading: false 

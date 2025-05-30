@@ -1,0 +1,11 @@
+--- a/public/vendors/three/examples/jsm/webxr/XRHandMeshModel.js
++++ b/public/vendors/three/examples/jsm/webxr/XRHandMeshModel.js
+@@ -1,6 +1,6 @@
+ import { Mesh, MeshBasicMaterial, BoxBufferGeometry } from 'three';
+ 
+-const DEFAULT_HAND_PROFILE_PATH = 'https://cdn.jsdelivr.net/npm/@webxr-input-profiles/assets@1.0/dist/profiles/generic-hand/';
++const DEFAULT_HAND_PROFILE_PATH = '/assets/webxr-input-profiles/generic-hand/';
+ 
+ class OculusHandModel extends THREE.Group {
+ 
+	constructor( controller, onLoad ) {

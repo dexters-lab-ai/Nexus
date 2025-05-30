@@ -1,0 +1,8 @@
+--- a/public/vendors/three/examples/jsm/libs/demuxer_mp4.js
++++ b/public/vendors/three/examples/jsm/libs/demuxer_mp4.js
+@@ -1,4 +1,4 @@
+-import MP4Box from 'https://cdn.jsdelivr.net/npm/mp4box@0.5.3/+esm';
++import MP4Box from '/assets/mp4box/mp4box.all.min.js';
+ 
+ class DemuxerMP4 {
+ 	constructor( id, user = {} ) {

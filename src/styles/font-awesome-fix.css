@@ -4,7 +4,7 @@
  */
 
 /* CDN Fallback for Font Awesome */
-@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css');
+@import url('../../node_modules/@fortawesome/fontawesome-free/css/all.min.css');
 
 /* Fix for Font Awesome icon rendering in Firefox */
 .fas, .far, .fab, .fa {

@@ -1,0 +1,11 @@
+--- a/public/vendors/three/examples/jsm/loaders/3DMLoader.js
++++ b/public/vendors/three/examples/jsm/loaders/3DMLoader.js
+@@ -41,7 +41,7 @@ class ThreeDMLoader extends Loader {
+ 		//
+ 		// @param {String} wasmPath Path to folder containing the Jolt WASM/JS files.
+ 		setLibraryPath( path ) {
+-			this.libraryPath = path || 'https://cdn.jsdelivr.net/npm/rhino3dm@8.0.1';
++			this.libraryPath = path || '/assets/rhino3dm';
+ 			return this;
+ 		}
+ 		

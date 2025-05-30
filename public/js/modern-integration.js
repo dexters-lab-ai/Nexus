@@ -306,7 +306,7 @@ function createLogger(context, level = 'info') {
     },
     info: (...args) => {
       if (shouldLog('info')) {
-        console.info(`[${context}]`, ...args);
+        //console.info(`[${context}]`, ...args);
       }
     },
     warn: (...args) => {

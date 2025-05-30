@@ -11,7 +11,7 @@ import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectio
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
-import { gsap } from 'gsap';
+import gsap from 'gsap';
 import { eventBus } from '../utils/events.js';
 import { stores } from '../store/index.js';
 import Screen from './experience/Screen.js';
@@ -81,18 +81,18 @@ export default class RoomExperience extends EventEmitter {
     super();
     this.props = {
       assetPaths: {
-        room: '/models/roomModel.glb',
-        googleLeds: '/models/googleHomeLedsModel.glb',
-        loupedeck: '/models/loupedeckButtonsModel.glb',
-        topChair: '/models/topChairModel.glb',
-        elgatoLight: '/models/elgatoLightModel.glb',
-        pcScreen: '/models/pcScreenModel.glb',
-        macScreen: '/models/macScreenModel.glb',
-        bakedDay: '/assets/bakedDay.jpg',
-        bakedNight: '/assets/bakedNight.jpg',
-        bakedNeutral: '/assets/bakedNeutral.jpg',
-        lightMap: '/assets/lightMap.jpg',
-        googleLedMask: '/assets/googleHomeLedMask.png'
+        room: 'models/roomModel.glb',
+        googleLeds: 'models/googleHomeLedsModel.glb',
+        loupedeck: 'models/loupedeckButtonsModel.glb',
+        topChair: 'models/topChairModel.glb',
+        elgatoLight: 'models/elgatoLightModel.glb',
+        pcScreen: 'models/pcScreenModel.glb',
+        macScreen: 'models/macScreenModel.glb',
+        bakedDay: 'assets/bakedDay.jpg',
+        bakedNight: 'assets/bakedNight.jpg',
+        bakedNeutral: 'assets/bakedNeutral.jpg',
+        lightMap: 'assets/lightMap.jpg',
+        googleLedMask: 'assets/googleHomeLedMask.png'
       },
       ...props
     };
@@ -103,7 +103,6 @@ export default class RoomExperience extends EventEmitter {
     this.textureLoader = new THREE.TextureLoader(this.loadingManager);
     this.textureLoader.crossOrigin = 'anonymous';
     this.dracoLoader = new DRACOLoader(this.loadingManager);
-    // In Vite, files in public directory are served from root
     this.dracoLoader.setDecoderPath('/draco/');
     this.dracoLoader.setDecoderConfig({ type: 'wasm' });
     this.loader = new GLTFLoader(this.loadingManager);
@@ -423,32 +422,30 @@ export default class RoomExperience extends EventEmitter {
   }
 
   async loadAsset(asset) {
+    // Define required assets at the top level
+    const requiredAssets = ['room', 'pcScreen'];
+    const isRequired = requiredAssets.includes(asset);
+    
     try {
-      const assetPath = this.props.assetPaths[asset];
-      console.log(`[Model] Loading ${asset} from ${assetPath}`);
+      console.log(`[Model] Loading asset: ${asset}`);
       
-      // Check if this is a required asset
-      const requiredAssets = ['room', 'pcScreen'];
-      const isRequired = requiredAssets.includes(asset);
+      // Load the asset by name - the path will be determined in loadGLB
+      const gltf = await this.loadGLB(asset);
       
-      try {
-        const gltf = await this.loadGLB(assetPath);
-        return gltf;
-      } catch (error) {
-        if (isRequired) {
-          console.error(`[Model] Failed to load required asset ${asset}:`, error);
-          throw error;
-        } else {
-          console.warn(`[Model] Non-critical asset ${asset} failed to load, continuing without it`);
-          return null;
-        }
+      if (!gltf) {
+        throw new Error(`Failed to load asset: ${asset}`);
       }
+      
+      return gltf;
+      
     } catch (error) {
-      console.error(`[Model] Error in loadAsset for ${asset}:`, error);
-      // Only throw if this is a required asset
-      if (requiredAssets.includes(asset)) {
+      console.error(`[Model] Error loading asset ${asset}:`, error);
+      
+      if (isRequired) {
         throw error;
       }
+      
+      console.warn(`[Model] Non-critical asset ${asset} failed to load, continuing without it`);
       return null;
     }
   }
@@ -627,64 +624,51 @@ export default class RoomExperience extends EventEmitter {
     }
   }
 
-  async loadGLB(name) {
-    // First try the path from assetPaths if it exists
-    if (this.props.assetPaths && this.props.assetPaths[name]) {
-      try {
-        const gltf = await this.gltfLoader.loadAsync(this.props.assetPaths[name]);
-        console.log(`✅ Loaded ${name} from ${this.props.assetPaths[name]}`);
-        return gltf;
-      } catch (err) {
-        console.log(`❌ Failed to load ${name} from asset path: ${this.props.assetPaths[name]}`);
-      }
-    }
-    
-    // Extract the base name if a full path was provided
-    let modelName = name;
-    if (name.includes('/')) {
-      modelName = name.split('/').pop().replace('.glb', '');
-    }
-    
-    // Fallback to the old path structure if asset path fails or doesn't exist
-    const modelMap = {
-      room: 'roomModel',
-      roomModel: 'roomModel',
-      googleLeds: 'googleHomeLedsModel',
-      googleHomeLedsModel: 'googleHomeLedsModel',
-      loupedeck: 'loupedeckButtonsModel',
-      loupedeckButtonsModel: 'loupedeckButtonsModel',
-      topChair: 'topChairModel',
-      topChairModel: 'topChairModel',
-      elgatoLight: 'elgatoLightModel',
-      elgatoLightModel: 'elgatoLightModel',
-      pcScreen: 'pcScreenModel',
-      pcScreenModel: 'pcScreenModel',
-      macScreen: 'macScreenModel',
-      macScreenModel: 'macScreenModel'
-    };
-    
-    const modelFile = modelMap[modelName] || modelName;
-    
-    const paths = [
-      `/bruno_demo_temp/static/assets/${modelFile}.glb`,
-      `/static/assets/${modelFile}.glb`,
-      `/models/${modelFile}.glb`,
-      `/${modelFile}.glb`
-    ];
-    
-    for (const path of paths) {
-      try {
-        const gltf = await this.gltfLoader.loadAsync(path);
-        console.log(`✅ Loaded ${modelName} from fallback path: ${path}`);
-        return gltf;
-      } catch (err) {
-        console.log(`❌ Failed to load ${modelName} from fallback path: ${path}`);
-      }
-    }
-    
-    console.error(`💥 Could not load ${name}`);
-    return null;
+  async loadGLB(assetName) {
+  // Map of model names to their base filenames
+  const modelMap = {
+    room: 'roomModel',
+    googleLeds: 'googleHomeLedsModel',
+    loupedeck: 'loupedeckButtonsModel',
+    topChair: 'topChairModel',
+    elgatoLight: 'elgatoLightModel',
+    pcScreen: 'pcScreenModel',
+    macScreen: 'macScreenModel'
+  };
+  
+  // Get the base filename from the asset name
+  const baseName = modelMap[assetName];
+  if (!baseName) {
+    throw new Error(`Unknown asset name: ${assetName}`);
   }
+  
+  const filename = `${baseName}.glb`;
+  // Try the asset path from config first, then fallback to direct paths
+  const assetPath = this.props.assetPaths[assetName] || `models/${filename}`;
+  const paths = [
+    assetPath,  // First try the configured path
+    `models/${filename}`,  // Then check in /models
+    `assets/${filename}`,  // Then check in /assets
+    `/bruno_demo_temp/static/assets/${filename}`  // Fallback to old path
+  ];
+  
+  console.log(`[Model] Attempting to load ${assetName} (${filename}) from possible paths:`, paths);
+  
+  for (const path of paths) {
+    try {
+      console.log(`[Model] Trying to load ${assetName} from ${path}`);
+      const gltf = await this.gltfLoader.loadAsync(path);
+      console.log(`✅ Successfully loaded ${assetName} from ${path}`);
+      return gltf;
+    } catch (err) {
+      console.warn(`❌ Failed to load ${assetName} from ${path}:`, err.message);
+    }
+  }
+  
+  const error = new Error(`💥 Could not load ${assetName} (${filename}) from any of the following paths: ${paths.join(', ')}`);
+  console.error(error.message);
+  throw error;
+}
 
   async loadGoogleLeds() {
     const gltf = await this.loadGLB('googleLeds');
@@ -770,46 +754,26 @@ export default class RoomExperience extends EventEmitter {
   }
 
   async loadTopChair() {
-    try {
-        const gltf = await this.loadGLB('topChair');
-        if (!gltf?.scene) {
-            throw new Error('Failed to load Top Chair: Invalid GLTF data');
+    const gltf = await this.loadGLB('topChair');
+    if (!gltf) return;
+    // Use Bruno's original group and assign baked material
+    const chair = gltf.scene.children[0] || gltf.scene;
+    chair.renderOrder = 0;
+    // Assign baked shader material to all meshes in the chair
+    if (this.bakedMaterial) {
+      chair.traverse(child => {
+        if (child.isMesh) {
+          child.material = this.bakedMaterial;
         }
-        
-        const chair = gltf.scene;
-        
-        // Simple setup like the old version
-        this.topChair = {
-            group: chair,
-            swingSpeed: 0.5,
-            swingAmount: 0.3
-        };
-        
-        this.scene.add(chair);
-        
-        console.log('[Asset Loader] Successfully loaded Top Chair');
-        return gltf;
-    } catch (error) {
-        console.error('[Asset Loader] Failed to load Top Chair:', error);
-        
-        // Simple fallback
-        const geometry = new THREE.BoxGeometry(0.5, 1, 0.5);
-        const material = new THREE.MeshBasicMaterial({ 
-            color: 0x8B4513,
-            wireframe: true 
-        });
-        
-        const placeholder = new THREE.Mesh(geometry, material);
-        this.topChair = {
-            group: placeholder,
-            swingSpeed: 0.5,
-            swingAmount: 0.3
-        };
-        this.scene.add(placeholder);
-        
-        throw error;
+      });
     }
-}
+    this.topChair = {
+      group: chair,
+      swingSpeed: 0.5,
+      swingAmount: 0.3
+    };
+    this.scene.add(this.topChair.group);
+  }
 
   async loadBouncingLogo() {
     this.bouncingLogo = {
@@ -997,26 +961,47 @@ export default class RoomExperience extends EventEmitter {
 
   startAnimationLoop() {
     const animate = () => {
-        this._animationFrameId = requestAnimationFrame(animate);
+      this._animationFrameId = requestAnimationFrame(animate);
+      
+      if (this.controls) this.controls.update();
+      this.composer ? this.composer.render() : this.renderer.render(this.scene, this.camera);
+      
+      // Google LEDs animation (TV 'DAIL' bouncing)
+      if (this.googleLeds?.items) {
+        const time = Date.now() * 0.002;
+        this.googleLeds.items.forEach(item => {
+          item.material.opacity = Math.sin(time - item.index * 0.5) * 0.5 + 0.5;
+        });
+      }
+      
+      // Coffee steam animation
+      if (this.coffeeSteam && typeof this.coffeeSteam.update === 'function') {
+        this.coffeeSteam.update();
+      }
+      
+      // Top Chair physics
+      if (this.topChair) {
+        this.topChair.group.rotation.y = Math.sin(Date.now() * 0.001 * this.topChair.swingSpeed) * this.topChair.swingAmount;
+      }
+      
+      // Bouncing Logo physics
+      if (this.bouncingLogo) {
+        // Apply gravity
+        this.bouncingLogo.velocity.y -= 0.01;
+        this.bouncingLogo.position.add(this.bouncingLogo.velocity);
         
-        if (this.controls) this.controls.update();
-        
-        // Simple chair animation like the old version
-        if (this.topChair?.group) {
-            this.topChair.group.rotation.y = 
-                Math.sin(Date.now() * 0.001 * this.topChair.swingSpeed) * 
-                this.topChair.swingAmount;
+        // Floor collision
+        if (this.bouncingLogo.position.y < 0.1) {
+          this.bouncingLogo.position.y = 0.1;
+          this.bouncingLogo.velocity.y *= -0.8; // Bounce with energy loss
+          this.bouncingLogo.velocity.x += (Math.random() - 0.5) * 0.02; // Random horizontal push
         }
         
-        if (this.composer) {
-            this.composer.render();
-        } else {
-            this.renderer.render(this.scene, this.camera);
-        }
+        this.bouncingLogo.mesh.position.copy(this.bouncingLogo.position);
+      }
     };
-    
     animate();
-}
+  }
 
   handleResize() {
     const container = this.props.container || document.body;

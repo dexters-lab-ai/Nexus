@@ -1,7 +1,7 @@
 # Room Models
 
 Required model files:
-- roomModel.glb
+- room.glb
 - textures/
   - wall_diffuse.jpg
   - floor_normal.jpg

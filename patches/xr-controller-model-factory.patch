@@ -1,0 +1,11 @@
+--- a/public/vendors/three/examples/jsm/webxr/XRControllerModelFactory.js
++++ b/public/vendors/three/examples/jsm/webxr/XRControllerModelFactory.js
+@@ -8,7 +8,7 @@ import {
+ 	Object3D
+ } from 'three';
+ 
+-const DEFAULT_PROFILES_PATH = 'https://cdn.jsdelivr.net/npm/@webxr-input-profiles/assets@1.0/dist/profiles';
++const DEFAULT_PROFILES_PATH = '/assets/webxr-input-profiles';
+ const DEFAULT_PROFILE = 'generic-trigger';
+ 
+ class XRControllerModelFactory {

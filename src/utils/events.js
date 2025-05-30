@@ -3,7 +3,7 @@
  * Provides custom event bus for component communication
  */
 
-import { EventEmitter } from 'https://cdn.skypack.dev/events@3.3.0';
+import { EventEmitter } from 'events';
 
 // Simple event bus for in-app events
 const listeners = {};

@@ -1,4 +1,10 @@
-import * as THREE from 'three';
+import {
+	Clock,
+	HalfFloatType,
+	NoBlending,
+	Vector2,
+	WebGLRenderTarget
+} from 'three';
 import { CopyShader } from '../shaders/CopyShader.js';
 import { ShaderPass } from './ShaderPass.js';
 import { ClearMaskPass, MaskPass } from './MaskPass.js';
@@ -54,11 +60,11 @@ class EffectComposer {
 
 		if ( renderTarget === undefined ) {
 
-			const size = renderer.getSize( new THREE.Vector2() );
+			const size = renderer.getSize( new Vector2() );
 			this._width = size.width;
 			this._height = size.height;
 
-			renderTarget = new THREE.WebGLRenderTarget( this._width * this._pixelRatio, this._height * this._pixelRatio, { type: THREE.HalfFloatType } );
+			renderTarget = new WebGLRenderTarget( this._width * this._pixelRatio, this._height * this._pixelRatio, { type: HalfFloatType } );
 			renderTarget.texture.name = 'EffectComposer.rt1';
 
 		} else {
@@ -110,7 +116,7 @@ class EffectComposer {
 		 * @type {ShaderPass}
 		 */
 		this.copyPass = new ShaderPass( CopyShader );
-		this.copyPass.material.blending = THREE.NoBlending;
+		this.copyPass.material.blending = NoBlending;
 
 		/**
 		 * The intenral clock for managing time data.
@@ -118,7 +124,7 @@ class EffectComposer {
 		 * @private
 		 * @type {Clock}
 		 */
-		this.clock = new THREE.Clock();
+		this.clock = new Clock();
 
 	}
 
@@ -277,7 +283,7 @@ class EffectComposer {
 
 		if ( renderTarget === undefined ) {
 
-			const size = this.renderer.getSize( new THREE.Vector2() );
+			const size = this.renderer.getSize( new Vector2() );
 			this._pixelRatio = this.renderer.getPixelRatio();
 			this._width = size.width;
 			this._height = size.height;

@@ -4,7 +4,8 @@
  */
 
 import { eventBus } from '../utils/events.js';
-import { getUserSettings } from '../api/settings.js';
+// Import settings API
+import * as settingsApi from '../api/settings.js';
 import { getSettingsModal } from './Settings.jsx';
 
 // Create a singleton instance

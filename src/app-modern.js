@@ -29,7 +29,8 @@ import { stores } from './store/index.js';
 import { initializeModernUI } from './app-modern-integration.js';
 import ErrorBoundary from './components/base/ErrorBoundary.jsx';
 import { getAllHistory } from './api/history.js';
-import { getSettings } from './api/settings.js';
+// Import settings API
+import * as settingsApi from './api/settings.js';
 
 // Maintain references to all initialized components
 let appComponents = null;

@@ -6,7 +6,8 @@
 import { eventBus } from '../utils/events.js';
 import { stores } from '../store/index.js';
 import Button from './base/Button.jsx';
-import { getSettings, saveApiKey, deleteApiKey, saveLlmPreferences } from '../api/settings.js';
+// Import all settings functions statically
+import * as settingsApi from '../api/settings.js';
 import { version } from '../../package.json';
 // PATCH: Ensure saveApiKey and deleteApiKey use '/api/settings/api-keys' as the route prefix internally
 
@@ -1196,7 +1197,7 @@ function setupPasswordToggles() {
         // Cache the key before clearing the input
         cacheApiKey(input, key);
         input.value = '';
-        await loadSettings();
+        await settingsApi.getSettings();
         const engineName = engineMap[serverProvider] ? 
           getEngineDisplayName(engineMap[serverProvider]) : 
           provider.toUpperCase();
@@ -1235,11 +1236,11 @@ function setupPasswordToggles() {
       };
       
       // Use the imported deleteApiKey utility function instead of direct fetch
-      const response = await deleteApiKey(serverProvider);
+      const response = await settingsApi.deleteApiKey(serverProvider);
       console.log('Delete API key response:', response);
       
       if (response && response.success) {
-        await loadSettings();
+        await settingsApi.getSettings();
         
         const engineName = engineMap[serverProvider] ? 
           getEngineDisplayName(engineMap[serverProvider]) : 
@@ -1350,35 +1351,55 @@ function setupPasswordToggles() {
   }
   
   // Function to load settings from server
-  async function loadSettingsFromServer() {
+  async function loadSettings() {
     try {
-      const response = await getSettings();
+      console.log('Loading settings from server...');
+      const response = await settingsApi.getSettings();
       
       if (response && response.success) {
+        console.log('Settings loaded successfully:', response);
         const { settings } = response;
-        
-        // Set API key indicators
-        if (settings.apiKeys) {
-          Object.keys(settings.apiKeys).forEach(provider => {
-            const hasKey = settings.apiKeys[provider];
-            if (hasKey) {
-              const statusElem = document.getElementById(`${provider}-key-status`);
-              if (statusElem) {
-                statusElem.textContent = 'API key is set';
-                statusElem.className = 'key-status success';
+        // Show all API key indicators for all supported providers
+        try {
+          console.log('Rendering API key statuses from settings:', settings.apiKeys);
+          
+          // Process each backend provider and update corresponding DOM elements
+          const allProviders = Object.keys(PROVIDER_TO_DOM_ID);
+          allProviders.forEach(provider => {
+            // Get the DOM ID from provider (e.g., 'openai' -> 'gpt4o')
+            const domId = PROVIDER_TO_DOM_ID[provider];
+            // Check if user has this key
+            const hasKey = settings.apiKeys && settings.apiKeys[provider] === true;
+            
+            console.log(`Provider: ${provider}, DOM ID: ${domId}, Has Key: ${hasKey}`);
+            
+            // Update status indicator
+            const statusElem = document.getElementById(`${domId}-key-status`);
+            if (statusElem) {
+              statusElem.textContent = hasKey ? 'API key is set' : '';
+              statusElem.className = hasKey ? 'key-status success' : 'key-status';
+            } else {
+              console.warn(`Status element for ${domId} (provider: ${provider}) not found`);
+            }
+            
+            // Update input field placeholder and data attribute
+            const inputElem = document.getElementById(`${domId}-key`);
+            if (inputElem) {
+              if (hasKey) {
+                inputElem.placeholder = '••••••••••••••••••••••••••';
+                inputElem.setAttribute('data-key-stored', 'true');
+                inputElem.value = ''; // Ensure field is empty
               } else {
-                console.warn(`Status element for ${provider} not found in settings modal`);
-              }  }
-                
-                // Update placeholder to indicate key is set
-                const input = document.getElementById(`${provider}-key`);
-                if (input) {
-                  input.placeholder = '••••••••••••••••••••••••••';
-                }
-              });
+                inputElem.placeholder = `Enter ${provider.toUpperCase()} API key`;
+                inputElem.setAttribute('data-key-stored', 'false');
+              }
+            } else {
+              console.warn(`Input element for ${domId} (provider: ${provider}) not found`);
+            }
+          });
+        } catch (err) {
+          console.error('Error rendering API key statuses:', err);
         }
-        
-        // Set engine preference
         if (settings.preferences && settings.preferences.defaultEngine) {
           const engineSelect = document.getElementById('engine-select');
           if (engineSelect) {
@@ -1493,7 +1514,7 @@ function setupPasswordToggles() {
       }
     } catch (error) {
       console.error('Error loading settings:', error);
-      showNotification('Error', 'Failed to load settings. Please try again.', 'error');
+      showNotification('Failed to load settings', 'error');
     }
   }
   
@@ -1651,7 +1672,7 @@ function setupPasswordToggles() {
   async function loadSettings() {
     try {
       console.log('Loading settings from server...');
-      const response = await getSettings();
+      const response = await settingsApi.getSettings();
       
       if (response && response.success) {
         console.log('Settings loaded successfully:', response);
@@ -1861,7 +1882,7 @@ function setupPasswordToggles() {
       };
       
       // Call API
-      const response = await saveLlmPreferences(modelPreferences);
+      const response = await settingsApi.saveLlmPreferences(modelPreferences);
       
       if (response && response.success) {
         showNotification('LLM preferences saved successfully', 'success');
@@ -1876,250 +1897,246 @@ function setupPasswordToggles() {
   
   // Setup API Key Form Listeners
   function setupAPIKeyFormListeners() {
-    // Import required API functions
-    import('../api/settings.js').then(({ saveApiKey, deleteApiKey, getApiKey }) => {
-      console.log('API key management functions loaded');
-      
-      // ==== TOGGLE VISIBILITY BUTTONS ====
-      const toggleButtons = document.querySelectorAll('.toggle-visibility-btn');
-      Array.from(toggleButtons).forEach(button => {
-        button.addEventListener('click', async (e) => {
-          console.log('Toggle password visibility clicked');
-          // Get the input field this button controls
-          const inputId = button.getAttribute('data-for');
-          const inputField = document.getElementById(inputId);
-          
-          if (!inputField) {
-            console.error(`Input field ${inputId} not found`);
-            return;
-          }
-          
-          // Extract the provider from the input ID (e.g., 'gpt4o-key' -> 'gpt4o')
-          const domId = inputId.replace('-key', '');
-          const provider = DOM_ID_TO_PROVIDER[domId];
-          
-          if (!provider) {
-            console.error(`Could not map ${domId} to provider`);
-            return;
-          }
-          
-          console.log(`Toggling input type from ${inputField.type}`);
-          const isPassword = inputField.type === 'password';
-          
-          // If showing the text and key is in DB but not in field
-          if (isPassword && inputField.getAttribute('data-key-stored') === 'true' && !inputField.value) {
-            try {
-              // Fetch the actual key from the backend
-              console.log(`Fetching key for provider: ${provider}`);
-              const response = await getApiKey(provider);
-              console.log('API key response:', response);
-              
-              // Handle different possible response formats
-              if (response && response.success) {
-                // The key could be in .key, .apiKey, or directly in .data
-                const keyValue = response.key || response.apiKey || 
-                                (response.data ? response.data.key || response.data.apiKey || response.data : null);
-                                
-                if (keyValue) {
-                  console.log(`Key found for ${provider}, showing key`);
-                  inputField.value = keyValue;
-                  inputField.classList.add('showing-stored-key');
-                  inputField.type = 'text'; // Ensure it's visible
-                } else {
-                  console.error(`Key not found in response for ${provider}:`, response);
-                  inputField.type = 'text'; // Still change to text type
-                }
+    // Use the statically imported settingsApi
+    const { saveApiKey, deleteApiKey, getApiKey } = settingsApi;
+    console.log('API key management functions loaded');
+    
+    // ==== TOGGLE VISIBILITY BUTTONS ====
+    const toggleButtons = document.querySelectorAll('.toggle-visibility-btn');
+    Array.from(toggleButtons).forEach(button => {
+      button.addEventListener('click', async (e) => {
+        console.log('Toggle password visibility clicked');
+        // Get the input field this button controls
+        const inputId = button.getAttribute('data-for');
+        const inputField = document.getElementById(inputId);
+        
+        if (!inputField) {
+          console.error(`Input field ${inputId} not found`);
+          return;
+        }
+        
+        // Extract the provider from the input ID (e.g., 'gpt4o-key' -> 'gpt4o')
+        const domId = inputId.replace('-key', '');
+        const provider = DOM_ID_TO_PROVIDER[domId];
+        
+        if (!provider) {
+          console.error(`Could not map ${domId} to provider`);
+          return;
+        }
+        
+        console.log(`Toggling input type from ${inputField.type}`);
+        const isPassword = inputField.type === 'password';
+        
+        // If showing the text and key is in DB but not in field
+        if (isPassword && inputField.getAttribute('data-key-stored') === 'true' && !inputField.value) {
+          try {
+            // Fetch the actual key from the backend
+            console.log(`Fetching key for provider: ${provider}`);
+            const response = await getApiKey(provider);
+            console.log('API key response:', response);
+            
+            // Handle different possible response formats
+            if (response && response.success) {
+              // The key could be in .key, .apiKey, or directly in .data
+              const keyValue = response.key || response.apiKey || 
+                              (response.data ? response.data.key || response.data.apiKey || response.data : null);
+                              
+              if (keyValue) {
+                console.log(`Key found for ${provider}, showing key`);
+                inputField.value = keyValue;
+                inputField.classList.add('showing-stored-key');
+                inputField.type = 'text'; // Ensure it's visible
               } else {
-                console.error(`Failed to get key for ${provider}:`, response);
+                console.error(`Key not found in response for ${provider}:`, response);
                 inputField.type = 'text'; // Still change to text type
               }
-            } catch (err) {
-              console.error(`Error fetching API key for ${provider}:`, err);
+            } else {
+              console.error(`Failed to get key for ${provider}:`, response);
               inputField.type = 'text'; // Still change to text type
             }
+          } catch (err) {
+            console.error(`Error fetching API key for ${provider}:`, err);
+            inputField.type = 'text'; // Still change to text type
           }
+        }
+        
+        // Toggle visibility
+        if (isPassword) {
+          inputField.type = 'text';
+          const icon = button.querySelector('i');
+          if (icon) icon.className = 'fas fa-eye-slash';
+        } else {
+          inputField.type = 'password';
           
-          // Toggle visibility
-          if (isPassword) {
-            inputField.type = 'text';
-            const icon = button.querySelector('i');
-            if (icon) icon.className = 'fas fa-eye-slash';
-          } else {
-            inputField.type = 'password';
-            
-            // Clear placeholder or fetched key when hiding
-            if (inputField.classList.contains('placeholder-text') || 
-                inputField.classList.contains('showing-stored-key')) {
-              inputField.value = '';
-              inputField.classList.remove('placeholder-text');
-              inputField.classList.remove('showing-stored-key');
-            }
-            
-            const icon = button.querySelector('i');
-            if (icon) icon.className = 'fas fa-eye';
-          }
-        });
-      });
-      
-      // ==== SAVE API KEY BUTTONS ====
-      const saveButtons = document.querySelectorAll('.save-key-btn');
-      Array.from(saveButtons).forEach(button => {
-        button.addEventListener('click', async (e) => {
-          // Disable button to prevent double-clicks
-          button.disabled = true;
-          
-          try {
-            // Get the button's target provider from DOM
-            const domId = button.getAttribute('data-provider');
-            if (!domId) {
-              throw new Error('No provider attribute found on save button');
-            }
-            
-            // Map UI DOM ID to backend provider ID
-            const provider = DOM_ID_TO_PROVIDER[domId];
-            if (!VALID_PROVIDERS.includes(provider)) {
-              throw new Error(`Invalid provider mapping: ${domId} -> ${provider}`);
-            }
-            
-            // Get the input value
-            const inputId = `${domId}-key`;
-            const inputField = document.getElementById(inputId);
-            if (!inputField) {
-              throw new Error(`Input field ${inputId} not found`);
-            }
-            
-            const apiKey = inputField.value.trim();
-            if (!apiKey) {
-              throw new Error('Please enter an API key');
-            }
-            
-            // Basic API key validation
-            const validation = validateApiKey(domId, apiKey);
-            if (!validation.valid) {
-              throw new Error(`Invalid API key format: ${validation.message}`);
-            }
-            
-            // Save the API key to backend
-            console.log(`Saving ${domId} API key as provider=${provider}...`);
-            const saveResponse = await saveApiKey(provider, apiKey);
-            
-            if (!saveResponse || !saveResponse.success) {
-              throw new Error(saveResponse?.error || 'Failed to save API key');
-            }
-            
-            // Verify the key was actually saved by fetching it back
-            const verifyResponse = await getApiKey(provider);
-            console.log('Key verification response:', verifyResponse);
-            
-            // Check if we have either key or apiKey in the response
-            const keyExists = verifyResponse && verifyResponse.success && 
-                            (verifyResponse.key || verifyResponse.apiKey || 
-                            (verifyResponse.data && (verifyResponse.data.key || verifyResponse.data.apiKey)));
-            
-            if (!keyExists) {
-              throw new Error('API key was not properly saved in the database');
-            }
-            
-            // Update UI to reflect successful save
-            showNotification(`${domId.toUpperCase()} API key saved successfully`, true);
-            
-            // Update status indicator
-            const statusElem = document.getElementById(`${domId}-key-status`);
-            if (statusElem) {
-              statusElem.textContent = 'API key is set';
-              statusElem.className = 'key-status success';
-            }
-            
-            // Clear input and update placeholder
+          // Clear placeholder or fetched key when hiding
+          if (inputField.classList.contains('placeholder-text') || 
+              inputField.classList.contains('showing-stored-key')) {
             inputField.value = '';
-            inputField.placeholder = '••••••••••••••••••••••••••';
-            inputField.setAttribute('data-key-stored', 'true');
-            
-          } catch (error) {
-            console.error('Error saving API key:', error);
-            showNotification(error.message, false);
-          } finally {
-            // Re-enable button
-            button.disabled = false;
+            inputField.classList.remove('placeholder-text');
+            inputField.classList.remove('showing-stored-key');
           }
-        });
-      });
-      
-      // ==== DELETE API KEY BUTTONS ====
-      const deleteButtons = document.querySelectorAll('.delete-key-btn');
-      Array.from(deleteButtons).forEach(button => {
-        button.addEventListener('click', async (e) => {
-          // Disable button to prevent double-clicks
-          button.disabled = true;
           
-          try {
-            // Get the button's target provider from DOM
-            const domId = button.getAttribute('data-provider');
-            if (!domId) {
-              throw new Error('No provider attribute found on delete button');
-            }
-            
-            // Map UI DOM ID to backend provider ID
-            const provider = DOM_ID_TO_PROVIDER[domId];
-            if (!VALID_PROVIDERS.includes(provider)) {
-              throw new Error(`Invalid provider mapping: ${domId} -> ${provider}`);
-            }
-            
-            // Ask for confirmation
-            if (!confirm(`Are you sure you want to delete your ${domId.toUpperCase()} API key?`)) {
-              return;
-            }
-            
-            // Delete the API key
-            console.log(`Deleting ${domId} API key as provider=${provider}...`);
-            const deleteResponse = await deleteApiKey(provider);
-            
-            if (!deleteResponse || !deleteResponse.success) {
-              throw new Error(deleteResponse?.error || 'Failed to delete API key');
-            }
-            
-            // Verify the key was actually deleted by trying to fetch it
-            const verifyResponse = await getApiKey(provider);
-            console.log('Key deletion verification response:', verifyResponse);
-            
-            // Check if we have either key or apiKey in the response
-            const keyStillExists = verifyResponse && verifyResponse.success && 
-                                 (verifyResponse.key || verifyResponse.apiKey || 
-                                 (verifyResponse.data && (verifyResponse.data.key || verifyResponse.data.apiKey)));
-            
-            if (keyStillExists) {
-              throw new Error('API key was not properly deleted from the database');
-            }
-            
-            // Update UI to reflect successful deletion
-            showNotification(`${domId.toUpperCase()} API key deleted successfully`, true);
-            
-            // Update status indicator
-            const statusElem = document.getElementById(`${domId}-key-status`);
-            if (statusElem) {
-              statusElem.textContent = '';
-              statusElem.className = 'key-status';
-            }
-            
-            // Reset input placeholder
-            const inputField = document.getElementById(`${domId}-key`);
-            if (inputField) {
-              inputField.placeholder = `Enter ${domId.toUpperCase()} API key`;
-              inputField.setAttribute('data-key-stored', 'false');
-            }
-            
-          } catch (error) {
-            console.error('Error deleting API key:', error);
-            showNotification(error.message, false);
-          } finally {
-            // Re-enable button
-            button.disabled = false;
-          }
-        });
+          const icon = button.querySelector('i');
+          if (icon) icon.className = 'fas fa-eye';
+        }
       });
-    }).catch(err => {
-      console.error('Failed to load API key management functions:', err);
-      showNotification('Failed to initialize API key management', false);
+    });
+    
+    // ==== SAVE API KEY BUTTONS ====
+    const saveButtons = document.querySelectorAll('.save-key-btn');
+    Array.from(saveButtons).forEach(button => {
+      button.addEventListener('click', async (e) => {
+        // Disable button to prevent double-clicks
+        button.disabled = true;
+        
+        try {
+          // Get the button's target provider from DOM
+          const domId = button.getAttribute('data-provider');
+          if (!domId) {
+            throw new Error('No provider attribute found on save button');
+          }
+          
+          // Map UI DOM ID to backend provider ID
+          const provider = DOM_ID_TO_PROVIDER[domId];
+          if (!VALID_PROVIDERS.includes(provider)) {
+            throw new Error(`Invalid provider mapping: ${domId} -> ${provider}`);
+          }
+          
+          // Get the input value
+          const inputId = `${domId}-key`;
+          const inputField = document.getElementById(inputId);
+          if (!inputField) {
+            throw new Error(`Input field ${inputId} not found`);
+          }
+          
+          const apiKey = inputField.value.trim();
+          if (!apiKey) {
+            throw new Error('Please enter an API key');
+          }
+          
+          // Basic API key validation
+          const validation = validateApiKey(domId, apiKey);
+          if (!validation.valid) {
+            throw new Error(`Invalid API key format: ${validation.message}`);
+          }
+          
+          // Save the API key to backend
+          console.log(`Saving ${domId} API key as provider=${provider}...`);
+          const saveResponse = await saveApiKey(provider, apiKey);
+          
+          if (!saveResponse || !saveResponse.success) {
+            throw new Error(saveResponse?.error || 'Failed to save API key');
+          }
+          
+          // Verify the key was actually saved by fetching it back
+          const verifyResponse = await getApiKey(provider);
+          console.log('Key verification response:', verifyResponse);
+          
+          // Check if we have either key or apiKey in the response
+          const keyExists = verifyResponse && verifyResponse.success && 
+                          (verifyResponse.key || verifyResponse.apiKey || 
+                          (verifyResponse.data && (verifyResponse.data.key || verifyResponse.data.apiKey)));
+          
+          if (!keyExists) {
+            throw new Error('API key was not properly saved in the database');
+          }
+          
+          // Update UI to reflect successful save
+          showNotification(`${domId.toUpperCase()} API key saved successfully`, true);
+          
+          // Update status indicator
+          const statusElem = document.getElementById(`${domId}-key-status`);
+          if (statusElem) {
+            statusElem.textContent = 'API key is set';
+            statusElem.className = 'key-status success';
+          }
+          
+          // Clear input and update placeholder
+          inputField.value = '';
+          inputField.placeholder = '••••••••••••••••••••••••••';
+          inputField.setAttribute('data-key-stored', 'true');
+          
+        } catch (error) {
+          console.error('Error saving API key:', error);
+          showNotification(error.message, false);
+        } finally {
+          // Re-enable button
+          button.disabled = false;
+        }
+      });
+    });
+    
+    // ==== DELETE API KEY BUTTONS ====
+    const deleteButtons = document.querySelectorAll('.delete-key-btn');
+    Array.from(deleteButtons).forEach(button => {
+      button.addEventListener('click', async (e) => {
+        // Disable button to prevent double-clicks
+        button.disabled = true;
+        
+        try {
+          // Get the button's target provider from DOM
+          const domId = button.getAttribute('data-provider');
+          if (!domId) {
+            throw new Error('No provider attribute found on delete button');
+          }
+          
+          // Map UI DOM ID to backend provider ID
+          const provider = DOM_ID_TO_PROVIDER[domId];
+          if (!VALID_PROVIDERS.includes(provider)) {
+            throw new Error(`Invalid provider mapping: ${domId} -> ${provider}`);
+          }
+          
+          // Ask for confirmation
+          if (!confirm(`Are you sure you want to delete your ${domId.toUpperCase()} API key?`)) {
+            return;
+          }
+          
+          // Delete the API key
+          console.log(`Deleting ${domId} API key as provider=${provider}...`);
+          const deleteResponse = await deleteApiKey(provider);
+          
+          if (!deleteResponse || !deleteResponse.success) {
+            throw new Error(deleteResponse?.error || 'Failed to delete API key');
+          }
+          
+          // Verify the key was actually deleted by trying to fetch it
+          const verifyResponse = await getApiKey(provider);
+          console.log('Key deletion verification response:', verifyResponse);
+          
+          // Check if we have either key or apiKey in the response
+          const keyStillExists = verifyResponse && verifyResponse.success && 
+                               (verifyResponse.key || verifyResponse.apiKey || 
+                               (verifyResponse.data && (verifyResponse.data.key || verifyResponse.data.apiKey)));
+          
+          if (keyStillExists) {
+            throw new Error('API key was not properly deleted from the database');
+          }
+          
+          // Update UI to reflect successful deletion
+          showNotification(`${domId.toUpperCase()} API key deleted successfully`, true);
+          
+          // Update status indicator
+          const statusElem = document.getElementById(`${domId}-key-status`);
+          if (statusElem) {
+            statusElem.textContent = '';
+            statusElem.className = 'key-status';
+          }
+          
+          // Reset input placeholder
+          const inputField = document.getElementById(`${domId}-key`);
+          if (inputField) {
+            inputField.placeholder = `Enter ${domId.toUpperCase()} API key`;
+            inputField.setAttribute('data-key-stored', 'false');
+          }
+          
+        } catch (error) {
+          console.error('Error deleting API key:', error);
+          showNotification(error.message, false);
+        } finally {
+          // Re-enable button
+          button.disabled = false;
+        }
+      });
     });
   }
   
@@ -2702,12 +2719,9 @@ function setupPasswordToggles() {
         if (e.target.checked) {
           const mode = e.target.value;
           try {
-            // Import the API function
-            const { saveExecutionMode } = await import('../api/settings.js');
-            
-            // Save to backend
+            // Use the statically imported settingsApi
             console.log(`Saving execution mode: ${mode}`);
-            const response = await saveExecutionMode(mode);
+            const response = await settingsApi.saveExecutionMode(mode);
             
             if (response && response.success) {
               // Update local settings

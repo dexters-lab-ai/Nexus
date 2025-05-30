@@ -1,14 +1,14 @@
 import {
-  EventDispatcher,
-  MOUSE,
-  Quaternion,
-  Spherical,
-  TOUCH,
-  Vector2,
-  Vector3,
-  Plane,
-  Ray,
-  MathUtils
+	Controls,
+	MOUSE,
+	Quaternion,
+	Spherical,
+	TOUCH,
+	Vector2,
+	Vector3,
+	Plane,
+	Ray,
+	MathUtils
 } from 'three';
 
 /**
@@ -84,7 +84,7 @@ const _EPS = 0.000001;
  *
  * @augments Controls
  */
-class OrbitControls extends EventDispatcher {
+class OrbitControls extends Controls {
 
 	/**
 	 * Constructs a new controls instance.
@@ -93,10 +93,8 @@ class OrbitControls extends EventDispatcher {
 	 * @param {?HTMLDOMElement} domElement - The HTML element used for event listeners.
 	 */
 	constructor( object, domElement = null ) {
-		super();
-		// Assign the target object and DOM element for controls
-		this.object = object;
-		this.domElement = domElement || document;
+
+		super( object, domElement );
 
 		this.state = _STATE.NONE;
 
@@ -464,6 +462,8 @@ class OrbitControls extends EventDispatcher {
 	}
 
 	connect( element ) {
+
+		super.connect( element );
 
 		this.domElement.addEventListener( 'pointerdown', this._onPointerDown );
 		this.domElement.addEventListener( 'pointercancel', this._onPointerUp );

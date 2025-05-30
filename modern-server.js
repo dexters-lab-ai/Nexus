@@ -242,31 +242,23 @@ app.use('/src', express.static(path.join(__dirname, 'src'), {
   }
 }));
 
-// Three.js CDN middleware
-app.use((req, res, next) => {
-  const threePaths = [
-    '/three/examples/jsm',
-    '/three/build/three.module.js',
-    '/jsm/controls/OrbitControls.js',
-    '/jsm/loaders/GLTFLoader.js',
-    '/jsm/loaders/DRACOLoader.js'
-  ];
-  
-  if (threePaths.some(path => req.url.includes(path))) {
-    return res.redirect(302, `https://cdn.jsdelivr.net/npm/three@0.132.2${req.url}`);
+// Serve local Three.js assets
+app.use('/three', express.static(path.join(__dirname, 'node_modules', 'three'), {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript');
+    }
   }
-  next();
-});
+}));
 
-// Add global Three.js CDN mapping
-app.use((req, res, next) => {
-  // Map bare specifier requests to CDN
-  if (req.url.includes('/three/examples/jsm/')) {
-    const modulePath = req.url.split('/three/examples/jsm/')[1];
-    return res.redirect(`https://cdn.jsdelivr.net/npm/three@0.132.2/examples/jsm/${modulePath}`);
+// Serve local Three.js examples
+app.use('/three/examples/jsm', express.static(path.join(__dirname, 'node_modules', 'three', 'examples', 'jsm'), {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript');
+    }
   }
-  next();
-});
+}));
 
 // Add CORS middleware
 app.use((req, res, next) => {

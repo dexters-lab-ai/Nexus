@@ -32,7 +32,6 @@ import {
 	Material,
 	MathUtils,
 	Matrix4,
-	Vector3,
 	Mesh,
 	MeshBasicMaterial,
 	MeshPhysicalMaterial,
@@ -58,8 +57,14 @@ import {
 	SpotLight,
 	Texture,
 	TextureLoader,
+	TriangleFanDrawMode,
+	TriangleStripDrawMode,
+	Vector2,
+	Vector3,
+	VectorKeyframeTrack,
+	SRGBColorSpace,
+	InstancedBufferAttribute
 } from 'three';
-
 import { toTrianglesDrawMode } from '../utils/BufferGeometryUtils.js';
 
 /**
@@ -513,7 +518,7 @@ class GLTFLoader extends Loader {
 
 						if ( extensionsRequired.indexOf( extensionName ) >= 0 && plugins[ extensionName ] === undefined ) {
 
-							console.warn( 'THREE.GLTFLoader: Unknown extension "' + extensionName + "'." );
+							console.warn( 'THREE.GLTFLoader: Unknown extension "' + extensionName + '".' );
 
 						}
 
@@ -1855,9 +1860,9 @@ class GLTFMeshGpuInstancing {
 		for ( const primitive of meshDef.primitives ) {
 
 			if ( primitive.mode !== WEBGL_CONSTANTS.TRIANGLES &&
-					primitive.mode !== WEBGL_CONSTANTS.TRIANGLE_STRIP &&
-					primitive.mode !== WEBGL_CONSTANTS.TRIANGLE_FAN &&
-					primitive.mode !== undefined ) {
+				 primitive.mode !== WEBGL_CONSTANTS.TRIANGLE_STRIP &&
+				 primitive.mode !== WEBGL_CONSTANTS.TRIANGLE_FAN &&
+				 primitive.mode !== undefined ) {
 
 				return null;
 
@@ -2908,17 +2913,15 @@ class GLTFParser {
 	 * Counts references to shared node / Object3D resources. These resources
 	 * can be reused, or "instantiated", at multiple nodes in the scene
 	 * hierarchy. Mesh, Camera, and Light instances are instantiated and must
-		// @ts-ignore
-		be marked. Non-scenegraph resources (like Materials, Geometries, and
-		// @ts-ignore
-		Textures) can be reused directly and are not marked here.
-		*
-		* Example: CesiumMilkTruck sample model reuses "Wheel" meshes.
-		*
-		* @private
-		* @param {Object} cache
-		* @param {Object3D} index
-		*/
+	 * be marked. Non-scenegraph resources (like Materials, Geometries, and
+	 * Textures) can be reused directly and are not marked here.
+	 *
+	 * Example: CesiumMilkTruck sample model reuses "Wheel" meshes.
+	 *
+	 * @private
+	 * @param {Object} cache
+	 * @param {Object3D} index
+	 */
 	_addNodeRef( cache, index ) {
 
 		if ( index === undefined ) return;
@@ -4200,7 +4203,7 @@ class GLTFParser {
 	}
 
 	/**
-	 * Specification: https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#animations
+	 * Specification: https://github.com/KhronosGroup/glTF/tree/master/specification/2.0#animations
 	 *
 	 * @private
 	 * @param {number} animationIndex
@@ -4329,7 +4332,7 @@ class GLTFParser {
 	}
 
 	/**
-	 * Specification: https://github.com/KhronosGroup/glTF/blob/master/specification/2.0#nodes-and-hierarchy
+	 * Specification: https://github.com/KhronosGroup/glTF/tree/master/specification/2.0#nodes-and-hierarchy
 	 *
 	 * @private
 	 * @param {number} nodeIndex

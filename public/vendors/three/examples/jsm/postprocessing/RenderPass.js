@@ -1,4 +1,6 @@
-import * as THREE from 'three';
+import {
+	Color
+} from 'three';
 import { Pass } from './Pass.js';
 
 /**
@@ -90,7 +92,7 @@ class RenderPass extends Pass {
 		 * @default false
 		 */
 		this.needsSwap = false;
-		this._oldClearColor = new THREE.Color();
+		this._oldClearColor = new Color();
 
 	}
 

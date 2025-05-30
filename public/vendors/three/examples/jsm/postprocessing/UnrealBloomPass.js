@@ -1,12 +1,12 @@
 import {
 	AdditiveBlending,
 	Color,
+	HalfFloatType,
+	MeshBasicMaterial,
 	ShaderMaterial,
 	UniformsUtils,
 	Vector2,
 	Vector3,
-	HalfFloatType,
-	MeshBasicMaterial,
 	WebGLRenderTarget
 } from 'three';
 import { Pass, FullScreenQuad } from './Pass.js';

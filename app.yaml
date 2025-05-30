@@ -73,7 +73,7 @@ services:
   
   # Health Check Configuration
   health_check:
-    http_path: /health
+    http_path: /api/health
     initial_delay_seconds: 30
     period_seconds: 10
     timeout_seconds: 5

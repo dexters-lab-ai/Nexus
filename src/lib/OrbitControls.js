@@ -6,7 +6,7 @@ import {
   TOUCH,
   Vector2,
   Vector3
-} from 'https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.module.js';
+} from 'three';
 
 export class OrbitControls extends EventDispatcher {
   // Implementation copied from three.js examples

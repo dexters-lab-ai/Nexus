@@ -1,0 +1,10 @@
+--- a/public/vendors/three/examples/jsm/physics/JoltPhysics.js
++++ b/public/vendors/three/examples/jsm/physics/JoltPhysics.js
+@@ -1,6 +1,6 @@
+ import { EventDispatcher, Vector3, Quaternion, Matrix4, Mesh, BoxGeometry, MeshBasicMaterial, Group, BufferGeometry, Float32BufferAttribute, MeshStandardMaterial, Color, BackSide, FrontSide } from 'three';
+ 
+-const JOLT_PATH = 'https://cdn.jsdelivr.net/npm/jolt-physics@0.23.0/dist/jolt-physics.wasm-compat.js';
++const JOLT_PATH = '/assets/jolt/jolt-physics.wasm-compat.js';
+ 
+ let Jolt;
+ let JoltModule;

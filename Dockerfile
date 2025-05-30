@@ -60,7 +60,6 @@ COPY --from=builder /usr/src/app/dist ./dist
 
 # Copy server files
 COPY server.js .
-COPY modern-server.js .
 
 # Copy public directory and its contents
 COPY --from=builder /usr/src/app/public ./public

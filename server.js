@@ -1,80 +1,133 @@
 // ======================================
-// 1) ENV & CORE LIBRARIES
-// Import environment configuration
+// 0. LOAD ENVIRONMENT VARIABLES
+// ======================================
 import dotenv from 'dotenv';
-dotenv.config();
-import env from './src/config/env.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-// Set default port from environment or config
-const PORT = env.port;
-const NODE_ENV = env.nodeEnv;
+// Load environment variables from .env file before any other imports
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
-// Global unhandled promise rejection handler for Puppeteer "Request is already handled!" errors
-process.on('unhandledRejection', (reason, promise) => {
-  if (reason && reason.message && reason.message.includes('Request is already handled')) {
-    console.log('[Puppeteer] Ignoring known issue: Request is already handled');
-  } else {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  }
+// Log loaded environment variables for debugging
+console.log('Environment variables loaded:', {
+  NODE_ENV: process.env.NODE_ENV,
+  MONGO_URI: process.env.MONGO_URI ? '*** URI set (hidden for security) ***' : 'Not set',
+  PORT: process.env.PORT
 });
 
-import path             from 'path';
-import fs               from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname }      from 'path';
-
-import express          from 'express';
+// 1. CORE IMPORTS
+// ======================================
+import fs from 'fs';
+import { randomBytes } from 'crypto';
+import express from 'express';
 import { createServer } from 'http';
-import session          from 'express-session';
-import MongoStore       from 'connect-mongo';
-import mongoose         from 'mongoose';
-import winston          from 'winston';
-import { WebSocketServer, WebSocket } from 'ws';
-import pRetry           from 'p-retry';
+import session from 'express-session';
+import MongoStore from 'connect-mongo';
+import mongoose from 'mongoose';
+import { WebSocketServer } from 'ws';
+import winston from 'winston';
+import pRetry from 'p-retry';
 import { v4 as uuidv4 } from 'uuid';
-import { Semaphore }    from 'async-mutex';
-
-// Puppeteer extras
-import puppeteerExtra   from 'puppeteer-extra';
-import StealthPlugin    from 'puppeteer-extra-plugin-stealth';
+import { Semaphore } from 'async-mutex';
+import puppeteerExtra from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { PuppeteerAgent } from '@midscene/web/puppeteer';
-
-// OpenAI SDK
 import OpenAI from 'openai';
-
-// Import AbortError directly from p-retry
 import { AbortError } from 'p-retry';
 
 // ======================================
-// 3) MODEL IMPORTS
+// 2. MODEL IMPORTS
 // ======================================
-import User        from './src/models/User.js';
-import Message     from './src/models/Message.js';
-import Task        from './src/models/Task.js';
+import User from './src/models/User.js';
+import Message from './src/models/Message.js';
+import Task from './src/models/Task.js';
 import ChatHistory from './src/models/ChatHistory.js';
-import Billing     from './src/models/Billing.js';
+import Billing from './src/models/Billing.js';
 
 // ======================================
-// 4) UTILS & REPORT GENERATORS
+// 3. UTILS & REPORT GENERATORS
 // ======================================
-import { stripLargeFields }         from './src/utils/stripLargeFields.js';
-import { generateReport }           from './src/utils/reportGenerator.js';
-import { editMidsceneReport }       from './src/utils/midsceneReportEditor.js';
+import { stripLargeFields } from './src/utils/stripLargeFields.js';
+import { generateReport } from './src/utils/reportGenerator.js';
+import { editMidsceneReport } from './src/utils/midsceneReportEditor.js';
 import reportHandlers from './src/utils/reportFileFixer.js';
-import executionHelper               from './src/utils/execution-helper.js';
-const { determineExecutionMode }     = executionHelper;
+import executionHelper from './src/utils/execution-helper.js';
+const { determineExecutionMode } = executionHelper;
 
 // ======================================
-// 5) GLOBAL CONFIGURATION
+// 4. CONFIGURATION & ENVIRONMENT
 // ======================================
-mongoose.set('strictQuery', true);
-
 const __filename = fileURLToPath(import.meta.url);
-const __dirname  = dirname(__filename);
+const __dirname = path.dirname(__filename);
 
+// List of environment variables that should be available to the client
+const clientEnvVars = [
+  'API_URL',
+  'FRONTEND_URL'
+];
+
+// Load environment variables based on NODE_ENV
+const envFile = process.env.NODE_ENV === 'production'
+  ? path.resolve(__dirname, '.env.production')
+  : path.resolve(__dirname, '.env.development');
+
+console.log('Loading environment from:', envFile);
+console.log('File exists:', fs.existsSync(envFile));
+
+// Load the environment file
+const result = dotenv.config({ path: envFile });
+
+// Ensure VITE_ prefixed variables are set for the client
+clientEnvVars.forEach(key => {
+  // If VITE_ prefixed version exists, use it
+  if (process.env[`VITE_${key}`]) {
+    // If non-prefixed version doesn't exist, create it for server-side use
+    if (!process.env[key]) {
+      process.env[key] = process.env[`VITE_${key}`];
+    }
+  } 
+  // If non-prefixed version exists, ensure VITE_ prefixed version is set for client
+  else if (process.env[key]) {
+    process.env[`VITE_${key}`] = process.env[key];
+  }
+});
+
+// Log all relevant environment variables for debugging
+const relevantVars = {};
+Object.entries(process.env).forEach(([key, value]) => {
+  if (key.includes('VITE_') || key.includes('API_') || key.includes('WS_') || key.includes('FRONTEND_')) {
+    relevantVars[key] = value;
+  }
+});
+console.log('Environment variables loaded:', relevantVars);
+
+if (result.error) {
+  console.error('Error loading .env file:', result.error);
+  process.exit(1);
+}
+
+// Import environment configuration
+import config from './src/config/env.js';
+
+// Global unhandled promise rejection handler for Puppeteer errors
+process.on('unhandledRejection', (reason, promise) => {
+  if (reason && reason.message && reason.message.includes('Request is already handled')) {
+    logger.debug('[Puppeteer] Ignoring known issue: Request is already handled');
+  } else {
+    logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  }
+});
+
+// ======================================
+// 5. CONSTANTS & GLOBALS
+// ======================================
+const PORT = config.port;
+const NODE_ENV = config.nodeEnv;
+const MAX_CONCURRENT_BROWSERS = 5;
 const OPENAI_API_KAIL = process.env.OPENAI_API_KAIL;
 
-// Standardized engine-to-key type mapping
+// Track active browser sessions (singleton instance)
+// Engine configuration
 const ENGINE_KEY_MAPPING = {
   'gpt-4o': 'openai',
   'qwen-2.5-vl-72b': 'qwen',
@@ -82,26 +135,123 @@ const ENGINE_KEY_MAPPING = {
   'ui-tars': 'uitars'
 };
 
-// Reverse mapping for key type to engine
 const KEY_ENGINE_MAPPING = Object.entries(ENGINE_KEY_MAPPING).reduce((acc, [engine, keyType]) => {
   acc[keyType] = engine;
   return acc;
 }, {});
 
-// Function to get a human-readable display name for an engine
-function getEngineDisplayName(engineId) {
-  const displayNames = {
-    'gpt-4o': 'OpenAI GPT-4o',
-    'qwen-2.5-vl-72b': 'Qwen 2.5',
-    'gemini-2.5-pro': 'Google Gemini',
-    'ui-tars': 'UI-TARS'
-  };
-  return displayNames[engineId] || engineId;
+// ======================================
+// 6. LOGGER SETUP
+// ======================================
+// Ensure run/report directories exist
+const NEXUS_RUN_DIR = path.join(__dirname, 'nexus_run');
+fs.mkdirSync(NEXUS_RUN_DIR, { recursive: true });
+const REPORT_DIR = path.join(NEXUS_RUN_DIR, 'report');
+fs.mkdirSync(REPORT_DIR, { recursive: true });
+const LOG_DIR = path.join(NEXUS_RUN_DIR, 'logs');
+fs.mkdirSync(LOG_DIR, { recursive: true });
+const ARTIFACTS_DIR = path.join(NEXUS_RUN_DIR, 'artifacts');
+fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
+
+// Export paths for use elsewhere in the application
+global.NEXUS_PATHS = {
+  RUN_DIR: NEXUS_RUN_DIR,
+  REPORT_DIR: REPORT_DIR,
+  LOG_DIR: LOG_DIR,
+  ARTIFACTS_DIR: ARTIFACTS_DIR
+};
+
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.File({ filename: path.join(LOG_DIR, 'error.log'), level: 'error' }),
+    new winston.transports.File({ filename: path.join(LOG_DIR, 'combined.log') })
+  ]
+});
+
+if (NODE_ENV !== 'production') {
+  logger.add(new winston.transports.Console({
+    format: winston.format.simple()
+  }));
 }
 
-// Set up semaphore for limiting concurrent browser instances
-const MAX_CONCURRENT_BROWSERS = 5;
-const browserSemaphore = new Semaphore(MAX_CONCURRENT_BROWSERS);
+logger.info(`Nexus run directory structure prepared at ${NEXUS_RUN_DIR}`);
+
+/**
+ * Helper function to conditionally log debug messages.
+ */
+function debugLog(msg, data = null) {
+  if (NODE_ENV !== 'production') {
+    if (data) {
+      logger.debug(msg, data);
+    } else {
+      logger.debug(msg);
+    }
+  }
+}
+
+// ======================================
+// 7. DATABASE CONNECTION & UTILITIES
+// ======================================
+import { connectDB, closeDB } from './src/config/database.js';
+
+// Set mongoose options
+mongoose.set('strictQuery', true);
+
+/**
+ * Connect to MongoDB with retry logic and proper error handling
+ * @returns {Promise<boolean>} True if connection was successful
+ */
+async function connectToDatabase() {
+  const startTime = Date.now();
+  try {
+    await connectDB();
+    console.log(`Connected to MongoDB in ${Date.now() - startTime}ms`);
+    return true;
+  } catch (err) {
+    console.error('MongoDB connection error:', err);
+    
+    // Check if connection has gone away or if it's a network issue
+    const isTemporaryError = 
+      err.name === 'MongoNetworkError' || 
+      err.message.includes('topology was destroyed') || 
+      err.message.includes('ECONNREFUSED') ||
+      err.message.includes('timed out');
+    
+    if (!isTemporaryError) {
+      // If it's a permanent error (like auth failure), abort retries
+      throw new AbortError(`MongoDB permanent connection error: ${err.message}`);
+    }
+    
+    // For temporary errors, throw the original error to allow retry
+    throw err;
+  }
+}
+
+/**
+ * Ensure database indexes are created with proper error handling
+ */
+async function ensureIndexes() {
+  try {
+    await Promise.all([
+      User.createIndexes(),
+      Task.createIndexes(),
+      Message.createIndexes(),
+      ChatHistory.createIndexes(),
+      Billing.createIndexes()
+    ]);
+    
+    logger.info('Database indexes ensured');
+  } catch (error) {
+    logger.error('Error ensuring database indexes:', error);
+    // Don't fail the application if index creation fails
+    // The application can still function, but queries might be slower
+  }
+}
 
 /**
  * Checks if a browser session is healthy and operational
@@ -115,112 +265,218 @@ async function isBrowserSessionHealthy(session) {
     const pages = await session.browser.pages();
     return Array.isArray(pages) && pages.length > 0 && pages[0].isClosed !== true;
   } catch (err) {
-    console.log(`Browser health check failed: ${err.message}`);
+    logger.error(`Browser health check failed: ${err.message}`);
     return false;
   }
 }
 
-puppeteerExtra.use(StealthPlugin());
-
-// Set up session health monitoring to keep browser sessions responsive
-const browserSessionHeartbeat = setInterval(async () => {
-  console.log(`[BrowserManager] Running heartbeat check on ${activeBrowsers.size} active sessions`);
-  const sessionsToClean = [];
-  
-  for (const [taskId, session] of activeBrowsers.entries()) {
-    try {
-      // Skip already closed or released sessions
-      if (!session || session.closed || session.hasReleased || !session.page) {
-        sessionsToClean.push(taskId);
-        continue;
-      }
-      
-      // Update last activity timestamp
-      if (!session.lastActivity) {
-        session.lastActivity = Date.now();
-      }
-      
-      // Check if browser is still responsive
-      if (Date.now() - session.lastActivity > 30 * 60 * 1000) { // 30 minutes inactive
-        console.log(`[BrowserManager] Cleaning up inactive session ${taskId}`);
-        sessionsToClean.push(taskId);
-        if (session.release && typeof session.release === 'function') {
-          session.release();
-        }
-        try {
-          if (session.page && !session.page.isClosed()) {
-            await session.page.close();
-          }
-          if (session.browser) {
-            await session.browser.close();
-          }
-        } catch (e) {
-          console.error(`[BrowserManager] Error cleaning up session: ${e.message}`);
-        }
-      } else {
-        // For active sessions, perform lightweight health check
-        if (session.page && !session.page.isClosed()) {
-          // Simple heartbeat to keep session alive without causing excessive work
-          session.page.evaluate(() => document.title).catch(() => {
-            // If this fails, mark for cleanup on next cycle
-            session.healthCheckFailed = true;
-          });
-        }
-      }
-    } catch (e) {
-      console.error(`[BrowserManager] Error in session heartbeat: ${e.message}`);
-      sessionsToClean.push(taskId);
-    }
-  }
-  
-  // Clean up marked sessions
-  for (const taskId of sessionsToClean) {
-    activeBrowsers.delete(taskId);
-  }
-  
-  console.log(`[BrowserManager] Heartbeat complete, cleaned ${sessionsToClean.length} sessions, ${activeBrowsers.size} remaining`);
-}, 5 * 60 * 1000); // Run every 5 minutes
-
-// OpenAI “fallback” client (used for non‑user‑key operations)
-// Use either OPENAI_API_KEY or fallback to OPENAI_API_KAIL
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KAIL });
-
-// Ensure run/report directories exist
-const NEXUS_RUN_DIR = path.join(__dirname, 'nexus_run');
-fs.mkdirSync(NEXUS_RUN_DIR, { recursive: true });
-const REPORT_DIR = path.join(NEXUS_RUN_DIR, 'report');
-fs.mkdirSync(REPORT_DIR, { recursive: true });
-
-// Add additional subdirectories if needed
-const LOG_DIR = path.join(NEXUS_RUN_DIR, 'logs');
-fs.mkdirSync(LOG_DIR, { recursive: true });
-const ARTIFACTS_DIR = path.join(NEXUS_RUN_DIR, 'artifacts');
-fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
-
-console.log(`Nexus run directory structure prepared at ${NEXUS_RUN_DIR}`);
-
-// Export paths for use elsewhere in the application
-global.NEXUS_PATHS = {
-  RUN_DIR: NEXUS_RUN_DIR,
-  REPORT_DIR: REPORT_DIR,
-  LOG_DIR: LOG_DIR,
-  ARTIFACTS_DIR: ARTIFACTS_DIR
-};
-
+/**
+ * Get a human-readable display name for an engine
+ * @param {string} engineId - The engine ID
+ * @returns {string} - Human-readable display name
+ */
+function getEngineDisplayName(engineId) {
+  const displayNames = {
+    'gpt-4o': 'OpenAI GPT-4o',
+    'qwen-2.5-vl-72b': 'Qwen 2.5',
+    'gemini-2.5-pro': 'Google Gemini',
+    'ui-tars': 'UI-TARS'
+  };
+  return displayNames[engineId] || engineId;
+}
 
 // ======================================
-// 6) EXPRESS + HTTP SERVER
+// 8. EXPRESS APP & MIDDLEWARE
 // ======================================
 const app = express();
 
-// Create HTTP server and WebSocket server
+// Serve static files from the public directory with proper MIME types
+const staticOptions = {
+  setHeaders: (res, filePath) => {
+    // Set proper MIME types for various file types
+    const mimeTypes = {
+      '.css': 'text/css',
+      '.js': 'application/javascript',
+      '.json': 'application/json',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.svg': 'image/svg+xml',
+      '.woff': 'font/woff',
+      '.woff2': 'font/woff2',
+      '.ttf': 'font/ttf',
+      '.eot': 'application/vnd.ms-fontobject'
+    };
+
+    const ext = path.extname(filePath).toLowerCase();
+    if (mimeTypes[ext]) {
+      res.setHeader('Content-Type', mimeTypes[ext]);
+    }
+  }
+};
+
+// In production, serve static files from the dist directory
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, 'dist'), staticOptions));
+}
+
+// Always serve static files from the public directory
+app.use(express.static(path.join(__dirname, 'public'), staticOptions));
+
+// Serve webfonts with correct MIME type
+app.use('/webfonts', express.static(path.join(__dirname, 'public/webfonts'), {
+  ...staticOptions,
+  // Cache control for production
+  maxAge: process.env.NODE_ENV === 'production' ? '1y' : 0
+}));
+/*
+// Generate a nonce for CSP
+const generateNonce = () => {
+  return randomBytes(16).toString('base64');
+};
+
+import { cdnAndCookieFixer } from './src/middleware/cdnFixer.js';
+
+// Apply CDN and cookie fixer middleware FIRST
+app.use(cdnAndCookieFixer);
+
+// Add CSP nonce to all responses
+app.use((req, res, next) => {
+  // Generate a new nonce for each request
+  res.locals.cspNonce = generateNonce();
+  next();
+});
+*/
+
+// 7.2 Session store (must come before any route that reads/writes req.session)
+const MONGO_URI = config.mongoUri || process.env.MONGO_URI;
+// Session configuration with secure settings
+const sessionMiddleware = session({
+  secret: config.sessionSecret,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: config.secureCookies, // Set based on environment
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    httpOnly: true,
+    sameSite: config.isProduction ? 'lax' : 'lax',
+    domain: config.cookieDomain === 'localhost' ? undefined : config.cookieDomain
+  },
+  store: MongoStore.create({
+    mongoUrl: MONGO_URI,
+    ttl: 24 * 60 * 60 // 24 hours
+  }),
+  name: 'nexus.sid',
+  unset: 'destroy'
+});
+
+// Apply middleware with proper ordering
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(sessionMiddleware);
+
+// Enhanced CORS middleware with permissive CORS setup
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// Add request logging - only log errors (4xx and 5xx) and skip health checks
+app.use((req, res, next) => {
+  const start = Date.now();
+  const { method, url, ip } = req;
+  
+  // Skip logging for health checks
+  if (url === '/api/health') {
+    return next();
+  }
+  
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const { statusCode } = res;
+    const contentLength = res.get('Content-Length') || 0;
+    
+    // Only log errors (4xx and 5xx status codes)
+    if (statusCode >= 400) {
+      logger.info(`${method} ${url} ${statusCode} - ${duration}ms - ${contentLength}b`, {
+        method,
+        url,
+        status: statusCode,
+        duration,
+        contentLength,
+        ip,
+        userAgent: req.headers['user-agent']
+      });
+    }
+  });
+  
+  next();
+});
+
+// ======================================
+// 9. WEBSOCKET SERVER
+// ======================================
+
 const server = createServer(app);
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({ 
+  server,
+  path: '/ws',
+  clientTracking: true,
+  perMessageDeflate: {
+    zlibDeflateOptions: {
+      chunkSize: 1024,
+      memLevel: 7,
+      level: 3
+    },
+    zlibInflateOptions: {
+      chunkSize: 10 * 1024
+    },
+    clientNoContextTakeover: true,
+    serverNoContextTakeover: true,
+    serverMaxWindowBits: 10,
+    concurrencyLimit: 10,
+    threshold: 1024
+  }
+});
 
-// WebSocket connection handling
-const userConnections = new Map();
-const unsentMessages = new Map();
+// Track active connections and unsent messages
+const userConnections = new Map(); // Maps userId -> Set of WebSocket connections
+const unsentMessages = new Map(); // Maps userId -> Array of pending messages
 
+// Handle WebSocket upgrade requests
+server.on('upgrade', (request, socket, head) => {
+  const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+  
+  if (pathname !== '/ws') {
+    logger.warn(`Rejected WebSocket connection to invalid path: ${pathname}`);
+    socket.destroy();
+    return;
+  }
+  
+  try {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      ws.isAlive = true;
+      ws.on('pong', () => { 
+        ws.isAlive = true; 
+        ws.lastPong = Date.now();
+      });
+      ws.connectedAt = Date.now();
+      ws.lastPong = Date.now();
+      wss.emit('connection', ws, request);
+    });
+  } catch (error) {
+    logger.error('WebSocket upgrade error:', error);
+    socket.destroy();
+  }
+});
+
+// Handle new WebSocket connections
 wss.on('connection', (ws, req) => {
   let userIdParam = req.url.split('userId=')[1]?.split('&')[0];
   const userId = decodeURIComponent(userIdParam || '');
@@ -279,523 +535,179 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-// ======================================
-// 7) MIDDLEWARE (ORDER MATTERS)
-// ======================================
-// Import environment config first
-import config from './src/config/env.js';
-import { cdnAndCookieFixer } from './src/middleware/cdnFixer.js';
-
-// 7.1 Apply CDN and cookie fixer middleware FIRST
-// This needs to be before any other middleware to properly handle static assets
-app.use(cdnAndCookieFixer);
-
-// 7.2 Body parsers
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Log environment info
-console.log('Environment:', config.nodeEnv);
-console.log('API URL:', config.apiUrl);
-console.log('WebSocket URL:', config.wsUrl);
-console.log('Frontend URL:', config.frontendUrl);
-
-// 7.2 Session store (must come before any route that reads/writes req.session)
-const MONGO_URI = process.env.MONGO_URI || (
-  process.env.NODE_ENV === 'production' 
-    ? 'mongodb://mongodb:27017/nexus' 
-    : 'mongodb://localhost:27017/nexus'
-);
-
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'your-secret-key',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: config.secureCookies, // Set based on environment
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    httpOnly: true,
-    sameSite: config.isProduction ? 'lax' : 'lax',
-    domain: config.cookieDomain === 'localhost' ? undefined : config.cookieDomain
-  },
-  store: MongoStore.create({
-    mongoUrl: MONGO_URI,
-    ttl: 24 * 60 * 60 // 24 hours
-  })
-}));
-
-// CORS configuration - combine development and production URLs
-const allowedOrigins = [
-  // Development URLs (only in non-production)
-  ...(process.env.NODE_ENV !== 'production' ? [
-    'http://localhost:3000',  // Frontend development server
-    'http://localhost:3420',  // Backend development server
-    'http://127.0.0.1:3000',  // Frontend development server (IPv4)
-    'http://127.0.0.1:3420'  // Backend development server (IPv4)
-  ] : [
-    // Production URLs
-    'https://operator-344ej.ondigitalocean.app',
-    'wss://operator-344ej.ondigitalocean.app'
-  ]),
-  
-  // Production URLs from environment
-  config.frontendUrl,
-  
-  // Add any additional allowed origins from environment
-  ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').filter(Boolean) : [])
-].filter((value, index, self) => {
-  // Remove duplicates
-  return value && self.indexOf(value) === index;
-}); // Remove any undefined/null values
-
-// Apply CORS middleware with dynamic origin and enhanced security headers
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin && (allowedOrigins.includes(origin) || env.isDevelopment)) {
-    // Set CORS headers
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    
-    // Security headers
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    
-    // Handle preflight requests
-    if (req.method === 'OPTIONS') {
-      return res.status(200).end();
+// Health check for WebSocket connections
+setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      logger.warn(`Terminating inactive WebSocket connection for user: ${ws.userId}`);
+      return ws.terminate();
     }
     
-    // Add request logging for non-asset requests
-    if (!req.path.match(/\.(js|css|jpg|jpeg|png|gif|ico|woff|woff2|ttf|eot|svg)$/)) {
-      const start = Date.now();
-      const { method, url, headers } = req;
-      
-      res.on('finish', () => {
-        const duration = Date.now() - start;
-        const logData = {
-          timestamp: new Date().toISOString(),
-          method,
-          url,
-          status: res.statusCode,
-          duration: `${duration}ms`,
-          ip: req.ip || req.connection.remoteAddress,
-          userAgent: headers['user-agent']
-        };
-        
-        // Log to console with color coding based on status code
-        const statusColor = res.statusCode >= 500 ? '\x1b[31m' : res.statusCode >= 400 ? '\x1b[33m' : '\x1b[32m';
-        console.log(`[${logData.timestamp}] ${method} ${url} - ${statusColor}${res.statusCode}\x1b[0m ${duration}ms`);
-        
-        // Log detailed request info in development
-        if (process.env.NODE_ENV === 'development') {
-          console.log('Request Headers:', headers);
-          console.log('Response Headers:', res.getHeaders());
-        }
-      });
-    }
-    
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Session-ID');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Expose-Headers', 'X-Session-ID');
-    
-    // Handle preflight requests
-    if (req.method === 'OPTIONS') {
-      return res.status(200).end();
-    }
-  } else if (origin) {
-    // Origin not allowed
-    console.warn(`Blocked request from disallowed origin: ${origin}`);
-    return res.status(403).json({ error: 'Not allowed by CORS' });
-  }
-  
-  next();
-});
-
-// Handle WebSocket upgrade requests with CORS
-server.on('upgrade', (request, socket, head) => {
-  const origin = request.headers.origin;
-  const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
-  
-  // Only handle /ws path for WebSocket connections
-  if (pathname !== '/ws') {
-    socket.destroy();
-    return;
-  }
-  
-  // Check origin
-  if (origin && (allowedOrigins.includes(origin) || env.isDevelopment)) {
-    // Add CORS headers to the response
-    const responseHeaders = [
-      'HTTP/1.1 101 Web Socket Protocol Handshake',
-      'Upgrade: WebSocket',
-      'Connection: Upgrade',
-      `Access-Control-Allow-Origin: ${origin}`,
-      'Access-Control-Allow-Credentials: true'
-    ];
-    
-    // Handle the WebSocket upgrade
-    wss.handleUpgrade(request, socket, head, (ws) => {
-      wss.emit('connection', ws, request);
-    });
-  } else {
-    console.warn(`Blocked WebSocket connection from disallowed origin: ${origin}`);
-    socket.destroy();
-  }
-});
-
-// === REPORT & RUN STATIC SERVING (MUST COME FIRST) ===
-// Serve reports and report directories before any other static or SPA fallback
-reportHandlers.setupReportServing(app);
-reportHandlers.setupReportRedirector(app);
-app.use('/nexus_run', express.static(NEXUS_RUN_DIR));
-app.use('/midscene_run', (req, res, next) => {
-  // Extract the path after /midscene_run/
-  const subPath = req.path;
-  // Redirect to the equivalent nexus_run path
-  const newPath = `/nexus_run${subPath}`;
-  res.redirect(301, newPath);
-});
-
-// === GENERAL STATIC ASSETS ===
-// Enhanced static file serving with security headers and cache control
-const staticOptions = {
-  setHeaders: (res, path) => {
-    // Security headers
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    
-    // Prevent Cloudflare from setting cookies
-    res.setHeader('Set-Cookie', [
-      `__cf_bm=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=None`,
-      `__cfruid=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=None`,
-      `_cfuvid=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=None`
-    ].join(', '));
-    
-    // Cache control (1 year for assets)
-    if (path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|wasm|glb|hdr)$/i)) {
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    }
-  }
-};
-
-// Helper function to set common static file headers
-const setStaticFileHeaders = (res, filePath) => {
-  // Set security headers
-  setCSPHeaders(res);
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  
-  // Set CORS headers for cross-origin requests
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  
-  // Set content type based on file extension
-  const ext = path.extname(filePath).toLowerCase();
-  const mimeTypes = {
-    '.js': 'application/javascript',
-    '.css': 'text/css',
-    '.json': 'application/json',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.gif': 'image/gif',
-    '.svg': 'image/svg+xml',
-    '.woff': 'font/woff',
-    '.woff2': 'font/woff2',
-    '.ttf': 'font/ttf',
-    '.eot': 'font/eot',
-    '.wasm': 'application/wasm',
-    '.glb': 'model/gltf-binary',
-    '.hdr': 'application/octet-stream'
-  };
-  
-  if (mimeTypes[ext]) {
-    res.setHeader('Content-Type', mimeTypes[ext]);
-  }
-  
-  // Set caching headers for static assets (1 year for immutable assets)
-  const immutableExts = ['.js', '.css', '.woff', '.woff2', '.ttf', '.eot', '.wasm', '.glb', '.hdr', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico'];
-  if (immutableExts.some(immutableExt => filePath.endsWith(immutableExt))) {
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-  } else {
-    // No cache for HTML and other files
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-  }
-};
-
-// Define static directories to serve with their options
-const staticDirs = [
-  { 
-    path: path.join(__dirname, 'public'), 
-    route: '/public',
-    options: {
-      setHeaders: (res, path) => setStaticFileHeaders(res, path)
-    }
-  },
-  { 
-    path: path.join(__dirname, 'public', 'assets'), 
-    route: '/public/assets',
-    options: {
-      setHeaders: (res, path) => setStaticFileHeaders(res, path)
-    }
-  },
-  { 
-    path: path.join(__dirname, 'public', 'models'), 
-    route: '/public/models',
-    options: {
-      setHeaders: (res, path) => setStaticFileHeaders(res, path)
-    }
-  },
-  { 
-    path: path.join(__dirname, 'public', 'draco'), 
-    route: '/public/draco',
-    options: {
-      setHeaders: (res, path) => setStaticFileHeaders(res, path)
-    }
-  },
-  { 
-    path: path.join(__dirname, 'node_modules'), 
-    route: '/node_modules',
-    options: {
-      setHeaders: (res, path) => setStaticFileHeaders(res, path)
-    }
-  }
-];
-
-// Serve index.html for the root route
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// Mount each static directory with options
-staticDirs.forEach(({ path: dirPath, route, options }) => {
-  if (fs.existsSync(dirPath)) {
-    app.use(route, express.static(dirPath, options));
-    console.log(`Serving static files from: ${dirPath} at ${route}`);
-  } else {
-    console.warn(`Static directory not found: ${dirPath}`);
-  }
-});
-
-// Specific route for JS files
-app.use('/js', express.static(path.join(__dirname, 'public', 'js')));
-
-// Specific route for assets that might be in different locations
-app.use('/assets', (req, res, next) => {
-  // First try the main public directory
-  const publicPath = path.join(__dirname, 'public', req.path);
-  if (fs.existsSync(publicPath)) {
-    return express.static(path.join(__dirname, 'public'))(req, res, next);
-  }
-  
-  // Then try the bruno_demo_temp directory if in production
-  const demoPath = path.join(__dirname, 'bruno_demo_temp/static/assets', req.path);
-  if (fs.existsSync(demoPath)) {
-    return express.static(path.join(__dirname, 'bruno_demo_temp/static/assets'))(req, res, next);
-  }
-  
-  // If not found, continue to next middleware
-  next();
-});
-
-// Serve static files from src directory with proper MIME types
-app.use('/src', express.static(path.join(__dirname, 'src'), {
-  setHeaders: (res, path) => {
-    if (path.endsWith('.css')) {
-      res.setHeader('Content-Type', 'text/css');
-    } else if (path.endsWith('.js')) {
-      res.setHeader('Content-Type', 'application/javascript');
-    }
-  }
-}));
-
-// Handle model imports in development
-if (process.env.NODE_ENV !== 'production') {
-  app.use('/models', express.static(path.join(__dirname, 'src', 'models'), {
-    setHeaders: (res) => {
-      res.setHeader('Content-Type', 'application/javascript');
-    }
-  }));
-}
-
-// In production, models should be imported from the built files in dist
-
-// Helper function to set CSP headers
-const setCSPHeaders = (res) => {
-  // Allow Web Workers from blob: and self
-  // Allow WebGL and other necessary features
-  const csp = [
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net cdn.skypack.dev",
-    "style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com",
-    "img-src 'self' data: blob:",
-    "font-src 'self' data: https://cdnjs.cloudflare.com",
-    "connect-src 'self' ws: wss:",
-    "worker-src 'self' blob: data:",
-    "child-src 'self' blob:",
-    "frame-ancestors 'none'",
-    "form-action 'self'",
-    "base-uri 'self'"
-  ].join('; ');
-  
-  res.setHeader('Content-Security-Policy', csp);
-  
-  // Additional headers for CORS and other security
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-};
-
-// Vendor files handler with CORS and CSP
-const vendorFileHandler = (res, path) => {
-  setCSPHeaders(res);
-  if (path.match(/\.(woff2?|ttf|otf|eot)$/)) {
-    // Add CORS headers for font files
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET');
-    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    // Set proper MIME types for font files
-    if (path.endsWith('.ttf')) {
-      res.setHeader('Content-Type', 'font/ttf');
-    } else if (path.endsWith('.woff')) {
-      res.setHeader('Content-Type', 'font/woff');
-    } else if (path.endsWith('.woff2')) {
-      res.setHeader('Content-Type', 'font/woff2');
-    } else if (path.endsWith('.eot')) {
-      res.setHeader('Content-Type', 'application/vnd.ms-fontobject');
-    } else if (path.endsWith('.otf')) {
-      res.setHeader('Content-Type', 'font/otf');
-    }
-  }
-};
-
-// Add vendor files handler to staticDirs
-staticDirs.push({
-  path: path.join(__dirname, 'public', 'vendors'),
-  route: '/vendors',
-  options: {
-    setHeaders: vendorFileHandler
-  }
-});
-
-// Handle model imports in development
-if (process.env.NODE_ENV !== 'production') {
-  staticDirs.push({
-    path: path.join(__dirname, 'src', 'models'),
-    route: '/models',
-    options: {
-      setHeaders: (res) => {
-        res.setHeader('Content-Type', 'application/javascript');
-        setCSPHeaders(res);
+    ws.isAlive = false;
+    ws.ping(null, false, (err) => {
+      if (err) {
+        logger.error('WebSocket ping error:', err);
+        ws.terminate();
       }
+    });
+  });
+}, 30000); // Check every 30 seconds
+
+// WebSocket keep-alive and health check
+const WEBSOCKET_PING_INTERVAL = 30000; // 30 seconds
+const WEBSOCKET_TIMEOUT = 60000; // 60 seconds
+
+const pingInterval = setInterval(() => {
+  const now = Date.now();
+  
+  wss.clients.forEach((ws) => {
+    try {
+      // Check if connection is unresponsive
+      if (now - ws.lastPong > WEBSOCKET_TIMEOUT) {
+        logger.warn(`Terminating unresponsive WebSocket connection`);
+        ws.terminate();
+        return;
+      }
+      
+      // Send ping if connection is alive
+      if (ws.isAlive !== false) {
+        ws.isAlive = false;
+        ws.ping(() => {
+          // Empty callback to handle potential errors
+        });
+      }
+    } catch (error) {
+      logger.error('Error in WebSocket keep-alive:', error);
     }
   });
-}
+}, WEBSOCKET_PING_INTERVAL);
 
-// Serve all static directories
-try {
-  staticDirs.forEach(({ path: dirPath, route, options = {} }) => {
-    if (fs.existsSync(dirPath)) {
-      app.use(route, express.static(dirPath, options));
-      console.log(`Serving static files from: ${dirPath} at ${route}`);
-    } else {
-      console.warn(`Static directory not found: ${dirPath}`);
+// Clean up on server shutdown
+process.on('SIGTERM', () => {
+  clearInterval(pingInterval);
+  
+  // Close all WebSocket connections gracefully
+  wss.clients.forEach((ws) => {
+    try {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close(1001, 'Server shutting down');
+      }
+    } catch (error) {
+      logger.error('Error closing WebSocket:', error);
     }
   });
-} catch (error) {
-  console.error('Error setting up static directories:', error);
-}
-
-// Serve default favicon
-app.get('/favicon.ico', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/assets/images/dail-fav.png'));
+  
+  // Close the WebSocket server
+  wss.close(() => {
+    logger.info('WebSocket server closed');
+  });
 });
 
+// 10. ROUTES & MIDDLEWARE
 // ======================================
-// 8) ROUTES & MIDDLEWARE IMPORTS
-// ======================================
-import authRouter       from './src/routes/auth.js';
-import historyRouter    from './src/routes/history.js';
-import tasksRouter      from './src/routes/tasks.js';
+
+// Import routes and middleware
+import authRoutes from './src/routes/auth.js';
+import taskRoutes from './src/routes/tasks.js';
+import billingRoutes from './src/routes/billing.js';
+import yamlMapsRoutes from './src/routes/yaml-maps.js';
+import userRoutes from './src/routes/user.js';
+import historyRouter from './src/routes/history.js';
 import customUrlsRouter from './src/routes/customUrls.js';
-import settingsRouter   from './src/routes/settings.js';
-import yamlMapsRouter   from './src/routes/yaml-maps.js';
-import { requireAuth }  from './src/middleware/requireAuth.js';
+import settingsRouter from './src/routes/settings.js';
+import { requireAuth } from './src/middleware/requireAuth.js';
+import messagesRouter from './src/routes/messages.js';
+import { setStaticFileHeaders } from './src/middleware/staticAssets.js';
 import serveStaticAssets from './src/middleware/staticAssets.js';
 
-// Serve /login for SPA compatibility (redirects /login → /login.html)
-app.get('/login', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'login.html'));
-});
-
-// Root route - serve appropriate interface
-app.get('/', (req, res) => {
-  if (req.session.user) {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-  } else {
-    res.redirect('/login.html');
+// Authentication guard middleware
+const guard = (req, res, next) => {
+  if (!req.session.user) {
+    return res.redirect('/login.html');
   }
-});
+  next();
+};
 
 // ======================================
-// 9) ROUTERS (after session middleware)
+// 1. API ROUTES (must come before static files)
 // ======================================
-app.use('/api/auth', authRouter);
-app.use('/api/settings', settingsRouter);
-app.use('/api/history', requireAuth, historyRouter);
-import messagesRouter from './src/routes/messages.js';
-app.use('/api/messages', requireAuth, messagesRouter);
-app.use('/api/tasks',      requireAuth, tasksRouter);
-app.use('/api/custom-urls', requireAuth, customUrlsRouter);
-app.use('/api/yaml-maps',   requireAuth, yamlMapsRouter);
 
-// Health check endpoint - no auth required
+// Public API routes (no auth required)
+app.use('/api/auth', authRoutes);
+
+// Health check endpoint (public)
 app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// API: Who Am I (userId sync endpoint)
+app.get('/api/whoami', (req, res) => {
   try {
-    const healthCheck = {
-      status: 'ok',
-      serverReady: true,
-      timestamp: new Date().toISOString(),
-      nodeEnv: process.env.NODE_ENV || 'not set',
-      port: process.env.PORT || 'not set',
-      mongoConnected: mongoose.connection.readyState === 1,
-      memoryUsage: process.memoryUsage(),
-      uptime: process.uptime(),
-      platform: process.platform,
-      arch: process.arch,
-      versions: {
-        node: process.version,
-        v8: process.versions.v8,
-        openssl: process.versions.openssl
-      }
-    };
-    
-    // Check MongoDB connection
-    if (mongoose.connection.readyState !== 1) {
-      healthCheck.status = 'warning';
-      healthCheck.message = 'MongoDB connection not ready';
-    }
-    
-    res.status(200).json(healthCheck);
+    let userId = req.session?.userId || null;
+    res.status(200).json({ userId });
   } catch (error) {
-    console.error('Health check failed:', error);
-    res.status(500).json({
-      status: 'error',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
+    res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// Protected API routes (require authentication)
+app.use('/api/settings', requireAuth, settingsRouter);
+app.use('/api/history', requireAuth, historyRouter);
+app.use('/api/tasks', requireAuth, taskRoutes);
+app.use('/api/custom-urls', requireAuth, customUrlsRouter);
+app.use('/api/yaml-maps', requireAuth, yamlMapsRoutes);
+app.use('/api/billing', requireAuth, billingRoutes);
+app.use('/api/user', requireAuth, userRoutes);
+app.use('/api/messages', requireAuth, messagesRouter);
+
+// ======================================
+// ======================================
+// 2. STATIC ASSETS (served before API routes)
+// ======================================
+
+// Special handling for model files in development
+if (NODE_ENV !== 'production') {
+  const devModelsPath = path.join(__dirname, 'src', 'models');
+  if (fs.existsSync(devModelsPath)) {
+    app.use('/models', express.static(devModelsPath, {
+      setHeaders: setStaticFileHeaders,
+      index: false,
+      fallthrough: false,
+      dotfiles: 'ignore'
+    }));
+    logger.info(`Serving development models from ${devModelsPath}`);
+  }
+}
+
+// Serve static assets
+serveStaticAssets(app);
+
+// ======================================
+// 4. APPLICATION ROUTES (HTML routes)
+// ======================================
+
+// Serve index.html for root route with authentication check
+app.get('/', guard, (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'), {
+    headers: {
+      'Content-Type': 'text/html',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    }
+  });
+});
+
+// Serve old.html without authentication
+app.get('/old.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'old.html'), {
+    headers: {
+      'Content-Type': 'text/html',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    }
+  });
 });
 
 // Support legacy /logout path
@@ -806,30 +718,7 @@ app.get('/logout', (req, res) => {
   });
 });
 
-// Serve PWA static assets
-serveStaticAssets(app);
-
-// ======================================
-// 10) HTML ENDPOINTS & FALLBACK
-// ======================================
-
-// -) protect your SPA “shell” routes
-const guard = (req, res, next) => {
-  if (!req.session.user) return res.redirect('/')
-  next()
-}
-
-// Import API routes
-import billingRoutes from './src/routes/billing.js';
-import yamlMapsRoutes from './src/routes/yaml-maps.js';
-import userRoutes from './src/routes/user.js';
-
-// Use API routes
-app.use('/api/billing', billingRoutes);
-app.use('/api/yaml-maps', yamlMapsRoutes);
-app.use('/api/user', userRoutes);
-
-// Loop over the other .html endpoints
+// Serve other HTML pages with authentication
 const pages = ['history', 'guide', 'settings'];
 pages.forEach(page => {
   app.get(`/${page}.html`, guard, (req, res) => {
@@ -837,46 +726,183 @@ pages.forEach(page => {
   });
 });
 
-// Old interface should be accessible without auth
-app.get('/old.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'old.html'));
+// Favicon
+app.get('/favicon.ico', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/assets/images/dail-fav.png'));
 });
 
-// the app shell
-app.get('/', guard, (req, res) => {
-  // note: index.html is now in dist/
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'))
-})
+// ======================================
+// 3. REPORT HANDLERS (must come before SPA catch-all)
+// ======================================
+reportHandlers.setupReportServing(app);
+reportHandlers.setupReportRedirector(app);
+
+// 404 handler for API routes (must come after all other routes but before error handlers)
+// API 404 handler - will be moved to the end of the file
+const api404Handler = (req, res) => {
+  res.status(404).json({ error: 'API endpoint not found' });
+};
+
+// SPA Catch-All Route - will be moved to the end of the file
+const spaCatchAll = (req, res, next) => {
+  // Skip API routes and files with extensions
+  if (req.path.startsWith('/api/') || req.path.match(/\.[a-z0-9]+$/i)) {
+    return next();
+  }
+  
+  // For HTML5 client-side routing - serve index.html
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'), {
+    headers: {
+      'Content-Type': 'text/html',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'X-Content-Type-Options': 'nosniff'
+    }
+  });
+};
+
+// 404 handler - will be moved to the end of the file
+const html404Handler = (req, res) => {
+  if (req.accepts('html')) {
+    res.status(404).sendFile(path.join(__dirname, 'dist', '404.html'));
+  } else if (req.accepts('json')) {
+    res.status(404).json({ error: 'Not Found' });
+  } else {
+    res.status(404).type('txt').send('Not Found');
+  }
+};
+
+// Error handler 1 - will be moved to the end of the file
+const errorHandler1 = (err, req, res, next) => {
+  logger.error(`Unhandled error: ${err.stack}`);
+  if (!res.headersSent) {
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: process.env.NODE_ENV === 'development' ? err.message : 'An unexpected error occurred'
+    });
+  }
+  next(err);
+};
+
+// Error handler 2 - will be moved to the end of the file
+const errorHandler2 = (err, req, res, next) => {
+  const errorId = uuidv4();
+  const errorDetails = {
+    id: errorId,
+    timestamp: new Date().toISOString(),
+    path: req.path,
+    method: req.method,
+    ip: req.ip,
+    userAgent: req.headers['user-agent']
+  };
+  
+  // Log the error with context
+  logger.error(`[${errorId}] ${err.message}`, {
+    error: err.stack,
+    ...errorDetails
+  });
+  
+  // Don't leak stack traces in production
+  const errorResponse = NODE_ENV === 'production' 
+    ? { 
+        error: 'Internal Server Error',
+        message: 'An unexpected error occurred',
+        errorId
+      }
+    : {
+        error: err.name,
+        message: err.message,
+        stack: err.stack,
+        ...errorDetails
+      };
+  
+  res.status(err.status || 500).json(errorResponse);
+};
 
 // ======================================
-// 11) WEBSOCKET SETUP (moved to section 6)
+// 10. DATABASE MANAGEMENT
 // ======================================
-// WebSocket server is now initialized with the HTTP server
-// See section 6 for WebSocket server setup and connection handling
 
-// ======================================
-// 12) LOGGER
-// ======================================
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
-  transports: [
-    new winston.transports.File({ filename: 'error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'combined.log' })
-  ]
-});
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({ format: winston.format.simple() }));
+/**
+ * Clear the database once on startup if needed
+ * This is useful for development and testing
+ */
+async function clearDatabaseOnce() {
+  try {
+    // Check if we should clear the database
+    if (process.env.CLEAR_DB_ON_START === 'true') {
+      console.log('Clearing database...');
+      await Promise.all([
+        User.deleteMany({}),
+        Message.deleteMany({}),
+        Task.deleteMany({}),
+        ChatHistory.deleteMany({}),
+        Billing.deleteMany({})
+      ]);
+      console.log('✅ Database cleared');
+    }
+  } catch (error) {
+    console.error('Error clearing database:', error);
+    // Don't fail startup if clearing fails
+  }
 }
 
 // ======================================
-// 13) STARTUP: DB CONNECT & SERVER LISTEN
+// 11.a. BROWSER SESSION MANAGEMENT
 // ======================================
+// Initialize browser session tracking
+const activeBrowsers = new Map();
+const browserSemaphore = new Semaphore(MAX_CONCURRENT_BROWSERS);
+
+// Set up session health monitoring
+const browserSessionHeartbeat = setInterval(async () => {
+  logger.debug(`Running heartbeat check on ${activeBrowsers.size} active browser sessions`);
+  const sessionsToClean = [];
+  
+  for (const [taskId, session] of activeBrowsers.entries()) {
+    try {
+      if (!session || session.closed || session.hasReleased || !session.page) {
+        sessionsToClean.push(taskId);
+        continue;
+      }
+      
+      if (Date.now() - (session.lastActivity || 0) > 30 * 60 * 1000) { // 30 minutes inactive
+        logger.info(`Cleaning up inactive browser session ${taskId}`);
+        sessionsToClean.push(taskId);
+        if (session.release && typeof session.release === 'function') {
+          session.release();
+        }
+        try {
+          if (session.page && !session.page.isClosed()) {
+            await session.page.close();
+          }
+          if (session.browser) {
+            await session.browser.close();
+          }
+        } catch (err) {
+          logger.error('Error cleaning up browser session:', err);
+        }
+      }
+    } catch (error) {
+      logger.error('Error in browser session heartbeat:', error);
+      sessionsToClean.push(taskId);
+    }
+  }
+  
+  // Clean up dead sessions
+  sessionsToClean.forEach(taskId => activeBrowsers.delete(taskId));
+}, 5 * 60 * 1000); // Check every 5 minutes
+
+// ======================================
+// 11.b. SERVER INITIALIZATION
+// ======================================
+
 let httpServer;
 
 async function startApp() {
   try {
-    await pRetry(connectToMongoDB, {
+    await pRetry(connectToDatabase, {
       retries: 5,
       minTimeout: 2000,
       onFailedAttempt: error => {
@@ -890,11 +916,14 @@ async function startApp() {
     // Start the server
     return new Promise((resolve) => {
       httpServer = server.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-        console.log(`Environment: ${NODE_ENV}`);
-        console.log(`API URL: ${env.apiUrl}`);
-        console.log(`Frontend URL: ${env.frontendUrl}`);
-        console.log(`WebSocket URL: ${env.wsUrl}`);
+        console.log(`\n🚀 O.P.E.R.A.T.O.R - Nexus Server started successfully!`);
+        console.log(`================================`);
+        console.log(`Environment: ${config.nodeEnv}`);
+        console.log(`Port: ${PORT}`);
+        console.log(`API URL: ${config.apiUrl}`);
+        console.log(`Frontend URL: ${config.frontendUrl}`);
+        console.log(`WebSocket URL: ${config.wsUrl}`);
+        console.log(`================================\n`);
         resolve(httpServer);
       });
     });
@@ -910,60 +939,122 @@ startApp().catch(err => {
   process.exit(1);
 });
 
-// Graceful shutdown on SIGINT.
-process.on('SIGINT', async () => {
-  console.log('SIGINT received. Shutting down gracefully...');
+// ======================================
+// 12. CLEANUP AND SHUTDOWN HANDLERS
+// ======================================
+
+/**
+ * Clean up resources before shutting down
+ */
+async function cleanupResources() {
   try {
-    // Close the WebSocket server first
+    logger.info('Starting cleanup of resources...');
+    
+    // Close WebSocket server if it exists
     if (wss) {
-      console.log('Closing WebSocket server...');
-      wss.close(() => {
-        console.log('WebSocket server closed.');
-      });
-      
-      // Close all WebSocket connections
-      wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-          client.close();
-        }
-      });
-    }
-    
-    // Close the HTTP server
-    if (httpServer) {
-      httpServer.close(() => {
-        console.log('HTTP server closed.');
+      logger.info('Closing WebSocket server...');
+      await new Promise((resolve) => {
+        // Close all active WebSocket connections
+        wss.clients.forEach(client => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.terminate();
+          }
+        });
+        
+        // Close the WebSocket server
+        wss.close(() => {
+          logger.info('WebSocket server closed');
+          resolve();
+        });
       });
     }
     
-    // Close MongoDB connection
-    if (mongoose.connection.readyState === 1) {
+    // Close MongoDB connection if connected
+    if (mongoose.connection && mongoose.connection.readyState === 1) {
+      logger.info('Closing MongoDB connection...');
       await mongoose.connection.close();
-      console.log('Mongoose connection closed.');
+      logger.info('MongoDB connection closed');
     }
     
     // Clear any intervals
-    clearInterval(browserSessionHeartbeat);
+    if (browserSessionHeartbeat) {
+      logger.info('Clearing browser session heartbeat...');
+      clearInterval(browserSessionHeartbeat);
+    }
     
+    // Clean up any active browser sessions
+    if (activeBrowsers && activeBrowsers.size > 0) {
+      logger.info(`Cleaning up ${activeBrowsers.size} active browser sessions...`);
+      const cleanupPromises = Array.from(activeBrowsers.values()).map(async (session) => {
+        try {
+          if (session && !session.closed && typeof session.release === 'function') {
+            await session.release();
+          }
+        } catch (error) {
+          logger.error('Error cleaning up browser session:', error);
+        }
+      });
+      
+      await Promise.all(cleanupPromises);
+      activeBrowsers.clear();
+    }
+    
+    logger.info('Cleanup completed successfully');
   } catch (error) {
-    console.error('Error during shutdown:', error);
+    logger.error('Error during cleanup:', error);
+    // Don't throw, we want to continue with shutdown
+  }
+}
+
+// Handle graceful shutdown
+async function handleShutdown(signal) {
+  logger.info(`\n${signal} received - shutting down gracefully...`);
+  
+  try {
+    // Start cleanup with a timeout
+    const cleanupPromise = cleanupResources();
+    const timeoutPromise = new Promise(resolve => setTimeout(resolve, 10000)); // 10s timeout
+    
+    await Promise.race([cleanupPromise, timeoutPromise]);
+    logger.info('Graceful shutdown completed');
+  } catch (error) {
+    logger.error('Error during shutdown:', error);
   } finally {
     process.exit(0);
   }
-});
+}
 
-process.on('uncaughtException', (err) => { 
-  console.error('Uncaught Exception:', err); 
-  process.exit(1); 
-});
+// Register signal handlers
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+process.on('SIGINT', () => handleShutdown('SIGINT'));
+
+// Global error handlers
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  if (reason && reason.message && reason.message.includes('Request is already handled')) {
+    logger.debug('[Puppeteer] Ignoring known issue: Request is already handled');
+  } else {
+    logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  }
 });
 
-// Utility sleep function.
-async function sleep(ms) {
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception:', error);
+  // Attempt cleanup before exiting
+  cleanupResources()
+    .then(() => process.exit(1))
+    .catch(() => process.exit(1));
+});
+
+// Initialize Puppeteer
+puppeteerExtra.use(StealthPlugin());
+
+// ======================================
+// 12. HELPER FUNCTIONS
+// ======================================
+function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+
 
 /**
  * Shared function for saving task completion messages consistently
@@ -1037,8 +1128,6 @@ async function saveTaskCompletionMessages(userId, taskId, prompt, contentText, a
 }
 
 // --- WebSocket helper functions ---
-
-// --- WebSocket helper functions ---
 async function sendWebSocketUpdate(userId, data) {
   // Only send WebSocket updates for streaming events; skip chat HTTP replies
   if (!data.event) {
@@ -1067,70 +1156,6 @@ async function sendWebSocketUpdate(userId, data) {
       unsentMessages.set(userId, []);
     }
     unsentMessages.get(userId).push(data);
-  }
-}
-
-/**
- * Clear the database once.
- */
-async function clearDatabaseOnce() {
-  const flagFile = path.join(__dirname, 'db_cleared.flag');
-  if (fs.existsSync(flagFile)) {
-    console.log('Database already cleared, skipping clear operation.');
-    return;
-  }
-  try {
-    //await User.deleteMany({});
-    await ChatHistory.deleteMany({});
-    await Task.deleteMany({});
-    console.log('Successfully cleared User, ChatHistory, and Task collections.');
-    fs.writeFileSync(flagFile, 'Database cleared on ' + new Date().toISOString());
-    console.log('Created db_cleared.flag to mark database clear completion.');
-  } catch (err) {
-    console.error('Error clearing database:', err);
-  }
-}
-
-async function connectToMongoDB() {
-  const startTime = Date.now();
-  try {
-    await mongoose.connect(process.env.MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000,
-      connectTimeoutMS: 10000,
-    });
-    console.log(`Connected to MongoDB in ${Date.now() - startTime}ms`);
-    return true; // Successfully connected
-  } catch (err) {
-    console.error('Mongoose connection error:', err);
-    
-    // Check if connection has gone away or if it's a network issue
-    const isTemporaryError = 
-      err.name === 'MongoNetworkError' || 
-      err.message.includes('topology was destroyed') || 
-      err.message.includes('ECONNREFUSED') ||
-      err.message.includes('timed out');
-    
-    if (!isTemporaryError) {
-      // If it's a permanent error (like auth failure), abort retries
-      throw new AbortError(`MongoDB permanent connection error: ${err.message}`);
-    }
-    
-    // For temporary errors, throw the original error to allow retry
-    throw err;
-  }
-}
-
-async function ensureIndexes() {
-  try {
-    await User.ensureIndexes();
-    console.log('User indexes ensured');
-
-    await Task.ensureIndexes();
-    console.log('Task indexes ensured');
-  } catch (err) {
-    console.error('Error ensuring indexes:', err);
   }
 }
 
@@ -2030,11 +2055,6 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
   }
 }
 
-
-
-// Sessions map - shared across the application
-const activeBrowsers = new Map();
-
 /**
  * TaskPlan - Class to manage the execution plan for a browser task
  */
@@ -2672,6 +2692,7 @@ async function getUserOpenAiClient(userId) {
     defaultQuery: { usingDefaultKey, keySource, engine: preferredModel, provider }
   });
 }
+
 
 /**
  * Check if a user has a valid API key for the specified engine
@@ -3578,15 +3599,6 @@ process.on('unhandledRejection', (reason, promise) => {
   }
   // Don't crash the process, allowing the application to continue
 });
-
-/**
- * Helper function to conditionally log debug messages.
- */
-function debugLog(msg, data = null) {
-  if (process.env.DEBUG_MODE === 'true') {
-    console.log(`[DEBUG] ${msg}`, data || '');
-  }
-};
 
 // ===========================
 // MAIN CHAT LOGIC & route entry
@@ -5207,11 +5219,6 @@ function ensureUserId(req, res, next) {
   next();
 }
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
 // --- API: Who Am I (userId sync endpoint) ---
 app.get('/api/whoami', (req, res) => {
   try {
@@ -6032,6 +6039,7 @@ app.get('/api/settings', requireAuth, async (req, res) => {
   }
 });
 
+
 // Public API endpoint to check available engines - works without auth for new users
 app.get('/api/user/available-engines', async (req, res) => {
   try {
@@ -6193,10 +6201,6 @@ app.get('/api/user/available-engines', async (req, res) => {
     });
   }
 });
-
-// ENGINE_KEY_MAPPING and KEY_ENGINE_MAPPING are now defined in the global configuration section
-
-// getEngineDisplayName is now defined in the global configuration section
 
 // API endpoint for user API key management
 app.post('/api/user/api-keys', requireAuth, async (req, res) => {
@@ -6620,3 +6624,21 @@ app.post('/api/nli', requireAuth, async (req, res) => {
     res.end();
   }
 });
+
+// ======================================
+// CATCH-ALL ROUTE AND ERROR HANDLERS
+// These must be the last routes in the file
+// ======================================
+
+// API 404 handler - catches any undefined API routes
+app.use('/api/*', api404Handler);
+
+// SPA catch-all route - serves index.html for client-side routing
+app.get('*', spaCatchAll);
+
+// 404 handler for all other routes
+app.use(html404Handler);
+
+// Error handling middleware (in order of execution)
+app.use(errorHandler1);
+app.use(errorHandler2);
