@@ -103,49 +103,30 @@ export function CommandCenter(props = {}) {
       const data = await response.json();
       console.log('[DEBUG] DB fetch result:', data);
       
+      // Clear any cached messages from memory and use only DB results
+      sessionStorage.removeItem('messageCache');
+      localStorage.removeItem('messageHistory');
+      
       // Get messages array from response
       const messagesArray = data.items || data.messages || [];
       
       if (Array.isArray(messagesArray) && messagesArray.length > 0) {
-        // Filter valid messages (last 24 hours, valid roles, and required fields)
+        // Filter valid messages and ensure freshness (newer than yesterday)
         const yesterday = Date.now() - (24 * 60 * 60 * 1000);
-        const validMessages = messagesArray.filter(msg => {
-          try {
-            return (
-              msg && 
-              typeof msg === 'object' && 
-              msg.role && 
-              msg.content && 
-              msg.timestamp &&
-              ['system', 'assistant', 'user'].includes(msg.role) &&
-              new Date(msg.timestamp).getTime() > yesterday
-            );
-          } catch (e) {
-            console.warn('Invalid message format:', msg, e);
-            return false;
-          }
-        });
-        
-        // Deduplicate messages by content and timestamp (within 1 minute)
-        const uniqueMessages = [];
-        const seenMessages = new Set();
-        
-        validMessages.forEach(msg => {
-          const messageKey = `${msg.role}:${msg.content}:${Math.floor(new Date(msg.timestamp).getTime() / 60000)}`; // Rounded to minute
-          if (!seenMessages.has(messageKey)) {
-            seenMessages.add(messageKey);
-            uniqueMessages.push(msg);
-          }
-        });
-        
-        console.log(`[DEBUG] Found ${uniqueMessages.length} unique messages out of ${messagesArray.length} total`);
-        
-        // Sort by timestamp (oldest first)
-        const sortedMessages = [...uniqueMessages].sort((a, b) => 
-          new Date(a.timestamp) - new Date(b.timestamp)
+        const validMessages = messagesArray.filter(msg => 
+          msg && typeof msg === 'object' && 
+          msg.role && msg.content && msg.timestamp &&
+          new Date(msg.timestamp).getTime() > yesterday
         );
         
-        // Update store with filtered and sorted messages
+        console.log(`[DEBUG] Found ${validMessages.length} valid recent messages out of ${messagesArray.length} total`);
+        
+        // Sort with newest messages at the bottom
+        const sortedMessages = [...validMessages].sort((a, b) => {
+          return new Date(a.timestamp) - new Date(b.timestamp);
+        });
+        
+        // Clean replacement of timeline
         messagesStore.setState({ 
           timeline: sortedMessages,
           isLoading: false 
@@ -540,28 +521,11 @@ export function CommandCenter(props = {}) {
       ws.close(1000, 'Reinitializing connection');
     }
 
-    // Use environment configuration if available, otherwise fall back to WS_URL or current host
-    let wsUrl;
-    if (window.__ENV__ && window.__ENV__.wsUrl) {
-      // Use the WebSocket URL from environment config
-      wsUrl = window.__ENV__.wsUrl;
-    } else if (WS_URL) {
-      // Fallback to the existing WS_URL constant if defined
-      wsUrl = WS_URL;
-    } else {
-      // Last resort: construct from current host
-      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      wsUrl = `${protocol}://${window.location.host}/ws`;
-    }
-
-    // Add userId as query parameter
-    const separator = wsUrl.includes('?') ? '&' : '?';
-    wsUrl = `${wsUrl}${separator}userId=${encodeURIComponent(userId)}`;
-    
-    console.log(`[CommandCenter] Connecting to WebSocket: ${wsUrl}`);
+    const wsUrl = `${WS_URL}?userId=${encodeURIComponent(userId)}`;
+    console.log(`[DEBUG] CommandCenter: Attempting WebSocket connection to: ${wsUrl}`);
     try {
       ws = new WebSocket(wsUrl);
-      console.log('[CommandCenter] WebSocket connection established.');
+      console.log('[DEBUG] CommandCenter: WebSocket object created.');
     } catch (e) {
       connecting = false;
       console.error('[DEBUG] CommandCenter: Error creating WebSocket object:', e);

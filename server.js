@@ -184,6 +184,7 @@ logger.info(`Nexus run directory structure prepared at ${NEXUS_RUN_DIR}`);
 /**
  * Helper function to conditionally log debug messages.
  */
+/*
 function debugLog(msg, data = null) {
   if (NODE_ENV !== 'production') {
     if (data) {
@@ -193,6 +194,7 @@ function debugLog(msg, data = null) {
     }
   }
 }
+  */
 
 // ======================================
 // 7. DATABASE CONNECTION & UTILITIES
@@ -290,6 +292,51 @@ function getEngineDisplayName(engineId) {
 // ======================================
 const app = express();
 
+// Session configuration with secure settings
+const sessionMiddleware = session({
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production', // Set based on environment
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    httpOnly: true,
+    sameSite: 'lax',
+    domain: process.env.COOKIE_DOMAIN === 'localhost' ? undefined : process.env.COOKIE_DOMAIN
+  },
+  store: MongoStore.create({
+    mongoUrl: process.env.MONGO_URI,
+    ttl: 7 * 24 * 60 * 60, // 7 days to match cookie maxAge
+    autoRemove: 'interval',
+    autoRemoveInterval: 60 // Check for expired sessions every 60 minutes
+  }),
+  name: 'nexus.sid',
+  unset: 'destroy'
+});
+
+// Apply middleware with proper ordering
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(sessionMiddleware);
+
+// Custom request logging middleware to silence 404s for specific endpoints
+app.use((req, res, next) => {
+  // Skip logging for 404s on specific endpoints
+  const skipLogging = 
+    (req.path === '/api/user/available-engines' && req.method === 'GET' && res.statusCode === 404);
+  
+  // If we should skip logging, override the end method
+  if (skipLogging) {
+    const originalEnd = res.end;
+    res.end = function (chunk, encoding) {
+      res.end = originalEnd;
+      return res.end(chunk, encoding);
+    };
+  }
+  
+  next();
+});
+
 // Serve static files from the public directory with proper MIME types
 const staticOptions = {
   setHeaders: (res, filePath) => {
@@ -316,20 +363,38 @@ const staticOptions = {
   }
 };
 
+// API routes will be mounted here
+
 // In production, serve static files from the dist directory
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, 'dist'), staticOptions));
+  // Only serve static files if the request hasn't been handled by API routes
+  app.use((req, res, next) => {
+    // If the request starts with /api, skip static file serving
+    if (req.path.startsWith('/api/')) {
+      return next();
+    }
+    express.static(path.join(__dirname, 'dist'), staticOptions)(req, res, next);
+  });
 }
 
-// Always serve static files from the public directory
-app.use(express.static(path.join(__dirname, 'public'), staticOptions));
+// Always serve static files from the public directory (except API routes)
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    return next();
+  }
+  express.static(path.join(__dirname, 'public'), staticOptions)(req, res, next);
+});
 
-// Serve webfonts with correct MIME type
-app.use('/webfonts', express.static(path.join(__dirname, 'public/webfonts'), {
-  ...staticOptions,
-  // Cache control for production
-  maxAge: process.env.NODE_ENV === 'production' ? '1y' : 0
-}));
+// Serve webfonts with correct MIME type (except API routes)
+app.use('/webfonts', (req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    return next();
+  }
+  express.static(path.join(__dirname, 'public/webfonts'), {
+    ...staticOptions,
+    maxAge: process.env.NODE_ENV === 'production' ? '1y' : 0
+  })(req, res, next);
+});
 /*
 // Generate a nonce for CSP
 const generateNonce = () => {
@@ -349,41 +414,48 @@ app.use((req, res, next) => {
 });
 */
 
-// 7.2 Session store (must come before any route that reads/writes req.session)
-const MONGO_URI = config.mongoUri || process.env.MONGO_URI;
-// Session configuration with secure settings
-const sessionMiddleware = session({
-  secret: config.sessionSecret,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: config.secureCookies, // Set based on environment
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    httpOnly: true,
-    sameSite: config.isProduction ? 'lax' : 'lax',
-    domain: config.cookieDomain === 'localhost' ? undefined : config.cookieDomain
-  },
-  store: MongoStore.create({
-    mongoUrl: MONGO_URI,
-    ttl: 24 * 60 * 60 // 24 hours
-  }),
-  name: 'nexus.sid',
-  unset: 'destroy'
-});
+// 7.2 Session store configuration (moved to be right after Express app initialization)
 
-// Apply middleware with proper ordering
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-app.use(sessionMiddleware);
-
-// Enhanced CORS middleware with permissive CORS setup
+// Enhanced CORS middleware with environment-aware configuration
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  // Define allowed origins based on environment
+  const isProduction = process.env.NODE_ENV === 'production';
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const apiUrl = process.env.API_URL || 'http://localhost:5000';
+  
+  // For development, allow localhost on common ports
+  const allowedOrigins = isProduction 
+    ? [frontendUrl, apiUrl]  // In production, only allow configured URLs
+    : [
+        'http://localhost:3000',
+        'http://localhost:5000',
+        'http://127.0.0.1:3000',
+        'http://127.0.0.1:5000',
+        frontendUrl,
+        apiUrl
+      ].filter(Boolean);
+
+  const origin = req.headers.origin;
+  
+  // Allow requests from allowed origins
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  
+  // Allow credentials (cookies, authorization headers) - only for same-origin in production
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  // Allow these headers
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  
+  // Allow these methods
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  
+  // Handle preflight requests
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
+  
   next();
 });
 
@@ -775,18 +847,31 @@ const html404Handler = (req, res) => {
 
 // Error handler 1 - will be moved to the end of the file
 const errorHandler1 = (err, req, res, next) => {
-  logger.error(`Unhandled error: ${err.stack}`);
-  if (!res.headersSent) {
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: process.env.NODE_ENV === 'development' ? err.message : 'An unexpected error occurred'
-    });
+  // If headers have already been sent, delegate to the default Express error handler
+  if (res.headersSent) {
+    return next(err);
   }
-  next(err);
+  
+  logger.error(`Unhandled error: ${err.stack}`);
+  
+  // Set the response status code
+  const statusCode = err.statusCode || 500;
+  
+  // Send JSON response
+  res.status(statusCode).json({
+    error: 'Internal Server Error',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'An unexpected error occurred',
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+  });
 };
 
 // Error handler 2 - will be moved to the end of the file
 const errorHandler2 = (err, req, res, next) => {
+  // If headers have already been sent, delegate to the default Express error handler
+  if (res.headersSent) {
+    return next(err);
+  }
+
   const errorId = uuidv4();
   const errorDetails = {
     id: errorId,
@@ -804,7 +889,7 @@ const errorHandler2 = (err, req, res, next) => {
   });
   
   // Don't leak stack traces in production
-  const errorResponse = NODE_ENV === 'production' 
+  const errorResponse = process.env.NODE_ENV === 'production' 
     ? { 
         error: 'Internal Server Error',
         message: 'An unexpected error occurred',
@@ -6043,7 +6128,8 @@ app.get('/api/settings', requireAuth, async (req, res) => {
 // Public API endpoint to check available engines - works without auth for new users
 app.get('/api/user/available-engines', async (req, res) => {
   try {
-    const userId = req.session.user;
+    // Check both req.session.user and req.session.userId for compatibility
+    const userId = req.session.user || req.session.userId;
     
     // For first-time users without a user ID, provide default engines with system defaults
     if (!userId) {
@@ -6054,6 +6140,9 @@ app.get('/api/user/available-engines', async (req, res) => {
       const engineStatus = {};
       const availableEngines = supportedEngines;
       let usingAnyDefaultKey = true;
+      
+      // Log session info for debugging
+      console.log('Session data:', req.session);
       
       // Populate engine status with default info
       supportedEngines.forEach(engine => {
