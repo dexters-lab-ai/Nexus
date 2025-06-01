@@ -54,10 +54,126 @@ cd operator
 
 # Install dependencies
 npm install
-
-# Start development server
-npm run dev
 ```
+
+---
+
+## ⚙️ Environment Configuration
+
+O.P.E.R.A.T.O.R uses environment variables for configuration. You must set up the following files:
+
+- `.env` — for development (not committed)
+- `.env.production` — for production (not committed)
+- `.env.example` — template/example (committed)
+
+**Required variables:**
+- `NODE_ENV` — set to `development` or `production`
+- `PORT` — backend API port (default: `3420`)
+- `FRONTEND_URL` — frontend URL (default: `http://localhost:3000`)
+- `API_URL` — backend API URL (default: `http://localhost:3420`)
+- `VITE_FRONTEND_URL`, `VITE_API_URL`, `VITE_WS_URL` — for Vite frontend (use production URLs in `.env.production`)
+- All secret/API keys as needed
+
+> **Tip:** Copy `.env.example` to `.env` and `.env.production`, then fill in your values.
+
+```bash
+cp .env.example .env
+cp .env.example .env.production
+```
+
+---
+
+## 🚀 Development
+
+```bash
+# Start Vite frontend (port 3000)
+npm run dev
+
+# Start Node.js backend (port 3420)
+npm run serve:dev
+```
+
+- Access the app at: [http://localhost:3000](http://localhost:3000)
+- Backend API at: [http://localhost:3420](http://localhost:3420)
+
+---
+
+## 🧪 Production Build & Run
+
+### Build Frontend
+
+```bash
+npm run build
+```
+
+### Start Production Server
+
+```bash
+npm run serve
+```
+
+- App runs with production settings from `.env.production`
+- Access the app at your configured production URLs
+
+---
+
+## 🔎 Production Preview (Local Production Test)
+
+To test your production build locally:
+
+```bash
+npm run build
+cross-env NODE_ENV=production node server.js
+```
+
+- This uses `.env.production` and runs the server on port 3420 by default
+- Access the frontend at [http://localhost:3000](http://localhost:3000) if using Vite preview, or your configured `FRONTEND_URL`
+
+---
+
+## 💡 Troubleshooting
+
+- **Environment Variables Not Loading?**
+  - Ensure you use the correct `.env` file for the mode (`.env` for dev, `.env.production` for prod)
+  - On Windows, always use `cross-env` in npm scripts to set `NODE_ENV`
+  - Restart your terminal after changing env files
+- **Ports Not Matching?**
+  - Backend defaults to `3420`, frontend to `3000` (update your env files if you change these)
+- **Missing Dependencies?**
+  - Run `npm install` to ensure all dependencies (including `cross-env`) are installed
+
+---
+
+### 🕵️ Diagnosing User Connection Issues
+
+O.P.E.R.A.T.O.R relies on WebSocket connections to deliver real-time features such as the Neural Canvas and planLogs. If a user is not connected, some features will not work or render.
+
+#### How to Diagnose:
+
+- **Check WebSocket Connection Status**
+  - In the browser console, look for `[WebSocket] Connection established for userId=...`.
+  - If you see repeated reconnect attempts or errors, the connection is failing.
+  - On the server, logs like `[WebSocket] Sending update to userId=...` and `connectionCount` show if the backend sees the user as connected.
+- **Test with test-websocket.mjs**
+  - Use the provided `test-websocket.mjs` script to simulate a user connection and see if the server accepts and responds.
+- **User ID Sync**
+  - The frontend (`CommandCenter.jsx`) syncs userId with `/api/whoami` and stores it in local/session storage. If userId is missing or not synced, the WebSocket will not initialize.
+- **Missing WebSocket Events**
+  - If the Neural Canvas or planLogs do not render, it may be because the browser is not receiving `functionCallPartial` or related events from the server.
+  - This is often due to a lost or failed WebSocket connection. Check browser and server logs for errors.
+- **Queued Messages**
+  - The server queues messages for users who are temporarily disconnected. When the user reconnects, queued messages are sent. If you see `[WebSocket] No active connections for userId=... Queuing message.`, the user is not currently connected.
+
+#### What to do:
+
+- Refresh the browser and check for connection logs.
+- Check your `.env` and `.env.production` for correct `VITE_WS_URL` and `API_URL` values.
+- Make sure your firewall or reverse proxy is not blocking WebSocket traffic (port 3420 by default).
+- If using a production deployment, ensure your frontend is connecting to the correct backend WebSocket endpoint.
+- For persistent issues, check both client and server logs for `[WebSocket]` errors or warnings.
+
+> If the Neural Canvas or other real-time features do not update, it is almost always a user connection/WebSocket issue.
+
 
 ### Production Deployment
 

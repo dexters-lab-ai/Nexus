@@ -5,16 +5,6 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Load environment variables from .env file before any other imports
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
-
-// Log loaded environment variables for debugging
-console.log('Environment variables loaded:', {
-  NODE_ENV: process.env.NODE_ENV,
-  MONGO_URI: process.env.MONGO_URI ? '*** URI set (hidden for security) ***' : 'Not set',
-  PORT: process.env.PORT
-});
-
 // 1. CORE IMPORTS
 // ======================================
 import fs from 'fs';
@@ -716,14 +706,19 @@ async function startApp() {
     // Start the HTTP server which will handle both HTTP and WebSocket connections
     return new Promise((resolve) => {
       httpServer.listen(PORT, () => {
-        console.log(`\n🚀 O.P.E.R.A.T.O.R - Nexus Server started successfully!`);
-        console.log(`================================`);
-        console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-        console.log(`Port: ${PORT}`);
-        console.log(`API URL: http://localhost:${PORT}`);
-        console.log(`Frontend URL: http://localhost:3000`);
-        console.log(`WebSocket URL: ws://localhost:${PORT}/ws`);
-        console.log(`================================\n`);
+        // Cool colored robot and lab icons for logs
+const ROBOT_ICON = '\u001b[38;5;39m🤖\u001b[0m'; // Bright blue robot
+const LAB_ICON = '\u001b[38;5;208m🧪\u001b[0m';   // Orange lab flask
+const GEAR_ICON = '\u001b[38;5;220m⚙️\u001b[0m';   // Yellow gear
+
+console.log(`\n${ROBOT_ICON}  \u001b[1mO.P.E.R.A.T.O.R - Nexus Server started successfully!\u001b[0m`);
+console.log(`================================`);
+console.log(`${LAB_ICON}  Environment: \u001b[36m${process.env.NODE_ENV || 'development'}\u001b[0m`);
+console.log(`${GEAR_ICON}  Port: \u001b[33m${PORT}\u001b[0m`);
+console.log(`${ROBOT_ICON}  API URL: \u001b[32m${config.apiUrl}\u001b[0m`);
+console.log(`${LAB_ICON}  Frontend URL: \u001b[35m${config.frontendUrl}\u001b[0m`);
+console.log(`${ROBOT_ICON}  WebSocket URL: \u001b[34m${config.wsUrl}\u001b[0m`);
+console.log(`================================\n`);
         
         // Store the server and WebSocket instances globally for cleanup
         global.httpServer = httpServer;
