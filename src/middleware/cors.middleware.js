@@ -1,88 +1,105 @@
 import config from '../config/server.config.js';
 
-// Helper function to check if origin is allowed
+/**
+ * Check if the origin is allowed based on environment and configuration
+ * @param {string} origin - The origin to check
+ * @returns {boolean} - Whether the origin is allowed
+ */
 const isOriginAllowed = (origin) => {
   if (!origin) return false;
   
-  // Check for exact match, subdomain match, or wildcard
-  return config.cors.allowedOrigins.some(allowedOrigin => {
-    // Handle wildcard
-    if (allowedOrigin === '*') return true;
+  // In production, check against allowed domains
+  if (process.env.NODE_ENV === 'production') {
+    const allowedDomains = [
+      'operator-344ej.ondigitalocean.app',
+      // Add your custom domain here if needed
+      // 'yourdomain.com'
+    ];
     
-    // Handle wildcard subdomains (e.g., '*.example.com')
-    if (allowedOrigin.startsWith('*.')) {
-      const domain = allowedOrigin.substring(2);
-      return origin.endsWith(domain) || 
-             origin === `http://${domain}` || 
-             origin === `https://${domain}`;
-    }
-    
-    // Handle exact match
-    return origin === allowedOrigin;
-  });
-};
-
-// Get allowed headers from config or use defaults
-const getAllowedHeaders = (requestedHeaders) => {
-  if (requestedHeaders) return requestedHeaders;
-  return config.cors.defaultHeaders.join(',');
+    return allowedDomains.some(domain => {
+      // Handle exact match
+      if (origin === `https://${domain}` || origin === `http://${domain}`) {
+        return true;
+      }
+      
+      // Handle subdomains
+      if (origin.endsWith(`.${domain}`)) {
+        return true;
+      }
+      
+      return false;
+    });
+  }
+  
+  // In development, allow all localhost origins
+  return /^https?:\/\/localhost(:\d+)?$/.test(origin) || 
+         /^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin);
 };
 
 /**
  * CORS middleware that handles cross-origin requests with credentials
  * and proper preflight handling
  */
-export const corsMiddleware = (req, res, next) => {
+const corsMiddleware = (req, res, next) => {
   const origin = req.headers.origin;
   const requestMethod = req.method;
   const requestHeaders = req.headers['access-control-request-headers'];
   
-  // Always set Vary header to prevent caching of CORS responses
-  res.header('Vary', 'Origin');
+  res.header('Vary', 'Origin, Accept-Encoding');
   
   // Check if origin is allowed
   const allowed = isOriginAllowed(origin);
   
-  // Log CORS requests in development
-  if (process.env.NODE_ENV !== 'production') {
-    console.log(`CORS request from ${origin || 'unknown origin'}, allowed: ${allowed}`);
+  // Set CORS headers for all responses
+  if (allowed && origin) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    
+    // Handle preflight requests
+    if (requestMethod === 'OPTIONS') {
+      res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+      res.header('Access-Control-Max-Age', '86400'); // 24 hours
+      return res.status(204).end();
+    }
+  } else if (process.env.NODE_ENV !== 'production') {
+    // In development, allow all origins for easier testing
+    res.header('Access-Control-Allow-Origin', origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
   }
   
+  // Log CORS requests in development
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`CORS ${requestMethod} request from ${origin || 'unknown origin'}, allowed: ${allowed}`);
+    if (requestHeaders) {
+      console.log('Request headers:', requestHeaders);
+    }
+  }
+
   // Handle preflight requests
   if (requestMethod === 'OPTIONS') {
     if (allowed) {
       // Set CORS headers for preflight
       res.header('Access-Control-Allow-Origin', origin);
+      res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Request-ID, X-CSRF-Token');
       res.header('Access-Control-Allow-Credentials', 'true');
+      res.header('Access-Control-Max-Age', '86400'); // 24 hours
+      res.header('Access-Control-Expose-Headers', 'Set-Cookie, Authorization, X-Request-ID');
       
-      // Set preflight cache time from config or default to 10 minutes
-      res.header('Access-Control-Max-Age', config.cors.maxAge || 600);
-      
-      // Set allowed methods from config or use defaults
-      res.header('Access-Control-Allow-Methods', config.cors.methods.join(', '));
-      
-      // Set allowed headers
-      res.header('Access-Control-Allow-Headers', getAllowedHeaders(requestHeaders));
-      
-      // Set exposed headers if configured
-      if (config.cors.exposedHeaders && config.cors.exposedHeaders.length > 0) {
-        res.header('Access-Control-Expose-Headers', config.cors.exposedHeaders.join(','));
+      // Handle Cloudflare specific headers
+      if (req.headers['cf-connecting-ip']) {
+        res.header('X-Cloudflare-IP', req.headers['cf-connecting-ip']);
       }
       
-      // End the preflight request
       return res.status(204).end();
     }
-    
-    // Origin not allowed
-    return res.status(403).json({ 
-      error: 'Not allowed by CORS',
-      allowedOrigins: config.cors.allowedOrigins,
-      receivedOrigin: origin || 'none'
-    });
+    return res.status(403).json({ error: 'Not allowed by CORS' });
   }
   
-  // Handle actual requests (non-OPTIONS)
+  // Handle actual requests
   if (allowed) {
+    // Allow credentials and specific headers
     // Set CORS headers for actual request
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');

@@ -32,6 +32,24 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       strictPort: true,
       open: true,
+      host: '0.0.0.0',
+      headers: {
+        'Content-Security-Policy': "default-src 'self'; " +
+          "connect-src 'self' https://*.ondigitalocean.app https://*.cloudflare.com wss://*.ondigitalocean.app; " +
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; " +
+          "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " +
+          "img-src 'self' data: https: http:; " +
+          "font-src 'self' https: data:; " +
+          "frame-src 'self' https:; " +
+          "media-src 'self' https:;",
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'SAMEORIGIN',
+        'X-XSS-Protection': '1; mode=block',
+        'Referrer-Policy': 'strict-origin-when-cross-origin',
+        'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Resource-Policy': 'cross-origin'
+      },
       fs: {
         strict: true,
         allow: [
@@ -103,7 +121,11 @@ export default defineConfig(({ mode }) => {
       // Enable HMR with custom host
       hmr: {
         host: 'localhost',
-        port: 24678
+        port: 24678,
+        clientPort: 3000
+      },
+      watch: {
+        usePolling: true
       }
     },
 

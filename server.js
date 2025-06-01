@@ -645,13 +645,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// 8.1 Body parsers
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-// 8.2 Session ,iddleware
+// 8.1 Session middleware - must come before body parsers
 app.use(sessionMiddleware);
 
+// 8.2 Body parsers
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // 8.3 Custom request logging middleware to silence 404s for specific endpoints
 app.use((req, res, next) => {
   // Skip logging for 404s on specific endpoints
@@ -671,7 +670,7 @@ app.use((req, res, next) => {
 });
 
 // 8.4 CORS Middleware ** before routes **
-import { corsMiddleware } from './src/middleware/cors.middleware.js';
+import corsMiddleware from './src/middleware/cors.middleware.js';
 app.use(corsMiddleware);
 
 // 8.5 CSP Middleware - Session store configuration (moved to be right after Express app initialization)
@@ -1293,9 +1292,14 @@ if (NODE_ENV !== 'production') {
 app.get('/', guard, (req, res) => {
   const isDev = process.env.NODE_ENV === 'development';
   const indexPath = isDev 
-    ? path.join(__dirname, 'src', 'index.html')
+    ? path.join(__dirname, 'index.html') 
     : path.join(__dirname, 'dist', 'index.html');
     
+  // In development, redirect to Vite dev server if not already there
+  if (isDev && req.hostname === 'localhost' && req.get('host')?.includes('3420')) {
+    return res.redirect('http://localhost:3000');
+  }
+  
   res.sendFile(indexPath, {
     headers: {
       'Content-Type': 'text/html',
