@@ -3,34 +3,12 @@ const isBrowser = typeof window !== 'undefined';
 const isProduction = process.env.NODE_ENV === 'production';
 const nodeEnv = process.env.NODE_ENV || 'development';
 
-// Get MongoDB URI - prioritize direct process.env.MONGO_URI
-// This ensures we get the value that was loaded by dotenv in server.js
-console.log('Loading MongoDB URI from environment variables:', {
-  hasMongoUri: !!process.env.MONGO_URI,
-  nodeEnv: process.env.NODE_ENV,
-  allEnvKeys: Object.keys(process.env).filter(k => k.includes('MONGO') || k.includes('NODE') || k.includes('VITE'))
-});
-
-const mongoUri = process.env.MONGO_URI;
-
 // Helper function to safely get environment variables
 const getEnv = (key, defaultValue = '') => {
-  // First try to get from process.env directly (for server-side)
-  if (process.env[key]) {
-    return process.env[key];
-  }
-  
-  // Then try VITE_ prefixed variables (for client-side)
-  if (process.env[`VITE_${key}`]) {
-    return process.env[`VITE_${key}`];
-  }
-  
-  // For browser environment with Vite
   if (isBrowser && typeof import.meta !== 'undefined' && import.meta.env) {
-    return import.meta.env[key] || import.meta.env[`VITE_${key}`] || defaultValue;
+    return import.meta.env[key] || process.env[`VITE_${key}`] || process.env[key] || defaultValue;
   }
-  
-  return defaultValue;
+  return process.env[`VITE_${key}`] || process.env[key] || defaultValue;
 };
 
 // In browser, use import.meta.env, in Node.js use process.env
@@ -53,12 +31,10 @@ const getCurrentHost = () => {
 
 const config = {
   // Server Configuration
-  port: parseInt(process.env.PORT || getEnv('PORT', '3420')),  // Backend server port
+  port: parseInt(getEnv('PORT', '3420')),  // Backend server port
   nodeEnv,
   isProduction,
   isDevelopment: !isProduction,
-  // MongoDB URI from environment variables
-  mongoUri,
 
   // API Configuration
   apiUrl: isProduction
@@ -67,7 +43,7 @@ const config = {
   
   wsUrl: isProduction
     ? getEnv('WS_URL', `wss://${getEnv('FRONTEND_DOMAIN', isBrowser ? window.location.host : '')}`)
-    : getEnv('WS_URL', 'ws://localhost:3420'),
+    : getEnv('WS_URL', 'ws://localhost:3420/ws'),
     
   frontendUrl: isProduction
     ? getEnv('FRONTEND_URL', `https://${getEnv('FRONTEND_DOMAIN', isBrowser ? window.location.host : '')}`)
@@ -82,7 +58,6 @@ const config = {
     : 'localhost',
     
   secureCookies: isProduction || getEnv('SECURE_COOKIES', 'false') === 'true',
-  sessionSecret: getEnv('SESSION_SECRET', 'default-secret'),
   
   // Feature Flags
   features: {
@@ -101,6 +76,11 @@ if (config.wsUrl) {
     config.wsUrl = 'ws://' + config.wsUrl.substring(7);
   } else if (config.wsUrl.startsWith('https://')) {
     config.wsUrl = 'wss://' + config.wsUrl.substring(8);
+  }
+  // Always ensure /ws is present at the end (for both dev and prod)
+  if (!config.wsUrl.endsWith('/ws')) {
+    // Remove trailing slash if present, then append /ws
+    config.wsUrl = config.wsUrl.replace(/\/$/, '') + '/ws';
   }
 }
 

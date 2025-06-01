@@ -34,6 +34,271 @@ import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { PuppeteerAgent } from '@midscene/web/puppeteer';
 import OpenAI from 'openai';
 import { AbortError } from 'p-retry';
+import jwt from 'jsonwebtoken';
+import cookie from 'cookie';
+
+// Create Express app and HTTP server
+const app = express();
+const server = createServer(app);
+
+// Track all active WebSocket connections
+const allConnections = new Set();
+
+// Track connection attempts and failures
+const connectionAttempts = new Map();
+
+// Track active connections and unsent messages
+const userConnections = new Map(); // Maps userId -> Set of WebSocket connections
+const unsentMessages = new Map(); // Maps userId -> Array of pending messages
+
+// Create WebSocket server and handle HTTP upgrade
+let wss;
+
+function setupWebSocketServer(server) {
+  // Create WebSocket server
+  const wss = new WebSocketServer({ noServer: true });
+  
+  // Store the server instance globally for cleanup
+  global.wss = wss;
+
+  // WebSocket server event listeners
+  wss.on('listening', () => {
+    console.log('[WebSocket] Server is listening for WebSocket connections');
+  });
+
+  wss.on('error', (error) => {
+    console.error('[WebSocket] Server error:', error);
+  });
+
+  // Handle new WebSocket connections
+  wss.on('connection', (ws, req) => {
+    const clientIp = req.socket.remoteAddress;
+    const connectionId = ws.connectionId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Initialize connection properties if not already set
+    ws.connectionId = ws.connectionId || connectionId;
+    ws.connectedAt = ws.connectedAt || Date.now();
+    ws.clientIp = ws.clientIp || clientIp;
+    ws.isAlive = true;
+    ws.lastPong = Date.now();
+    
+    // Add to global connections set if not already added
+    if (!allConnections.has(ws)) {
+      allConnections.add(ws);
+    }
+    
+    console.log(`[WebSocket] New connection established`, {
+      connectionId: ws.connectionId,
+      clientIp: ws.clientIp,
+      url: req.url,
+      totalConnections: allConnections.size
+    });
+    
+    // Handle pong messages for keep-alive
+    ws.on('pong', () => {
+      ws.lastPong = Date.now();
+      ws.isAlive = true;
+    });
+    
+    // Handle incoming messages
+    ws.on('message', (message) => {
+      try {
+        const data = JSON.parse(message);
+        console.log(`[WebSocket] Message from ${ws.connectionId}:`, data);
+        
+        // Handle ping/pong for keep-alive
+        if (data.type === 'ping') {
+          console.log(`[WebSocket] Received app-level ping from ${ws.connectionId}`);
+          ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+          ws.isAlive = true;
+          return;
+        }
+        
+        // Handle other message types here
+        
+      } catch (error) {
+        console.error(`[WebSocket] Error processing message from ${ws.connectionId}:`, error);
+      }
+    });
+    
+    // Send initial welcome message
+    ws.send(JSON.stringify({
+      type: 'connection_established',
+      connectionId: ws.connectionId,
+      timestamp: Date.now()
+    }));
+    
+    // Parse userId from URL or token
+    let userId;
+    let userIdSource = 'unknown';
+    
+    try {
+      // Try to get from URL params first
+      const url = new URL(req.url, `ws://${req.headers.host}`);
+      userId = url.searchParams.get('userId');
+      userIdSource = 'url-param';
+      
+      // If not in URL, check auth header
+      if (!userId && req.headers.authorization) {
+        try {
+          const token = req.headers.authorization.split(' ')[1];
+          const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+          userId = decoded.userId;
+          userIdSource = 'jwt-token';
+        } catch (e) {
+          console.warn('[WebSocket] Failed to get userId from auth header:', e.message);
+        }
+      }
+      
+      // If still no userId, check cookies
+      if (!userId && req.headers.cookie) {
+        const cookies = cookie.parse(req.headers.cookie);
+        if (cookies.token) {
+          try {
+            const decoded = jwt.verify(cookies.token, process.env.JWT_SECRET || 'your-secret-key');
+            userId = decoded.userId;
+            userIdSource = 'cookie-token';
+          } catch (e) {
+            console.warn('[WebSocket] Failed to get userId from cookie:', e.message);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[WebSocket] Error parsing connection info:', {
+        error: error.message,
+        stack: error.stack,
+        url: req.url,
+        headers: Object.keys(req.headers)
+      });
+    }
+    
+    if (userId) {
+      // Track connection in userConnections map
+      ws.userId = userId;
+      
+      if (!userConnections.has(userId)) {
+        userConnections.set(userId, new Set());
+      }
+      
+      const userWsSet = userConnections.get(userId);
+      userWsSet.add(ws);
+      
+      console.log(`[WebSocket] User connected:`, {
+        userId,
+        connectionId: ws.connectionId,
+        connectionCount: userWsSet.size,
+        totalUsers: userConnections.size,
+        userIdSource
+      });
+      
+      // Send connection ack with user info
+      ws.send(JSON.stringify({
+        event: 'connection_ack',
+        timestamp: new Date().toISOString(),
+        userId,
+        connectionCount: userWsSet.size
+      }));
+      
+      // Send any queued messages for this user
+      if (unsentMessages.has(userId)) {
+        const queued = unsentMessages.get(userId);
+        console.log(`[WebSocket] Sending ${queued.length} queued messages to user ${userId}`);
+        queued.forEach(msg => {
+          try {
+            ws.send(JSON.stringify(msg));
+          } catch (error) {
+            console.error(`[WebSocket] Error sending queued message to user ${userId}:`, error);
+          }
+        });
+        unsentMessages.delete(userId);
+      }
+    } else {
+      console.warn('[WebSocket] Connection established without userId');
+      ws.send(JSON.stringify({
+        event: 'auth_required',
+        message: 'Authentication required. Please provide a valid userId or token.'
+      }));
+    }
+    
+    // Handle connection close
+    ws.on('close', () => {
+      console.log(`[WebSocket] Connection closed: ${ws.connectionId}`);
+      allConnections.delete(ws);
+      
+      // Remove from user connections map if present
+      if (ws.userId) {
+        const userWsSet = userConnections.get(ws.userId);
+        if (userWsSet) {
+          const beforeSize = userWsSet.size;
+          userWsSet.delete(ws);
+          
+          if (userWsSet.size === 0) {
+            userConnections.delete(ws.userId);
+            console.log(`[WebSocket] Removed last connection for userId=${ws.userId}`);
+          }
+          
+          console.log(`[WebSocket] User connection closed:`, {
+            userId: ws.userId,
+            connectionId: ws.connectionId,
+            connectionsBefore: beforeSize,
+            connectionsAfter: userWsSet.size,
+            totalUsers: userConnections.size
+          });
+        }
+      }
+    });
+    
+    // Handle errors
+    ws.on('error', (error) => {
+      console.error(`[WebSocket] Error on connection ${ws.connectionId}:`, error);
+    });
+  });
+  
+  // Handle HTTP server upgrade for WebSocket connections
+  server.on('upgrade', (request, socket, head) => {
+    try {
+      const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+      
+      if (pathname === '/ws') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          // The connection will be handled by the 'connection' event handler above
+          wss.emit('connection', ws, request);
+        });
+      } else {
+        console.log(`[WebSocket] Rejected upgrade request for path: ${pathname}`);
+        socket.destroy();
+      }
+    } catch (error) {
+      console.error('Error during WebSocket upgrade:', error);
+      socket.destroy();
+    }
+  });
+  
+  // WebSocket keep-alive and health check
+  const pingInterval = setInterval(() => {
+    const now = Date.now();
+    wss.clients.forEach((ws) => {
+      if (ws.isAlive === false) {
+        console.log(`Terminating unresponsive connection: ${ws.connectionId}`);
+        return ws.terminate();
+      }
+      ws.isAlive = true;
+      try {
+        ws.ping();
+        ws.send(JSON.stringify({ type: 'ping', timestamp: now }));
+      } catch (error) {
+        console.error('Error in keep-alive check:', error);
+      }
+    });
+  }, 300000);
+  
+  // Clean up interval on server close
+  server.on('close', () => {
+    clearInterval(pingInterval);
+  });
+  
+  return wss;
+}
 
 // ======================================
 // 2. MODEL IMPORTS
@@ -161,6 +426,17 @@ global.NEXUS_PATHS = {
   ARTIFACTS_DIR: ARTIFACTS_DIR
 };
 
+// X.X Serve reports and report directories before any other static or SPA fallback
+reportHandlers.setupReportServing(app);
+reportHandlers.setupReportRedirector(app);
+app.use('/nexus_run', express.static(NEXUS_RUN_DIR));
+app.use('/midscene_run', (req, res, next) => {
+  const subPath = req.path;
+  const newPath = `/nexus_run${subPath}`;
+  res.redirect(301, newPath);
+});
+
+// Logger Mr Winston
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
@@ -184,7 +460,7 @@ logger.info(`Nexus run directory structure prepared at ${NEXUS_RUN_DIR}`);
 /**
  * Helper function to conditionally log debug messages.
  */
-/*
+
 function debugLog(msg, data = null) {
   if (NODE_ENV !== 'production') {
     if (data) {
@@ -194,7 +470,6 @@ function debugLog(msg, data = null) {
     }
   }
 }
-  */
 
 // ======================================
 // 7. DATABASE CONNECTION & UTILITIES
@@ -288,10 +563,8 @@ function getEngineDisplayName(engineId) {
 }
 
 // ======================================
-// 8. EXPRESS APP & MIDDLEWARE
+// 8. EXPRESS APP & MIDDLEWARE - IN ORDER
 // ======================================
-const app = express();
-
 // Session configuration with secure settings
 const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET,
@@ -314,12 +587,14 @@ const sessionMiddleware = session({
   unset: 'destroy'
 });
 
-// Apply middleware with proper ordering
+// 8.1 Body parsers
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// 8.2 Session ,iddleware
 app.use(sessionMiddleware);
 
-// Custom request logging middleware to silence 404s for specific endpoints
+// 8.3 Custom request logging middleware to silence 404s for specific endpoints
 app.use((req, res, next) => {
   // Skip logging for 404s on specific endpoints
   const skipLogging = 
@@ -337,129 +612,44 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve static files from the public directory with proper MIME types
-const staticOptions = {
-  setHeaders: (res, filePath) => {
-    // Set proper MIME types for various file types
-    const mimeTypes = {
-      '.css': 'text/css',
-      '.js': 'application/javascript',
-      '.json': 'application/json',
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.gif': 'image/gif',
-      '.svg': 'image/svg+xml',
-      '.woff': 'font/woff',
-      '.woff2': 'font/woff2',
-      '.ttf': 'font/ttf',
-      '.eot': 'application/vnd.ms-fontobject'
-    };
+// 8.4 CORS Middleware ** before routes **
+import { corsMiddleware } from './src/middleware/cors.middleware.js';
+app.use(corsMiddleware);
 
-    const ext = path.extname(filePath).toLowerCase();
-    if (mimeTypes[ext]) {
-      res.setHeader('Content-Type', mimeTypes[ext]);
-    }
-  }
-};
-
-// API routes will be mounted here
-
-// In production, serve static files from the dist directory
-if (process.env.NODE_ENV === 'production') {
-  // Only serve static files if the request hasn't been handled by API routes
-  app.use((req, res, next) => {
-    // If the request starts with /api, skip static file serving
-    if (req.path.startsWith('/api/')) {
-      return next();
-    }
-    express.static(path.join(__dirname, 'dist'), staticOptions)(req, res, next);
-  });
-}
-
-// Always serve static files from the public directory (except API routes)
+// 8.5 CSP Middleware - Session store configuration (moved to be right after Express app initialization)
 app.use((req, res, next) => {
-  if (req.path.startsWith('/api/')) {
-    return next();
-  }
-  express.static(path.join(__dirname, 'public'), staticOptions)(req, res, next);
+  const isDev = process.env.NODE_ENV !== 'production';
+  const fontAwesomeUrl = process.env.CSP_FONTAWESOME_URL || 'https://cdnjs.cloudflare.com';
+
+  const csp = isDev
+    ? `default-src 'self' http://localhost:* blob: data:; ` +
+      `script-src 'self' http://localhost:*; ` +
+      `style-src 'self' ${fontAwesomeUrl} 'unsafe-inline'; ` +
+      `img-src 'self' data: blob:; ` +
+      `connect-src 'self' ws: wss: http://localhost:* blob: data:; ` +
+      `font-src 'self' data:; ` +
+      `media-src 'self' blob: data:; ` +
+      `worker-src 'self' blob: data:; ` +
+      `child-src 'self' blob: data:;`
+    : `default-src 'self'; ` +
+      `script-src 'self'; ` +
+      `style-src 'self' ${fontAwesomeUrl} 'unsafe-inline'; ` +
+      `img-src 'self' data: blob:; ` +
+      `connect-src 'self' ws: wss:; ` +
+      `font-src 'self'; ` +
+      `media-src 'self' blob:; ` +
+      `worker-src 'self' blob:; ` +
+      `child-src 'self' blob:;`;
+
+  res.setHeader('Content-Security-Policy', csp);
+  next();
 });
 
-// Serve webfonts with correct MIME type (except API routes)
-app.use('/webfonts', (req, res, next) => {
-  if (req.path.startsWith('/api/')) {
-    return next();
-  }
-  express.static(path.join(__dirname, 'public/webfonts'), {
-    ...staticOptions,
-    maxAge: process.env.NODE_ENV === 'production' ? '1y' : 0
-  })(req, res, next);
-});
-/*
-// Generate a nonce for CSP
-const generateNonce = () => {
-  return randomBytes(16).toString('base64');
-};
-
+// 8.6 CDN and cookie fixer middleware
 import { cdnAndCookieFixer } from './src/middleware/cdnFixer.js';
-
-// Apply CDN and cookie fixer middleware FIRST
 app.use(cdnAndCookieFixer);
 
-// Add CSP nonce to all responses
-app.use((req, res, next) => {
-  // Generate a new nonce for each request
-  res.locals.cspNonce = generateNonce();
-  next();
-});
-*/
-
-// 7.2 Session store configuration (moved to be right after Express app initialization)
-
-// Enhanced CORS middleware with environment-aware configuration
-app.use((req, res, next) => {
-  // Define allowed origins based on environment
-  const isProduction = process.env.NODE_ENV === 'production';
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-  const apiUrl = process.env.API_URL || 'http://localhost:5000';
-  
-  // For development, allow localhost on common ports
-  const allowedOrigins = isProduction 
-    ? [frontendUrl, apiUrl]  // In production, only allow configured URLs
-    : [
-        'http://localhost:3000',
-        'http://localhost:5000',
-        'http://127.0.0.1:3000',
-        'http://127.0.0.1:5000',
-        frontendUrl,
-        apiUrl
-      ].filter(Boolean);
-
-  const origin = req.headers.origin;
-  
-  // Allow requests from allowed origins
-  if (allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-  }
-  
-  // Allow credentials (cookies, authorization headers) - only for same-origin in production
-  res.header('Access-Control-Allow-Credentials', 'true');
-  
-  // Allow these headers
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  
-  // Allow these methods
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  
-  next();
-});
-
-// Add request logging - only log errors (4xx and 5xx) and skip health checks
+// 8.7 Request Logging - only log errors (4xx and 5xx) and skip health checks
 app.use((req, res, next) => {
   const start = Date.now();
   const { method, url, ip } = req;
@@ -492,193 +682,82 @@ app.use((req, res, next) => {
 });
 
 // ======================================
-// 9. WEBSOCKET SERVER
+// 9. SERVER INITIALIZATION
 // ======================================
 
-const server = createServer(app);
-const wss = new WebSocketServer({ 
-  server,
-  path: '/ws',
-  clientTracking: true,
-  perMessageDeflate: {
-    zlibDeflateOptions: {
-      chunkSize: 1024,
-      memLevel: 7,
-      level: 3
-    },
-    zlibInflateOptions: {
-      chunkSize: 10 * 1024
-    },
-    clientNoContextTakeover: true,
-    serverNoContextTakeover: true,
-    serverMaxWindowBits: 10,
-    concurrencyLimit: 10,
-    threshold: 1024
-  }
-});
+let httpServer;
 
-// Track active connections and unsent messages
-const userConnections = new Map(); // Maps userId -> Set of WebSocket connections
-const unsentMessages = new Map(); // Maps userId -> Array of pending messages
-
-// Handle WebSocket upgrade requests
-server.on('upgrade', (request, socket, head) => {
-  const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
-  
-  if (pathname !== '/ws') {
-    logger.warn(`Rejected WebSocket connection to invalid path: ${pathname}`);
-    socket.destroy();
-    return;
-  }
-  
+async function startApp() {
   try {
-    wss.handleUpgrade(request, socket, head, (ws) => {
-      ws.isAlive = true;
-      ws.on('pong', () => { 
-        ws.isAlive = true; 
-        ws.lastPong = Date.now();
-      });
-      ws.connectedAt = Date.now();
-      ws.lastPong = Date.now();
-      wss.emit('connection', ws, request);
-    });
-  } catch (error) {
-    logger.error('WebSocket upgrade error:', error);
-    socket.destroy();
-  }
-});
-
-// Handle new WebSocket connections
-wss.on('connection', (ws, req) => {
-  let userIdParam = req.url.split('userId=')[1]?.split('&')[0];
-  const userId = decodeURIComponent(userIdParam || '');
-  console.debug('[DEBUG] WebSocket connection received for userId:', userId);
-  
-  if (!userId) {
-    console.error('[WebSocket] Connection rejected: Missing userId');
-    ws.send(JSON.stringify({ event: 'error', message: 'Missing userId' }));
-    ws.close();
-    return;
-  }
-  
-  ws.userId = userId;
-  const userWsSet = userConnections.get(userId) || new Set();
-  userWsSet.add(ws);
-  userConnections.set(userId, userWsSet);
-  console.log(`[WebSocket] Connected: userId=${userId}, total connections=${userWsSet.size}`);
-
-  // Send any queued messages
-  if (unsentMessages.has(userId)) {
-    const queuedMessages = unsentMessages.get(userId);
-    queuedMessages.forEach(message => {
-      try {
-        ws.send(JSON.stringify(message));
-      } catch (error) {
-        console.error(`[WebSocket] Failed to send queued message to userId=${userId}:`, error);
+    await pRetry(connectToDatabase, {
+      retries: 5,
+      minTimeout: 2000,
+      onFailedAttempt: error => {
+        console.log(`MongoDB connection attempt ${error.attemptNumber} failed. Retrying...`);
       }
     });
-    unsentMessages.delete(userId);
-  }
-
-  ws.on('close', () => {
-    const userWsSet = userConnections.get(userId);
-    if (userWsSet) {
-      userWsSet.delete(ws);
-      if (userWsSet.size === 0) {
-        userConnections.delete(userId);
-      }
-      console.log(`[WebSocket] Disconnected: userId=${userId}, remaining connections=${userWsSet?.size || 0}`);
-    }
-  });
-
-  ws.on('error', (error) => {
-    console.error(`[WebSocket] Error for userId=${userId}:`, error);
-  });
-
-  ws.on('message', (message) => {
-    try {
-      const data = JSON.parse(message);
-      if (data.event === 'debugLog') {
-        console.log('[CLIENT DEBUG]', data.message, data.data);
-      }
-    } catch (e) {
-      console.error('WS message parse error:', e);
-    }
-  });
-});
-
-// Health check for WebSocket connections
-setInterval(() => {
-  wss.clients.forEach((ws) => {
-    if (ws.isAlive === false) {
-      logger.warn(`Terminating inactive WebSocket connection for user: ${ws.userId}`);
-      return ws.terminate();
-    }
+    console.log('✅ MongoDB connected');
+    await clearDatabaseOnce();
+    await ensureIndexes();
     
-    ws.isAlive = false;
-    ws.ping(null, false, (err) => {
-      if (err) {
-        logger.error('WebSocket ping error:', err);
-        ws.terminate();
-      }
+    // Create HTTP server
+    const httpServer = createServer(app);
+    
+    // Initialize WebSocket server
+    const wss = setupWebSocketServer(httpServer);
+    
+    // WebSocket connection handler for authenticated connections
+    wss.on('connection', (ws, req) => {
+      // Connection handling logic is in the upgrade handler
+      // This is kept for backward compatibility and future extensions
+      console.log(`[WebSocket] New connection established: ${ws.connectionId}`);
     });
-  });
-}, 30000); // Check every 30 seconds
-
-// WebSocket keep-alive and health check
-const WEBSOCKET_PING_INTERVAL = 30000; // 30 seconds
-const WEBSOCKET_TIMEOUT = 60000; // 60 seconds
-
-const pingInterval = setInterval(() => {
-  const now = Date.now();
-  
-  wss.clients.forEach((ws) => {
-    try {
-      // Check if connection is unresponsive
-      if (now - ws.lastPong > WEBSOCKET_TIMEOUT) {
-        logger.warn(`Terminating unresponsive WebSocket connection`);
-        ws.terminate();
-        return;
-      }
-      
-      // Send ping if connection is alive
-      if (ws.isAlive !== false) {
-        ws.isAlive = false;
-        ws.ping(() => {
-          // Empty callback to handle potential errors
+    
+    // Start the HTTP server which will handle both HTTP and WebSocket connections
+    return new Promise((resolve) => {
+      httpServer.listen(PORT, () => {
+        console.log(`\n🚀 O.P.E.R.A.T.O.R - Nexus Server started successfully!`);
+        console.log(`================================`);
+        console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+        console.log(`Port: ${PORT}`);
+        console.log(`API URL: http://localhost:${PORT}`);
+        console.log(`Frontend URL: http://localhost:3000`);
+        console.log(`WebSocket URL: ws://localhost:${PORT}/ws`);
+        console.log(`================================\n`);
+        
+        // Store the server and WebSocket instances globally for cleanup
+        global.httpServer = httpServer;
+        global.wss = wss;
+        
+        // Set up keep-alive for WebSocket connections
+        const interval = setInterval(() => {
+          wss.clients.forEach((ws) => {
+            if (ws.isAlive === false) {
+              console.log(`Terminating stale WebSocket connection: ${ws.connectionId}`);
+              return ws.terminate();
+            }
+            ws.isAlive = false;
+            ws.ping(() => {});
+          });
+        }, 30000); // 30 second interval
+        
+        // Clean up interval on server close
+        httpServer.on('close', () => {
+          clearInterval(interval);
         });
-      }
-    } catch (error) {
-      logger.error('Error in WebSocket keep-alive:', error);
-    }
-  });
-}, WEBSOCKET_PING_INTERVAL);
+        
+        resolve(httpServer);
+      });
+    });
+  } catch (err) {
+    console.error('Failed to start application:', err);
+    process.exit(1);
+  }
+}
 
-// Clean up on server shutdown
-process.on('SIGTERM', () => {
-  clearInterval(pingInterval);
-  
-  // Close all WebSocket connections gracefully
-  wss.clients.forEach((ws) => {
-    try {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.close(1001, 'Server shutting down');
-      }
-    } catch (error) {
-      logger.error('Error closing WebSocket:', error);
-    }
-  });
-  
-  // Close the WebSocket server
-  wss.close(() => {
-    logger.info('WebSocket server closed');
-  });
-});
-
+// ====================================
 // 10. ROUTES & MIDDLEWARE
 // ======================================
-
-// Import routes and middleware
 import authRoutes from './src/routes/auth.js';
 import taskRoutes from './src/routes/tasks.js';
 import billingRoutes from './src/routes/billing.js';
@@ -702,7 +781,7 @@ const guard = (req, res, next) => {
 
 // ======================================
 // 1. API ROUTES (must come before static files)
-// ======================================
+// =================================================
 
 // Public API routes (no auth required)
 app.use('/api/auth', authRoutes);
@@ -712,15 +791,7 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// API: Who Am I (userId sync endpoint)
-app.get('/api/whoami', (req, res) => {
-  try {
-    let userId = req.session?.userId || null;
-    res.status(200).json({ userId });
-  } catch (error) {
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+// API: Who Am I (userId sync endpoint) - Moved to robust implementation below
 
 // Protected API routes (require authentication)
 app.use('/api/settings', requireAuth, settingsRouter);
@@ -733,8 +804,377 @@ app.use('/api/user', requireAuth, userRoutes);
 app.use('/api/messages', requireAuth, messagesRouter);
 
 // ======================================
+// 2. API ROUTES (must come before static files)
 // ======================================
-// 2. STATIC ASSETS (served before API routes)
+
+// NLI API endpoint - Handles both chat and task classification
+app.get('/api/nli', requireAuth, async (req, res) => {
+  // Get user ID from session first thing
+  const userId = req.session.user;
+  const prompt = req.query.prompt;
+  const requestedEngine = req.query.engine || req.session.browserEngine;
+  
+  if (typeof prompt !== 'string' || !prompt.trim()) {
+    res.status(400).json({ success: false, error: 'Prompt query parameter is required.' });
+    return;
+  }
+  
+  // If engine is specified, validate it
+  if (requestedEngine) {
+    const validEngines = ['gpt-4o', 'qwen-2.5-vl-72b', 'gemini-2.5-pro', 'ui-tars'];
+    if (!validEngines.includes(requestedEngine)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid engine specified'
+      });
+    }
+    
+    // Store the selected browser engine in the session for future browser automation tasks
+    req.session.browserEngine = requestedEngine;
+    console.log(`[NLI] Updated browser engine to: ${requestedEngine} (this only affects automation tasks, not chat)`);
+    
+    // Check if the user has access to this engine
+    const keyInfo = await checkEngineApiKey(userId, requestedEngine);
+    
+    if (!keyInfo.hasKey) {
+      return res.status(400).json({
+        success: false,
+        error: `No API key available for ${requestedEngine}. Please configure one in Settings.`,
+        keyInfo
+      });
+    }
+    
+    // If using default key, notify the user
+    if (keyInfo.usingDefault) {
+      notifyApiKeyStatus(userId, keyInfo);
+    }
+  }
+  
+  // IMPORTANT: Clean up old tempEngine from session if it exists
+  // This ensures complete separation between chat and browser automation
+  if (req.session.tempEngine) {
+    console.log(`[NLI] Removing deprecated tempEngine=${req.session.tempEngine} from session`);
+    // If we have tempEngine but no browserEngine, migrate it
+    if (!req.session.browserEngine) {
+      req.session.browserEngine = req.session.tempEngine;
+      console.log(`[NLI] Migrated tempEngine to browserEngine=${req.session.browserEngine}`);
+    }
+    // Remove the old variable
+    delete req.session.tempEngine;
+    req.session.save();
+  }
+  
+  // classify prompt
+  let classification;
+  try {
+    classification = await openaiClassifyPrompt(prompt, userId);
+  } catch (err) {
+    console.error('Classification error', err);
+    classification = 'chat';
+  }
+
+  // Fetch user document (needed for multiple code paths)
+  const userDoc = await User.findById(userId).lean();
+  const userEmail = userDoc?.email;
+  
+  if (classification === 'task') {
+    // Set headers for SSE (Server-Sent Events)
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive'
+    });
+    res.flushHeaders();
+    
+    // Persist user command in chat history
+    let chatHistory = await ChatHistory.findOne({ userId }) || new ChatHistory({ userId, messages: [] });
+    chatHistory.messages.push({ role: 'user', content: prompt, timestamp: new Date() });
+    await chatHistory.save();
+    
+    // Create task
+    const taskId = new mongoose.Types.ObjectId();
+    const runId  = uuidv4();
+    const runDir = path.join(NEXUS_RUN_DIR, runId);
+    fs.mkdirSync(runDir, { recursive: true });
+    
+    // Map engine to provider for execution mode determination
+    const engineToProvider = {
+      'gpt-4o': 'openai',
+      'qwen-2.5-vl-72b': 'qwen',
+      'gemini-2.5-pro': 'google',
+      'ui-tars': 'uitars'
+    };
+    
+    // Get user's execution mode preference 
+    const executionModePreference = userDoc.settings?.executionMode || 'step-planning';
+    
+    // Determine current engine and provider
+    const engine = req.session.browserEngine || 'gpt-4o'; // Default to gpt-4o if not specified
+    const provider = engineToProvider[engine] || 'openai';
+    
+    // Determine actual execution mode based on rules
+    const executionMode = determineExecutionMode(provider, prompt, executionModePreference);
+    console.log(`[Task] Using execution mode: ${executionMode} for provider: ${provider} (engine: ${engine})`);
+    
+    // Save task to database
+    await new Task({ 
+      _id: taskId, 
+      userId, 
+      command: prompt, 
+      status: 'pending', 
+      progress: 0, 
+      startTime: new Date(), 
+      runId,
+      executionMode,
+      engine
+    }).save();
+    
+    // Update user's active tasks
+    await User.updateOne({ _id: userId }, { 
+      $push: { 
+        activeTasks: { 
+          _id: taskId.toString(), 
+          command: prompt, 
+          status: 'pending', 
+          startTime: new Date(),
+          executionMode,
+          engine
+        } 
+      } 
+    });
+    
+    // Send task start event
+    res.write('data: ' + JSON.stringify({ 
+      event: 'taskStart', 
+      payload: { 
+        taskId: taskId.toString(), 
+        command: prompt, 
+        startTime: new Date() 
+      } 
+    }) + '\n\n');
+    
+    // Start task processing
+    processTask(userId, userEmail, taskId.toString(), runId, runDir, prompt, null, null)
+      .catch(err => {
+        console.error('Error in processTask:', err);
+        res.write('data: ' + JSON.stringify({ 
+          event: 'taskError', 
+          taskId: taskId.toString(), 
+          error: 'Error processing task' 
+        }) + '\n\n');
+      });
+      
+    // Poll for task updates
+    const interval = setInterval(async () => {
+      try {
+        const task = await Task.findById(taskId).lean();
+        if (!task) {
+          clearInterval(interval);
+          res.write('data: ' + JSON.stringify({ 
+            event: 'taskError', 
+            taskId: taskId.toString(), 
+            error: 'Task not found' 
+          }) + '\n\n');
+          return res.end();
+        }
+        
+        const done = ['completed', 'error'].includes(task.status);
+        const evtName = done ? 'taskComplete' : 'stepProgress';
+        
+        // For completed tasks, ensure all report links are included in the payload
+        let resultWithLinks = task.result || {};
+        if (done) {
+          // Guarantee all report URLs are present by providing fallbacks
+          resultWithLinks = {
+            ...resultWithLinks,
+            landingReportUrl: resultWithLinks.landingReportUrl || resultWithLinks.runReport || null,
+            nexusReportUrl: resultWithLinks.nexusReportUrl || null,
+            runReport: resultWithLinks.runReport || resultWithLinks.landingReportUrl || null,
+            reportUrl: resultWithLinks.reportUrl || resultWithLinks.nexusReportUrl || 
+                      resultWithLinks.landingReportUrl || resultWithLinks.runReport || 
+                      (resultWithLinks.screenshot ? resultWithLinks.screenshot : null)
+          };
+          
+          console.log(`[TaskCompletion] Enhanced data for task ${taskId}:`, {
+            landingReportUrl: resultWithLinks.landingReportUrl,
+            nexusReportUrl: resultWithLinks.nexusReportUrl,
+            reportUrl: resultWithLinks.reportUrl
+          });
+        }
+        
+        // Send update
+        res.write('data: ' + JSON.stringify({
+          event: evtName,
+          payload: {
+            taskId: taskId.toString(),
+            status: task.status,
+            progress: task.progress || 0,
+            result: resultWithLinks,
+            timestamp: new Date()
+          }
+        }) + '\n\n');
+        
+        // If task is done, clean up and close the connection
+        if (done) {
+          clearInterval(interval);
+          // Give some time for the last message to be sent
+          setTimeout(() => res.end(), 100);
+        }
+      } catch (err) {
+        console.error('Error polling task status:', err);
+        clearInterval(interval);
+        res.write('data: ' + JSON.stringify({
+          event: 'taskError',
+          taskId: taskId.toString(),
+          error: 'Error checking task status'
+        }) + '\n\n');
+        res.end();
+      }
+    }, 1000); // Poll every second
+  } else {
+    // Handle chat response
+    try {
+      // Set headers for streaming
+      res.set({
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive'
+      });
+      res.flushHeaders();
+      
+      // Stream the response
+      for await (const event of streamNliThoughts(userId, prompt)) {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+        // @ts-ignore
+        if (typeof res.flush === 'function') {
+          // @ts-ignore
+          res.flush();
+        }
+      }
+      
+      res.end();
+    } catch (error) {
+      console.error('Error in NLI streaming:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, error: 'Error generating response' });
+      } else {
+        res.write('data: ' + JSON.stringify({
+          event: 'error',
+          content: 'An error occurred while generating the response.'
+        }) + '\n\n');
+        res.end();
+      }
+    }
+  }
+});
+
+
+app.post('/api/nli', requireAuth, async (req, res) => {
+  // Accept both { prompt } and legacy { inputText }
+  let prompt = req.body.prompt;
+  if (!prompt && req.body.inputText) {
+    prompt = req.body.inputText;
+    console.debug('[DEBUG] /nli: Using legacy inputText as prompt:', prompt);
+  }
+  if (typeof prompt !== 'string') {
+    console.error('[ERROR] /nli: Prompt must be a string. Got:', typeof prompt, prompt);
+    return res.status(400).json({ success: false, error: 'Prompt must be a string.' });
+  }
+
+  // Sanitize and validate prompt
+  prompt = prompt.trim();
+  if (prompt.length === 0) {
+    console.error('[ERROR] /nli: Prompt is empty after trim.');
+    return res.status(400).json({ success: false, error: 'Prompt cannot be empty.' });
+  }
+  const MAX_PROMPT_LENGTH = 5000;
+  if (prompt.length > MAX_PROMPT_LENGTH) {
+    console.error(`[ERROR] /nli: Prompt too long (${prompt.length} chars). Max is ${MAX_PROMPT_LENGTH}.`);
+    return res.status(400).json({ success:false, error: `Prompt too long (max ${MAX_PROMPT_LENGTH} chars).` });
+  }
+
+  const userId = req.session.user;
+  const user   = await User.findById(userId).select('email openaiApiKey').lean();
+  if (!user) return res.status(400).json({ success: false, error: 'User not found' });
+
+  let classification;
+  try {
+    classification = await openaiClassifyPrompt(prompt, userId);
+  } catch (err) {
+    console.error('Classification error', err);
+    classification = 'task';
+  }
+
+  if (classification === 'task') {
+    // fetch user for email
+    const userDoc = await User.findById(userId).lean();
+    const userEmail = userDoc?.email;
+    // persist user in chat history
+    let chatHistory = await ChatHistory.findOne({ userId }) || new ChatHistory({ userId, messages: [] });
+    chatHistory.messages.push({ role: 'user', content: prompt, timestamp: new Date() });
+    await chatHistory.save();
+
+    const taskId = new mongoose.Types.ObjectId();
+    const runId  = uuidv4();
+    const runDir = path.join(NEXUS_RUN_DIR, runId);
+    fs.mkdirSync(runDir, { recursive: true });
+
+    // … save Task + push to User.activeTasks …
+    await new Task({ _id: taskId, userId, command: prompt, status: 'pending', progress: 0, startTime: new Date(), runId }).save();
+    await User.updateOne({ _id: userId }, { $push: { activeTasks: { _id: taskId.toString(), command: prompt, status: 'pending', startTime: new Date() } } });
+
+    sendWebSocketUpdate(userId, { event: 'taskStart', payload: { taskId: taskId.toString(), command: prompt, startTime: new Date() } });
+    
+    // CRITICAL FIX: Always provide a valid default URL for tasks initiated through NLI route
+    // This ensures thought bubbles are handled correctly as with direct task execution
+    const defaultUrl = "https://www.google.com";
+    processTask(userId, userEmail, taskId.toString(), runId, runDir, prompt, defaultUrl, null);
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive'
+    });
+    res.flushHeaders();
+    res.write('data: ' + JSON.stringify({ event: 'taskStart', payload: { taskId: taskId.toString(), command: prompt, startTime: new Date() } }) + '\n\n');
+    // poll for updates
+    const interval = setInterval(async () => {
+      try {
+        const task = await Task.findById(taskId).lean();
+        if (!task) {
+          clearInterval(interval);
+          res.write('data: ' + JSON.stringify({ event: 'taskError', taskId: taskId.toString(), error: 'Task not found' }) + '\n\n');
+          return res.end();
+        }
+        const done = ['completed','error'].includes(task.status);
+        const evtName = done ? 'taskComplete' : 'stepProgress';
+        const payload = { taskId: taskId.toString(), progress: task.progress, result: task.result, error: task.error };
+        res.write('data: ' + JSON.stringify({ event: evtName, ...payload }) + '\n\n');
+        if (done) {
+          clearInterval(interval);
+          return res.end();
+        }
+      } catch (err) {
+        console.error('Task polling error:', err);
+      }
+    }, 2000);
+    req.on('close', () => clearInterval(interval));
+  } else {
+    // chat streaming
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive'
+    });
+    res.flushHeaders();
+    for await (const evt of streamNliThoughts(userId, prompt)) {
+      res.write('data: ' + JSON.stringify(evt) + '\n\n');
+    }
+    res.end();
+  }
+});
+
+// ======================================
+// 3. STATIC ASSETS (served last, after all API routes)
 // ======================================
 
 // Special handling for model files in development
@@ -751,16 +1191,18 @@ if (NODE_ENV !== 'production') {
   }
 }
 
-// Serve static assets
-serveStaticAssets(app);
-
 // ======================================
 // 4. APPLICATION ROUTES (HTML routes)
 // ======================================
 
 // Serve index.html for root route with authentication check
 app.get('/', guard, (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'), {
+  const isDev = process.env.NODE_ENV === 'development';
+  const indexPath = isDev 
+    ? path.join(__dirname, 'src', 'index.html')
+    : path.join(__dirname, 'dist', 'index.html');
+    
+  res.sendFile(indexPath, {
     headers: {
       'Content-Type': 'text/html',
       'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
@@ -803,12 +1245,9 @@ app.get('/favicon.ico', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/assets/images/dail-fav.png'));
 });
 
-// ======================================
-// 3. REPORT HANDLERS (must come before SPA catch-all)
-// ======================================
-reportHandlers.setupReportServing(app);
-reportHandlers.setupReportRedirector(app);
-
+// =====================================================
+// 3. 404 & SPA Catch All HANDLERS 
+// ====================================================
 // 404 handler for API routes (must come after all other routes but before error handlers)
 // API 404 handler - will be moved to the end of the file
 const api404Handler = (req, res) => {
@@ -906,7 +1345,18 @@ const errorHandler2 = (err, req, res, next) => {
 };
 
 // ======================================
-// 10. DATABASE MANAGEMENT
+// 10.a START THE SERVER
+// ======================================
+
+// Start the application
+  startApp().catch(error => {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  });
+
+
+// ======================================
+// 10.b DATABASE MANAGEMENT
 // ======================================
 
 /**
@@ -979,50 +1429,6 @@ const browserSessionHeartbeat = setInterval(async () => {
   sessionsToClean.forEach(taskId => activeBrowsers.delete(taskId));
 }, 5 * 60 * 1000); // Check every 5 minutes
 
-// ======================================
-// 11.b. SERVER INITIALIZATION
-// ======================================
-
-let httpServer;
-
-async function startApp() {
-  try {
-    await pRetry(connectToDatabase, {
-      retries: 5,
-      minTimeout: 2000,
-      onFailedAttempt: error => {
-        console.log(`MongoDB connection attempt ${error.attemptNumber} failed. Retrying...`);
-      }
-    });
-    console.log('✅ MongoDB connected');
-    await clearDatabaseOnce();
-    await ensureIndexes();
-    
-    // Start the server
-    return new Promise((resolve) => {
-      httpServer = server.listen(PORT, () => {
-        console.log(`\n🚀 O.P.E.R.A.T.O.R - Nexus Server started successfully!`);
-        console.log(`================================`);
-        console.log(`Environment: ${config.nodeEnv}`);
-        console.log(`Port: ${PORT}`);
-        console.log(`API URL: ${config.apiUrl}`);
-        console.log(`Frontend URL: ${config.frontendUrl}`);
-        console.log(`WebSocket URL: ${config.wsUrl}`);
-        console.log(`================================\n`);
-        resolve(httpServer);
-      });
-    });
-  } catch (err) {
-    console.error('Failed to start application:', err);
-    process.exit(1);
-  }
-}
-
-// Start the application
-startApp().catch(err => {
-  console.error('Failed to start application:', err);
-  process.exit(1);
-});
 
 // ======================================
 // 12. CLEANUP AND SHUTDOWN HANDLERS
@@ -1036,22 +1442,38 @@ async function cleanupResources() {
     logger.info('Starting cleanup of resources...');
     
     // Close WebSocket server if it exists
-    if (wss) {
+    if (global.wss || wss) {
+      const wsServer = global.wss || wss;
       logger.info('Closing WebSocket server...');
-      await new Promise((resolve) => {
+      
+      try {
         // Close all active WebSocket connections
-        wss.clients.forEach(client => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.terminate();
-          }
-        });
+        if (wsServer.clients) {
+          wsServer.clients.forEach(client => {
+            try {
+              if (client.readyState === WebSocket.OPEN) {
+                client.terminate();
+              }
+            } catch (err) {
+              logger.error('Error terminating WebSocket client:', err);
+            }
+          });
+        }
         
         // Close the WebSocket server
-        wss.close(() => {
-          logger.info('WebSocket server closed');
-          resolve();
+        await new Promise((resolve) => {
+          if (wsServer.close) {
+            wsServer.close(() => {
+              logger.info('WebSocket server closed');
+              resolve();
+            });
+          } else {
+            resolve();
+          }
         });
-      });
+      } catch (error) {
+        logger.error('Error during WebSocket server cleanup:', error);
+      }
     }
     
     // Close MongoDB connection if connected
@@ -1219,28 +1641,77 @@ async function sendWebSocketUpdate(userId, data) {
     console.debug('[WebSocket] Skipped non-event data over WS:', data);
     return;
   }
-  console.debug('[DEBUG] sendWebSocketUpdate: userId', userId, 'connections', userConnections.get(userId) ? userConnections.get(userId).size : 0);
+
   const connections = userConnections.get(userId);
+  const connectionCount = connections ? connections.size : 0;
+  
+  console.log(`[WebSocket] Sending update to userId=${userId}`, {
+    event: data.event,
+    connectionCount,
+    hasConnections: connectionCount > 0,
+    timestamp: new Date().toISOString()
+  });
+
   if (connections && connections.size > 0) {
-    connections.forEach(ws => {
+    let successfulSends = 0;
+    let failedSends = 0;
+    let closedConnections = 0;
+
+    connections.forEach((ws, index) => {
+      const connectionInfo = {
+        connectionIndex: index,
+        readyState: ws.readyState,
+        isOpen: ws.readyState === WebSocket.OPEN,
+        connectionDuration: ws.connectedAt ? `${(new Date() - ws.connectedAt) / 1000}s` : 'unknown'
+      };
+
       if (ws.readyState === WebSocket.OPEN) {
         try {
           ws.send(JSON.stringify(data));
-          //console.log('[SERVER] Sending intermediateResult for task:', userId);
-          //console.log('[SERVER] Sent payload:', data);
+          successfulSends++;
+          /*
+          console.debug(`[WebSocket] Successfully sent to userId=${userId}`, {
+            ...connectionInfo,
+            eventType: data.event,
+            dataSize: JSON.stringify(data).length
+          });
+          */
         } catch (error) {
-          console.error(`[WebSocket] Failed to send to userId=${userId}:`, error);
+          failedSends++;
+          console.error(`[WebSocket] Failed to send to userId=${userId}`, {
+            ...connectionInfo,
+            error: error.toString(),
+            stack: error.stack
+          });
         }
       } else {
-        console.warn(`[WebSocket] Skipping closed connection for userId=${userId}`);
+        closedConnections++;
+        console.warn(`[WebSocket] Skipping closed connection for userId=${userId}`, connectionInfo);
       }
     });
+
+    console.log(`[WebSocket] Send summary for userId=${userId}`, {
+      totalConnections: connections.size,
+      successfulSends,
+      failedSends,
+      closedConnections,
+      timestamp: new Date().toISOString()
+    });
   } else {
-    console.debug(`[WebSocket] No active connections for userId=${userId}. Queuing message.`);
+    console.log(`[WebSocket] No active connections for userId=${userId}. Queuing message.`);
     if (!unsentMessages.has(userId)) {
       unsentMessages.set(userId, []);
+      console.log(`[WebSocket] Created new message queue for userId=${userId}`);
     }
-    unsentMessages.get(userId).push(data);
+    
+    const queue = unsentMessages.get(userId);
+    queue.push(data);
+    
+    console.log(`[WebSocket] Queued message for userId=${userId}`, {
+      queueSize: queue.length,
+      event: data.event,
+      timestamp: new Date().toISOString()
+    });
   }
 }
 
@@ -1663,14 +2134,17 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
         try {
           // Edit the midscene report first
           midsceneReportPath = await editMidsceneReport(midsceneReportPath);
-          console.log(`[MidsceneReport] Updated report at ${midsceneReportPath}`);
+          console.log(`[NexusReport] Updated report at ${midsceneReportPath}`);
+          // Update Nexus Report Url
+          nexusReportUrl = midsceneReportPath;
         } catch (error) {
-          console.warn(`[MidsceneReport] Error editing report: ${error.message}`);
+          console.warn(`[NexusReport] Error editing report: ${error.message}`);
         }
       }
     }
     
     // 3. Now generate the landing report with the URLs from the midscene report
+    // rawReport was extracted from the planLogs - old implementation code lost for noe
     console.log(`[TaskCompletion] Generating landing report with URLs:`, nexusReportUrl, reportRawUrl);
     const reportResult = await generateReport(
       originalPrompt,
@@ -2321,7 +2795,7 @@ GUIDELINES:
 
 TIPS:
 - browser_action and browser_query can handle complex instructions like "look for BTC and click it", "click search bar, type 'cats', press enter or click search button"
-- passing semi-complex instructions is key to achieving success.
+- passing semi-complex instructions is key to achieving success. e.g one combined instruction like: "Type Cats in search bar and press enter", instead of breaking it into 2 steps.
 - breaking down tasks to too simple instructions can lead to failure.
 - call task_complete when you have completed the main task.
 
@@ -2785,7 +3259,7 @@ async function getUserOpenAiClient(userId) {
  * @param {string} engineName - Engine name (gpt-4o, qwen-2.5-vl-72b, etc.)
  * @returns {Object} - Object containing whether key exists and source
  */
-async function checkEngineApiKey(userId, engineName) {
+export async function checkEngineApiKey(userId, engineName) {
   // Validate the engine name is one we support
   if (!Object.keys(ENGINE_KEY_MAPPING).includes(engineName)) {
     console.warn(`Unsupported engine requested: ${engineName}, falling back to gpt-4o`);
@@ -2898,7 +3372,7 @@ async function checkEngineApiKey(userId, engineName) {
  * @param {string} userId - User ID
  * @param {Object} keyInfo - Information about the key status
  */
-function notifyApiKeyStatus(userId, keyInfo) {
+export function notifyApiKeyStatus(userId, keyInfo) {
   // Log the API key status regardless of notification type
   if (!keyInfo.hasKey) {
     console.log(`[API Key] No API key found for ${keyInfo.engine}, notifying user`);
@@ -2951,8 +3425,8 @@ async function setupNexusEnvironment(userId) {
   delete process.env.MIDSCENE_USE_VLM_UI_TARS;
   
   // Standard configuration across all models
-  process.env.MIDSCENE_MAX_STEPS = '50';
-  process.env.MIDSCENE_TIMEOUT = '240000'; // 4 min
+  process.env.MIDSCENE_MAX_STEPS = '20';
+  process.env.MIDSCENE_TIMEOUT = '480000'; // 8 min
 
   // Configure environment based on selected engine
   switch (preferredEngine) {
@@ -4503,7 +4977,7 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
                 
                 // Check if we've reached the maximum steps limit (10 steps)
                 // If so, we need to make sure a task_complete is forced if this function call isn't it
-                const MAX_STEPS = 10;
+                const MAX_STEPS = 20;
                 if (plan.steps.length >= MAX_STEPS - 1 && currentFunctionCall.name !== 'task_complete') {
                   plan.log(`WARNING: Reached maximum steps (${MAX_STEPS}). Will force task_complete after this step.`);
                   // Set flag to force task_complete after this function call completes
@@ -4536,7 +5010,7 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
                     if (needsForceComplete) {
                       plan.log("Forcing task_complete after this step");
                       // Mark as completed with max steps reached summary
-                      const summary = `Task reached maximum steps (10) without explicit completion. Current URL: ${plan.currentUrl || 'N/A'}`;
+                      const summary = `Task reached maximum steps (20) without explicit completion. Current URL: ${plan.currentUrl || 'N/A'}`;
                       plan.markCompleted(summary, true); // true indicates this was forced
                       
                       // Process task completion
@@ -5304,6 +5778,7 @@ function ensureUserId(req, res, next) {
   next();
 }
 
+// Set-engine route has been moved to src/routes/user.js
 // --- API: Who Am I (userId sync endpoint) ---
 app.get('/api/whoami', (req, res) => {
   try {
@@ -5854,244 +6329,6 @@ const handleFinalResponse = async (userId, finalResponse) => {
   }
 };
 
-app.get('/api/nli', requireAuth, async (req, res) => {
-  // Get user ID from session first thing
-  const userId = req.session.user;
-  const prompt = req.query.prompt;
-  const requestedEngine = req.query.engine || req.session.browserEngine;
-  
-  if (typeof prompt !== 'string' || !prompt.trim()) {
-    res.status(400).json({ success: false, error: 'Prompt query parameter is required.' });
-    return;
-  }
-  
-  // If engine is specified, validate it
-  if (requestedEngine) {
-    const validEngines = ['gpt-4o', 'qwen-2.5-vl-72b', 'gemini-2.5-pro', 'ui-tars'];
-    if (!validEngines.includes(requestedEngine)) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Invalid engine specified'
-      });
-    }
-    
-    // Store the selected browser engine in the session for future browser automation tasks
-    req.session.browserEngine = requestedEngine;
-    console.log(`[NLI] Updated browser engine to: ${requestedEngine} (this only affects automation tasks, not chat)`);
-    
-    // Check if the user has access to this engine
-    const keyInfo = await checkEngineApiKey(userId, requestedEngine);
-    
-    if (!keyInfo.hasKey) {
-      return res.status(400).json({
-        success: false,
-        error: `No API key available for ${requestedEngine}. Please configure one in Settings.`,
-        keyInfo
-      });
-    }
-    
-    // If using default key, notify the user
-    if (keyInfo.usingDefault) {
-      notifyApiKeyStatus(userId, keyInfo);
-    }
-  }
-  
-  // IMPORTANT: Clean up old tempEngine from session if it exists
-  // This ensures complete separation between chat and browser automation
-  if (req.session.tempEngine) {
-    console.log(`[NLI] Removing deprecated tempEngine=${req.session.tempEngine} from session`);
-    // If we have tempEngine but no browserEngine, migrate it
-    if (!req.session.browserEngine) {
-      req.session.browserEngine = req.session.tempEngine;
-      console.log(`[NLI] Migrated tempEngine to browserEngine=${req.session.browserEngine}`);
-    }
-    // Remove the old variable
-    delete req.session.tempEngine;
-    req.session.save();
-  }
-  
-  // classify prompt
-  let classification;
-  try {
-    classification = await openaiClassifyPrompt(prompt, userId);
-  } catch (err) {
-    console.error('Classification error', err);
-    classification = 'chat';
-  }
-
-  // Fetch user document (needed for multiple code paths)
-  const userDoc = await User.findById(userId).lean();
-  const userEmail = userDoc?.email;
-  
-  if (classification === 'task') {
-    
-    // Persist user command in chat history
-    let chatHistory = await ChatHistory.findOne({ userId }) || new ChatHistory({ userId, messages: [] });
-    chatHistory.messages.push({ role: 'user', content: prompt, timestamp: new Date() });
-    await chatHistory.save();
-    
-    // Create task
-    const taskId = new mongoose.Types.ObjectId();
-    const runId  = uuidv4();
-    const runDir = path.join(NEXUS_RUN_DIR, runId);
-    fs.mkdirSync(runDir, { recursive: true });
-    
-    // Determine the correct execution mode based on engine and command content
-    
-    // Map engine to provider for execution mode determination
-    const engineToProvider = {
-      'gpt-4o': 'openai',
-      'qwen-2.5-vl-72b': 'qwen',
-      'gemini-2.5-pro': 'google',
-      'ui-tars': 'uitars'
-    };
-    
-    // Get user's execution mode preference 
-    const executionModePreference = userDoc.settings?.executionMode || 'step-planning';
-    
-    // Determine current engine and provider
-    const engine = req.session.browserEngine || 'gpt-4o'; // Default to gpt-4o if not specified
-    const provider = engineToProvider[engine] || 'openai';
-    
-    // Determine actual execution mode based on rules
-    const executionMode = determineExecutionMode(provider, prompt, executionModePreference);
-    console.log(`[Task] Using execution mode: ${executionMode} for provider: ${provider} (engine: ${engine})`);
-    
-    // Save task to database
-    await new Task({ 
-      _id: taskId, 
-      userId, 
-      command: prompt, 
-      status: 'pending', 
-      progress: 0, 
-      startTime: new Date(), 
-      runId,
-      executionMode,
-      engine
-    }).save();
-    
-    // Update user's active tasks
-    await User.updateOne({ _id: userId }, { 
-      $push: { 
-        activeTasks: { 
-          _id: taskId.toString(), 
-          command: prompt, 
-          status: 'pending', 
-          startTime: new Date(),
-          executionMode,
-          engine
-        } 
-      } 
-    });
-    
-    // Launch task processing with correct parameter order
-    // (userId, userEmail, taskId, runId, runDir, prompt, url, engine)
-    processTask(userId, userEmail, taskId.toString(), runId, runDir, prompt, null, null).catch(console.error);
-    // send taskStart
-    res.set({
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive'
-    });
-    res.flushHeaders();
-    res.write('data: ' + JSON.stringify({ event: 'taskStart', payload: { taskId: taskId.toString(), command: prompt, startTime: new Date() } }) + '\n\n');
-    // poll for updates
-    const interval = setInterval(async () => {
-      try {
-        const task = await Task.findById(taskId).lean();
-        if (!task) {
-          clearInterval(interval);
-          res.write('data: ' + JSON.stringify({ event: 'taskError', taskId: taskId.toString(), error: 'Task not found' }) + '\n\n');
-          return res.end();
-        }
-        const done = ['completed','error'].includes(task.status);
-        const evtName = done ? 'taskComplete' : 'stepProgress';
-        
-        // For completed tasks, ensure all report links are included in the payload
-        let resultWithLinks = task.result || {};
-        if (done) {
-          // Guarantee all report URLs are present by providing fallbacks
-          resultWithLinks = {
-            ...resultWithLinks,
-            landingReportUrl: resultWithLinks.landingReportUrl || resultWithLinks.runReport || null,
-            nexusReportUrl: resultWithLinks.nexusReportUrl || null,
-            runReport: resultWithLinks.runReport || resultWithLinks.landingReportUrl || null,
-            reportUrl: resultWithLinks.reportUrl || resultWithLinks.nexusReportUrl || 
-                      resultWithLinks.landingReportUrl || resultWithLinks.runReport || 
-                      (resultWithLinks.screenshot ? resultWithLinks.screenshot : null)
-          };
-          
-          // Log the report links and AI summary (which is now directly stored in the task result)
-          console.log(`[TaskCompletion] Enhanced data for task ${taskId}:`, {
-            landingReportUrl: resultWithLinks.landingReportUrl,
-            nexusReportUrl: resultWithLinks.nexusReportUrl,
-            reportUrl: resultWithLinks.reportUrl,
-            aiSummary: resultWithLinks.aiSummary ? resultWithLinks.aiSummary.substring(0, 50) + '...' : 'Not found'
-          });
-        }
-        
-        const payload = { 
-          taskId: taskId.toString(), 
-          progress: task.progress, 
-          result: resultWithLinks, 
-          error: task.error,
-          // For completed tasks, prioritize displaying the AI summary over the original command
-          summary: (done && resultWithLinks.aiSummary) ? resultWithLinks.aiSummary : undefined
-        };
-        res.write('data: ' + JSON.stringify({ event: evtName, ...payload }) + '\n\n');
-        if (done) {
-          clearInterval(interval);
-          return res.end();
-        }
-      } catch (err) {
-        console.error('Task polling error:', err);
-      }
-    }, 2000);
-    req.on('close', () => clearInterval(interval));
-  } else {
-    // Reset any leftover tool calls from previous requests
-    if (global.toolCallsInProgress) {
-      global.toolCallsInProgress.clear();
-      console.log('[NLI] Cleared any leftover tool calls before starting new chat');
-    }
-    
-    // chat streaming
-    res.set({
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive'
-    });
-    res.flushHeaders();
-    
-    try {
-      for await (const evt of streamNliThoughts(userId, prompt)) {
-        res.write('data: ' + JSON.stringify(evt) + '\n\n');
-        if (evt.event === 'thoughtComplete') {
-          // Only save if text is not empty or undefined
-          if (evt.text && evt.text.trim().length > 0) {
-            await handleFinalResponse(userId, evt.text);
-          } else {
-            console.log('[Chat] Skipping empty response persistence');
-          }
-        }
-      }
-    } catch (streamError) {
-      console.error('[NLI] Error in chat stream:', streamError);
-      // Send an error message to client to prevent UI from getting stuck
-      res.write('data: ' + JSON.stringify({
-        event: 'error',
-        text: 'Sorry, there was an error processing your request. Please try again.'
-      }) + '\n\n');
-    } finally {
-      // Ensure we clean up any pending tool calls regardless of success/failure
-      if (global.toolCallsInProgress) {
-        global.toolCallsInProgress.clear();
-      }
-      res.end();
-    }
-  }
-});
-
 // --- API: History endpoints ---
 // History routes are now handled by historyRouter
 
@@ -6121,173 +6358,6 @@ app.get('/api/settings', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Error fetching settings:', error);
     res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-
-// Public API endpoint to check available engines - works without auth for new users
-app.get('/api/user/available-engines', async (req, res) => {
-  try {
-    // Check both req.session.user and req.session.userId for compatibility
-    const userId = req.session.user || req.session.userId;
-    
-    // For first-time users without a user ID, provide default engines with system defaults
-    if (!userId) {
-      console.log('Available engines request for new user - providing defaults');
-      const supportedEngines = Object.keys(ENGINE_KEY_MAPPING);
-      
-      // For new users, we'll assume all engines are available with system defaults
-      const engineStatus = {};
-      const availableEngines = supportedEngines;
-      let usingAnyDefaultKey = true;
-      
-      // Log session info for debugging
-      console.log('Session data:', req.session);
-      
-      // Populate engine status with default info
-      supportedEngines.forEach(engine => {
-        engineStatus[engine] = {
-          available: true,
-          usingDefault: true,
-          keySource: 'system-default',
-          keyType: ENGINE_KEY_MAPPING[engine]
-        };
-      });
-      
-      return res.json({ 
-        success: true, 
-        engineStatus,
-        availableEngines,
-        preferredEngine: 'gpt-4o',
-        usingAnyDefaultKey
-      });
-    }
-    
-    // Use our standardized ENGINE_KEY_MAPPING for consistency
-    const supportedEngines = Object.keys(ENGINE_KEY_MAPPING);
-    
-    // Create an array of promises for checking each engine
-    const enginePromises = supportedEngines.map(engine => checkEngineApiKey(userId, engine));
-    
-    // Execute all promises in parallel with a timeout for safety
-    const results = await Promise.allSettled(enginePromises);
-    
-    // Format the results
-    const engineStatus = {};
-    const availableEngines = [];
-    let usingAnyDefaultKey = false;
-    let usingAnyUserKey = false;
-    
-    // Process the results, handling any rejected promises
-    results.forEach((result, index) => {
-      const engine = supportedEngines[index];
-      
-      if (result.status === 'fulfilled') {
-        const engineResult = result.value;
-        engineStatus[engineResult.engine] = {
-          available: engineResult.hasKey,
-          usingDefault: engineResult.usingDefault,
-          keySource: engineResult.keySource,
-          keyType: engineResult.keyType
-        };
-        
-        if (engineResult.hasKey) {
-          availableEngines.push(engineResult.engine);
-          
-          // Send appropriate notifications based on key source
-          if (engineResult.usingDefault) {
-            usingAnyDefaultKey = true;
-            // We'll send a collective notification about default keys below
-          } else if (engineResult.keySource === 'user') {
-            usingAnyUserKey = true;
-            // Notify user that we're using their API key
-            notifyApiKeyStatus(userId, engineResult);
-          }
-        } else {
-          // Key missing - send notification for important engines
-          if (engine === 'gpt-4o') {
-            notifyApiKeyStatus(userId, engineResult);
-          }
-        }
-      } else {
-        // Handle rejected promise (engine check failed)
-        console.warn(`Engine check failed for ${engine}:`, result.reason);
-        engineStatus[engine] = {
-          available: false,
-          error: true,
-          keySource: 'error',
-          keyType: ENGINE_KEY_MAPPING[engine]
-        };
-      }
-    });
-    
-    // Instead of WebSocket updates, return notification data with the response
-    // This will be shown by the frontend notification system
-    let notification = null;
-    
-    if (usingAnyDefaultKey) {
-      notification = {
-        title: 'Using System API Keys',
-        message: 'You are using system default API keys. For unlimited usage, add your own API keys in Settings.',
-        type: 'info',
-        duration: 8000
-      };
-    } else if (usingAnyUserKey) {
-      notification = {
-        title: 'Using Your API Keys',
-        message: 'Successfully using your own API keys - no usage limits apply.',
-        type: 'success',
-        duration: 5000
-      };
-    }
-    
-    // Get user's current preferred engine
-    let preferredEngine = 'gpt-4o'; // Safe default
-    try {
-      const user = await User.findById(userId).select('preferredEngine').lean();
-      preferredEngine = user?.preferredEngine || 'gpt-4o';
-      
-      // Ensure preferred engine is valid
-      if (!supportedEngines.includes(preferredEngine)) {
-        preferredEngine = 'gpt-4o';
-      }
-    } catch (userError) {
-      console.error('Error fetching user preference:', userError);
-    }
-    
-    // If no engines are available, add the default engine as available
-    if (availableEngines.length === 0) {
-      availableEngines.push('gpt-4o');
-      engineStatus['gpt-4o'] = {
-        available: true,
-        usingDefault: true,
-        keySource: 'fallback',
-        keyType: 'openai'
-      };
-    }
-    
-    return res.json({ 
-      success: true, 
-      engineStatus,
-      availableEngines,
-      preferredEngine,
-      usingAnyDefaultKey,
-      notification // Include the notification in response
-    });
-  } catch (error) {
-    console.error('Error checking available engines:', error);
-    
-    // Return a fallback response even on error
-    return res.json({ 
-      success: true, // Still return success to prevent frontend crashes
-      error: error.message,
-      availableEngines: ['gpt-4o'], // Always make at least GPT-4o available as fallback
-      preferredEngine: 'gpt-4o',
-      usingAnyDefaultKey: true,
-      engineStatus: {
-        'gpt-4o': { available: true, usingDefault: true, keySource: 'fallback' }
-      }
-    });
   }
 });
 
@@ -6459,62 +6529,6 @@ app.post('/api/user/set-execution-mode', requireAuth, async (req, res) => {
   }
 });
 
-// API endpoint to set temporary engine preference
-app.post('/api/user/set-engine', requireAuth, async (req, res) => {
-  try {
-    const userId = req.session.user;
-    const { engineId, keyType } = req.body;
-    
-    // Validate engine against our standardized ENGINE_KEY_MAPPING
-    if (!Object.keys(ENGINE_KEY_MAPPING).includes(engineId)) {
-      return res.status(400).json({ 
-        success: false, 
-        error: `Invalid engine selected. Supported engines are: ${Object.keys(ENGINE_KEY_MAPPING).join(', ')}` 
-      });
-    }
-    
-    // Get the expected key type for this engine
-    const expectedKeyType = ENGINE_KEY_MAPPING[engineId];
-    
-    // If client provided a key type, verify it matches our mapping
-    if (keyType && keyType !== expectedKeyType) {
-      console.warn(`Client provided key type ${keyType} doesn't match expected ${expectedKeyType} for engine ${engineId}`);
-    }
-    
-    // Check if the engine is available for this user
-    const keyInfo = await checkEngineApiKey(userId, engineId);
-    let warning = null;
-    
-    // If no key is available, we'll still update the preference but return a warning
-    if (!keyInfo.hasKey) {
-      warning = `No API key available for ${getEngineDisplayName(engineId)}. Please add your API key in Settings.`;
-    }
-    
-    // Store in session for temporary override
-    req.session.tempEngine = engineId;
-    
-    // Also update user's preferred engine in database
-    await User.findByIdAndUpdate(userId, { preferredEngine: engineId });
-    
-    // Send notification about key status if using default
-    if (keyInfo.usingDefault) {
-      notifyApiKeyStatus(userId, keyInfo);
-    }
-    
-    return res.json({ 
-      success: true, 
-      message: `Engine set to ${getEngineDisplayName(engineId)}`,
-      warning,
-      keyInfo,
-      engineId,
-      keyType: expectedKeyType
-    });
-  } catch (error) {
-    console.error('Error setting engine:', error);
-    return res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 app.post('/api/settings', requireAuth, async (req, res) => {
   try {
     const userId = req.session.user;
@@ -6610,109 +6624,9 @@ app.delete('/api/settings', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/nli', requireAuth, async (req, res) => {
-  // Accept both { prompt } and legacy { inputText }
-  let prompt = req.body.prompt;
-  if (!prompt && req.body.inputText) {
-    prompt = req.body.inputText;
-    console.debug('[DEBUG] /nli: Using legacy inputText as prompt:', prompt);
-  }
-  if (typeof prompt !== 'string') {
-    console.error('[ERROR] /nli: Prompt must be a string. Got:', typeof prompt, prompt);
-    return res.status(400).json({ success: false, error: 'Prompt must be a string.' });
-  }
 
-  // Sanitize and validate prompt
-  prompt = prompt.trim();
-  if (prompt.length === 0) {
-    console.error('[ERROR] /nli: Prompt is empty after trim.');
-    return res.status(400).json({ success: false, error: 'Prompt cannot be empty.' });
-  }
-  const MAX_PROMPT_LENGTH = 5000;
-  if (prompt.length > MAX_PROMPT_LENGTH) {
-    console.error(`[ERROR] /nli: Prompt too long (${prompt.length} chars). Max is ${MAX_PROMPT_LENGTH}.`);
-    return res.status(400).json({ success:false, error: `Prompt too long (max ${MAX_PROMPT_LENGTH} chars).` });
-  }
-
-  const userId = req.session.user;
-  const user   = await User.findById(userId).select('email openaiApiKey').lean();
-  if (!user) return res.status(400).json({ success: false, error: 'User not found' });
-
-  let classification;
-  try {
-    classification = await openaiClassifyPrompt(prompt, userId);
-  } catch (err) {
-    console.error('Classification error', err);
-    classification = 'task';
-  }
-
-  if (classification === 'task') {
-    // fetch user for email
-    const userDoc = await User.findById(userId).lean();
-    const userEmail = userDoc?.email;
-    // persist user in chat history
-    let chatHistory = await ChatHistory.findOne({ userId }) || new ChatHistory({ userId, messages: [] });
-    chatHistory.messages.push({ role: 'user', content: prompt, timestamp: new Date() });
-    await chatHistory.save();
-
-    const taskId = new mongoose.Types.ObjectId();
-    const runId  = uuidv4();
-    const runDir = path.join(NEXUS_RUN_DIR, runId);
-    fs.mkdirSync(runDir, { recursive: true });
-
-    // … save Task + push to User.activeTasks …
-    await new Task({ _id: taskId, userId, command: prompt, status: 'pending', progress: 0, startTime: new Date(), runId }).save();
-    await User.updateOne({ _id: userId }, { $push: { activeTasks: { _id: taskId.toString(), command: prompt, status: 'pending', startTime: new Date() } } });
-
-    sendWebSocketUpdate(userId, { event: 'taskStart', payload: { taskId: taskId.toString(), command: prompt, startTime: new Date() } });
-    
-    // CRITICAL FIX: Always provide a valid default URL for tasks initiated through NLI route
-    // This ensures thought bubbles are handled correctly as with direct task execution
-    const defaultUrl = "https://www.google.com";
-    processTask(userId, userEmail, taskId.toString(), runId, runDir, prompt, defaultUrl, null);
-    res.set({
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive'
-    });
-    res.flushHeaders();
-    res.write('data: ' + JSON.stringify({ event: 'taskStart', payload: { taskId: taskId.toString(), command: prompt, startTime: new Date() } }) + '\n\n');
-    // poll for updates
-    const interval = setInterval(async () => {
-      try {
-        const task = await Task.findById(taskId).lean();
-        if (!task) {
-          clearInterval(interval);
-          res.write('data: ' + JSON.stringify({ event: 'taskError', taskId: taskId.toString(), error: 'Task not found' }) + '\n\n');
-          return res.end();
-        }
-        const done = ['completed','error'].includes(task.status);
-        const evtName = done ? 'taskComplete' : 'stepProgress';
-        const payload = { taskId: taskId.toString(), progress: task.progress, result: task.result, error: task.error };
-        res.write('data: ' + JSON.stringify({ event: evtName, ...payload }) + '\n\n');
-        if (done) {
-          clearInterval(interval);
-          return res.end();
-        }
-      } catch (err) {
-        console.error('Task polling error:', err);
-      }
-    }, 2000);
-    req.on('close', () => clearInterval(interval));
-  } else {
-    // chat streaming
-    res.set({
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive'
-    });
-    res.flushHeaders();
-    for await (const evt of streamNliThoughts(userId, prompt)) {
-      res.write('data: ' + JSON.stringify(evt) + '\n\n');
-    }
-    res.end();
-  }
-});
+// Serve static assets - this should be the last middleware
+serveStaticAssets(app);
 
 // ======================================
 // CATCH-ALL ROUTE AND ERROR HANDLERS

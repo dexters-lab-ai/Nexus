@@ -27,44 +27,10 @@ function escapeRegExp(string) {
  * @returns {string} Content with formatted URLs
  */
 function formatUrls(content) {
-  if (!content) return '';
-  
-  // First sanitize any HTML in the content if it's a string
-  const sanitizedContent = typeof content === 'string' 
-    ? content.replace(/</g, "&lt;").replace(/>/g, "&gt;") 
-    : '';
-  
-  // Enhanced URL regex that properly handles URLs with query params, anchors, and paths
-  const urlRegex = /(https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*))/g;
-  
-  return sanitizedContent.replace(urlRegex, (url) => {
-    // Extract domain for display text
-    let displayText = 'link';
-    try {
-      // Handle URL parameters and hash fragments
-      let cleanUrl = url;
-      // If the URL contains special characters that might break parsing
-      if (url.includes('&amp;')) {
-        cleanUrl = url.replace(/&amp;/g, '&');
-      }
-      
-      const urlObj = new URL(cleanUrl);
-      displayText = urlObj.hostname.replace('www.', '');
-      
-      // Add path info if it's not just the root
-      if (urlObj.pathname && urlObj.pathname !== '/') {
-        const pathParts = urlObj.pathname.split('/');
-        // Add the first path segment for context
-        if (pathParts.length > 1 && pathParts[1]) {
-          displayText += '/' + pathParts[1] + (pathParts.length > 2 ? '/...' : '');
-        }
-      }
-    } catch (e) {
-      console.log('Error parsing URL:', e);
-    }
-    
-    // Return properly formatted link with gradient styling that will be styled via CSS
-    return `<a href="javascript:void(0)" onclick="window.open('${url}', '_blank')" class="gradient-link">${displayText}</a>`;
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  return content.replace(urlRegex, (url) => {
+    const encodedUrl = encodeURIComponent(url);
+    return `<a href="javascript:void(0)" class="url-link open-link" data-url="${encodedUrl}">${url}</a>`;
   });
 }
 
@@ -435,58 +401,44 @@ export function MessageTimeline(props = {}) {
    */
   function formatCommandContent(content) {
     try {
-      // Create a specialized container for task results
       let formattedHtml = '<div class="task-result-container">';
       
-      // Debug the raw content
       console.log('Raw content before formatting:', content.substring(0, 200) + '...');
       
-      // 1. Extract and format task description if present
       const taskMatch = content.match(/Task:\s*"([^"]+)"/i);
       if (taskMatch && taskMatch[1]) {
         formattedHtml += `<div class="task-header"><b>Task:</b> "${taskMatch[1].trim()}"</div>`;
       }
       
-      // 2. Process main content
       let mainContent = content;
-      
-      // Remove task line if we displayed it separately
       if (taskMatch) {
         mainContent = mainContent.replace(/Task:\s*"([^"]+)"\n?/i, '');
       }
       
-      // Format completion status if present
       const statusRegex = /(Successfully created [^\n]+|Task (completed|reached maximum steps) [^\n]+)/g;
       const statusMatch = statusRegex.exec(mainContent);
       
       if (statusMatch) {
-        // Process URLs in status message
         let statusText = statusMatch[0].trim();
-        
-        // Format any URLs in the status message - use 'live link' text
         const urlRegex = /(https?:\/\/[^\s]+)/g;
         statusText = statusText.replace(urlRegex, (url) => {
-          return `<a href="javascript:void(0)" onclick="window.open('${url}', '_blank')" class="status-link">live link</a>`;
+          const encodedUrl = encodeURIComponent(url);
+          return `<a href="javascript:void(0)" class="status-link open-link" data-url="${encodedUrl}">live link</a>`;
         });
-        
         formattedHtml += `<div class="task-completion-status">${statusText}</div>`;
         mainContent = mainContent.replace(statusMatch[0], '').trim();
       }
       
-      // Format report section
       let reportSection = '';
       if (mainContent.includes('Task Reports Available:')) {
-        // Extract report section
         const reportRegex = /Task Reports Available:([\s\S]+)/;
         const reportMatch = reportRegex.exec(mainContent);
         
         if (reportMatch) {
           const reportContent = reportMatch[1];
-          // No newlines between status and reports
           reportSection = '<div class="reports-section">';
           reportSection += '<div class="report-section-header">Run Reports:</div>';
           
-          // Process each report link
           const reportLines = reportContent.split('\n').filter(line => line.trim());
           
           reportLines.forEach(line => {
@@ -495,13 +447,10 @@ export function MessageTimeline(props = {}) {
               const reportType = linkMatch[1];
               const reportUrl = linkMatch[2];
               const icon = reportType.toLowerCase().includes('analysis') ? 'fa-chart-bar' : 'fa-file-alt';
-              
-              // Ensure URL is absolute
               const fullUrl = reportUrl.startsWith('/') ? window.location.origin + reportUrl : reportUrl;
-              
-              // Use original report type in link text
+              const encodedUrl = encodeURIComponent(fullUrl);
               reportSection += `<div class="report-section">
-                <a href="javascript:void(0)" onclick="window.open('${fullUrl}', '_blank')">
+                <a href="javascript:void(0)" class="report-link open-link" data-url="${encodedUrl}">
                   <i class="fas ${icon}"></i> ${reportType} Report
                 </a>
               </div>`;
@@ -509,33 +458,19 @@ export function MessageTimeline(props = {}) {
           });
           
           reportSection += '</div>';
-          
-          // Remove report section from main content
           mainContent = mainContent.replace(reportRegex, '');
         }
       }
       
-      // Format main text with financial data highlighting
       mainContent = mainContent.replace(/\$(\d[\d,.]+[BMK]?)/g, '<span class="data-point">$$$1</span>');
       mainContent = mainContent.replace(/(\d+)% (bullish|bearish)/gi, '<span class="sentiment-data">$1% $2</span>');
-      
-      // Clean up any excessive newlines that might create unwanted breaks
-      // Especially before report sections
       mainContent = mainContent.trim().replace(/\n{2,}/g, '\n');
-      
-      // Replace any remaining newlines with <br> tags
       mainContent = mainContent.replace(/\n/g, '<br>');
       
-      // Add the main content directly to the container without extra div
       formattedHtml += mainContent;
-      
-      // Add the report section directly without additional spacing
       formattedHtml += reportSection;
-      
-      // Close the task container
       formattedHtml += '</div>';
       
-      // Remove any <br> tags between task-completion-status and reports-section
       formattedHtml = formattedHtml.replace(/<\/div><br><br><br><div class="reports-section"/g, '</div><div class="reports-section"');
       formattedHtml = formattedHtml.replace(/<\/div><br><br><div class="reports-section"/g, '</div><div class="reports-section"');
       formattedHtml = formattedHtml.replace(/<\/div><br><div class="reports-section"/g, '</div><div class="reports-section"');
@@ -546,9 +481,7 @@ export function MessageTimeline(props = {}) {
       return `<div class="error-content">${content.replace(/\n/g, '<br>')}</div>`;
     }
   }
-
-
-  
+   
   // Process raw message and add basic metadata without formatting logic
   function processMessageData(message) {
     // Create a working copy to avoid mutating the original
@@ -640,47 +573,34 @@ export function MessageTimeline(props = {}) {
   
   // Function to create a single message item
   function createMessageItem(message) {
-    // Check if this is a duplicate system message showing as chat
     if (message.role === 'assistant' && message.type === 'chat' && message.content) {
       const normalizedContent = message.content.trim();
-      
-      // Check if we've already seen this content as a system message
       if (systemMessageContents.has(normalizedContent)) {
         console.log('Skipping duplicate assistant chat message (system content):', normalizedContent);
-        return null; // Don't create the element at all
+        return null;
       }
     }
     
-    // If this is a system message, remember its content to prevent duplicates
     if (message.role === 'system' && message.content) {
       systemMessageContents.add(message.content.trim());
     }
     
-    // Log the message we're creating for debugging
     console.log('Creating message item for:', message);
     
-    // Process and enhance the message data
     const enhancedMessage = processMessageData(message);
-    const { 
-      role, type, content, timestamp, id, streaming, 
-      taskDescription, isTaskResult, reportUrls 
-    } = enhancedMessage;
+    const { role, type, content, timestamp, id, streaming, taskDescription, isTaskResult, reportUrls } = enhancedMessage;
     
-    // Create message element
     const msgEl = document.createElement('div');
     msgEl.className = `msg-item msg-${role || 'unknown'}`;
     if (type) msgEl.classList.add(`msg-${type}`);
-    if (id) msgEl.dataset.messageId = id; // Add message ID for potential updates
-
-    // Add fade-in animation for new messages
+    if (id) msgEl.dataset.messageId = id;
+    
     msgEl.classList.add('fade-in-message');
     setTimeout(() => msgEl.classList.remove('fade-in-message'), 500);
-
-    // Message metadata
+    
     const metaEl = document.createElement('div');
     metaEl.className = 'msg-meta';
     
-    // Role badge
     const roleEl = document.createElement('div');
     roleEl.className = 'msg-role';
     let roleIcon = '';
@@ -697,124 +617,82 @@ export function MessageTimeline(props = {}) {
       default:
         roleIcon = 'fa-comment';
     }
-    // Use FontAwesome solid style
     roleEl.innerHTML = `<i class="fas ${roleIcon}"></i>`;
     metaEl.appendChild(roleEl);
     
-    // Type badge if not default
     if (type && type !== MESSAGE_TYPES.CHAT) {
       const typeEl = document.createElement('div');
       typeEl.className = `msg-type msg-${type}`;
-      // Make thought type less prominent
       typeEl.textContent = type === MESSAGE_TYPES.THOUGHT ? 'Thinking...' : type;
       metaEl.appendChild(typeEl);
     }
     
-    // Timestamp
     const timeEl = document.createElement('div');
     timeEl.className = 'msg-time';
-    
-    // Format timestamp
     const date = new Date(timestamp);
     const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     timeEl.textContent = timeStr;
-    
-    // Add timestamp to metadata
     metaEl.appendChild(timeEl);
     msgEl.appendChild(metaEl);
     
-    // Message content
     const contentEl = document.createElement('div');
     contentEl.className = 'msg-content';
     
-    // Special formatting approach for command messages from assistant
     if (type === MESSAGE_TYPES.COMMAND && role === MESSAGE_ROLES.ASSISTANT) {
-      // Log for debugging
       console.log('Creating command message:', message.id);
-      
-      // Check if this is a task-related command or a regular command
       const isTaskMessage = content && (
-        content.includes('Task:') || 
-        content.includes('Report:') || 
+        content.includes('Task:') ||
+        content.includes('Report:') ||
         content.includes('Successfully created') ||
         content.includes('Task completed')
       );
       
       if (isTaskMessage) {
-        // Use the centralized formatting function for task messages
         contentEl.innerHTML = formatCommandContent(content);
         console.log('✅ Applied special task formatting');
       } else {
-        // For command messages that aren't tasks, apply standard formatting
         let processedContent = content || '';
         processedContent = formatUrls(processedContent);
-        
-        // Apply standard markdown formatting
         let standardFormatting = processedContent
-          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') 
+          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
           .replace(/\*(.*?)\*/g, '<em>$1</em>')
           .replace(/\n/g, '<br>');
-        
         contentEl.innerHTML = standardFormatting;
         console.log('Applied standard command formatting');
       }
-      
     } else {
-      // Regular message formatting
-      
-      // Use our URL formatter to process content
       let processedContent = content || '';
-      
-      // Apply URL formatting
       processedContent = formatUrls(processedContent);
-      
-      // Format the content with markdown-like formatting
       let formattedContent = processedContent
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>') // Bold
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')             // Italics
-        .replace(/\n/g, '<br>');                         // Convert newlines to <br>
-        
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/\n/g, '<br>');
       contentEl.innerHTML = formattedContent;
     }
     
-    // Special handling for command result messages that might contain task completions
-    if (type === MESSAGE_TYPES.COMMAND && role === MESSAGE_ROLES.ASSISTANT) {
-      // The special formatting for task results is now handled above in the content element creation
-    }
-    
-    // For elements with extracted reportUrls but using the standard formatting path
     if (!contentEl.querySelector('.task-result-container') && reportUrls && reportUrls.length > 0) {
-      // Create a report links container
       const reportsContainer = document.createElement('div');
       reportsContainer.className = 'report-links-container';
       
-      // Add header
       const reportsHeader = document.createElement('div');
       reportsHeader.className = 'report-links-header';
       reportsHeader.textContent = 'Task Reports:';
       reportsContainer.appendChild(reportsHeader);
       
-      // Create links container
       const linksContainer = document.createElement('div');
       linksContainer.className = 'report-links-inline';
       
-      // Add each report link
       reportUrls.forEach((report, index) => {
-        // Choose appropriate icon
         let icon = 'fa-file';
         if (report.type === 'analysis') icon = 'fa-chart-bar';
         if (report.type === 'landing') icon = 'fa-file-alt';
         
-        // Create link element
         const linkEl = document.createElement('a');
-        linkEl.className = `gradient-link inline-report-link ${report.type}-report`;
+        linkEl.className = `gradient-link inline-report-link ${report.type}-report open-link`;
         linkEl.href = 'javascript:void(0)';
-        
-        // Ensure URL is absolute
         const fullUrl = report.url.startsWith('/') ? window.location.origin + report.url : report.url;
-        linkEl.setAttribute('onclick', `window.open('${fullUrl}', '_blank')`); 
+        linkEl.setAttribute('data-url', encodeURIComponent(fullUrl));
         
-        // Add icon and label
         const iconEl = document.createElement('i');
         iconEl.className = `fas ${icon}`;
         linkEl.appendChild(iconEl);
@@ -822,7 +700,6 @@ export function MessageTimeline(props = {}) {
         
         linksContainer.appendChild(linkEl);
         
-        // Add separator if not the last link
         if (index < reportUrls.length - 1) {
           const separator = document.createElement('span');
           separator.textContent = ' | ';
@@ -833,48 +710,58 @@ export function MessageTimeline(props = {}) {
       reportsContainer.appendChild(linksContainer);
       contentEl.appendChild(reportsContainer);
     }
+    
     msgEl.appendChild(contentEl);
     
-    // Check if message has error
     if (message.error) {
       const errorEl = document.createElement('div');
       errorEl.className = 'msg-error';
       errorEl.textContent = message.error;
       msgEl.appendChild(errorEl);
     }
-
-    // Specific styling for thoughts
+    
     if (type === MESSAGE_TYPES.THOUGHT) {
-        msgEl.style.opacity = '0.9';
-        msgEl.style.fontStyle = 'italic';
-        msgEl.style.fontSize = '0.9em'; // Make thoughts slightly smaller
-        msgEl.classList.add('msg-thought-item'); // Add class for CSS targeting
-        if (streaming) {
-          const typingEl = document.createElement('span');
-          typingEl.className = 'typing-indicator';
-          typingEl.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
-          msgEl.appendChild(typingEl);
-        }
+      msgEl.style.opacity = '0.9';
+      msgEl.style.fontStyle = 'italic';
+      msgEl.style.fontSize = '0.9em';
+      msgEl.classList.add('msg-thought-item');
+      if (streaming) {
+        const typingEl = document.createElement('span');
+        typingEl.className = 'typing-indicator';
+        typingEl.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+        msgEl.appendChild(typingEl);
+      }
     }
-
+    
     return msgEl;
   }
+  
 
   // Track if this is the first load
   let isFirstLoad = true;
   let messageElements = new Map(); // Cache of message elements by ID
 
+  // Event Delegation Logic
+  messagesContainer.addEventListener('click', (event) => {
+    const link = event.target.closest('.open-link');
+    if (link) {
+      event.preventDefault();
+      const url = decodeURIComponent(link.getAttribute('data-url'));
+      if (url) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      } else {
+        console.warn('No URL found for link:', link);
+      }
+    }
+  });
+
   // Function to update visible messages based on filter
   function updateVisibleMessages() {
-    // Get messages from store
     const { timeline, filter } = messagesStore.getState();
     
     console.log('Filtering messages with filter:', filter);
     console.log('Available messages:', timeline?.length || 0);
     
-
-    
-    // Handle empty state
     if (!timeline || timeline.length === 0) {
       messagesContainer.innerHTML = '';
       const emptyEl = document.createElement('div');
@@ -884,124 +771,88 @@ export function MessageTimeline(props = {}) {
       return;
     }
     
-    // No filtering in component - all messages are rendered and filtered via DOM
     const filteredMessages = timeline;
-    
-    // Trigger the centralized filter via store after messages render
     setTimeout(() => messagesStore.applyFilter(messagesStore.getState().filter || 'all'), 10);
     
-    // Check if we should auto-scroll
-    // We auto-scroll if:
-    // 1. This is the first load
-    // 2. User is already at the bottom (within 100px)
-    // 3. Loading fresh messages
     const isAtBottom = messagesContainer.scrollHeight - messagesContainer.clientHeight - messagesContainer.scrollTop < 100;
     const shouldAutoScroll = isFirstLoad || isAtBottom || messagesStore.getState().loading;
     
-    // Get current visible message IDs
     const currentMessageIds = new Set(Array.from(messagesContainer.children)
       .filter(el => el.dataset.messageId)
       .map(el => el.dataset.messageId));
     
-    // Track new messages that need to be added
     const messagesToAdd = [];
     
-    // Efficient DOM updates - only add or update messages that changed
     filteredMessages.forEach(message => {
       if (!message.id) {
         message.id = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       }
       
-      // SYSTEM MESSAGE DEDUPLICATION: Skip assistant chat messages with same content as system
       if (message.role === 'assistant' && message.type === 'chat' && message.content) {
-        // Check if we already have a system message with this content
-        const isDuplicate = filteredMessages.some(msg => 
-          msg.id !== message.id && // Different message
-          msg.role === 'system' && // Is a system message
-          msg.content?.trim() === message.content.trim() // Same content
+        const isDuplicate = filteredMessages.some(msg =>
+          msg.id !== message.id &&
+          msg.role === 'system' &&
+          msg.content?.trim() === message.content.trim()
         );
-        
         if (isDuplicate) {
           console.log('Skipping duplicate message in updateVisibleMessages:', message.content);
-          return; // Skip this message entirely
+          return;
         }
       }
       
       const existingElement = messagesContainer.querySelector(`[data-message-id="${message.id}"]`);
       
       if (existingElement) {
-        // Message exists - update content if needed
-        currentMessageIds.delete(message.id); // Remove from the set of messages to check
+        currentMessageIds.delete(message.id);
+        // console.log(`🔄 UPDATING existing message [${message.id}] - type: ${message.type}, role: ${message.role}`);
         
-        console.log(`🔄 UPDATING existing message [${message.id}] - type: ${message.type}, role: ${message.role}`);
-        
-        // Only update content if it changed
         const contentEl = existingElement.querySelector('.msg-content');
         if (contentEl && contentEl.textContent !== message.content) {
-          
-          // Check if this is a command message from the assistant
           if (message.type === MESSAGE_TYPES.COMMAND && message.role === MESSAGE_ROLES.ASSISTANT) {
-            console.log('✨ Updating command message:', message.id);
-            
-            // Check if this is a task-related message
+            // console.log('✨ Updating command message:', message.id);
             const isTaskMessage = message.content && (
-              message.content.includes('Task:') || 
-              message.content.includes('Report:') || 
-              message.content.includes('Successfully created') ||
-              message.content.includes('Task completed')
+              message.content.includes('Task:') ||
+              message.content.includes('Report:') ||
+              content.includes('Successfully created') ||
+              content.includes('Task completed')
             );
             
             if (isTaskMessage) {
-              // Use the centralized formatting function for task messages
               contentEl.innerHTML = formatCommandContent(message.content);
-              console.log('✅ Applied special task formatting to UPDATED message');
+              // console.log('✅ Applied special task formatting to UPDATED message');
             } else {
-              // For command messages that aren't tasks, apply standard formatting
               const processedContent = formatUrls(message.content || '');
               const formattedContent = processedContent
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                 .replace(/\*(.*?)\*/g, '<em>$1</em>')
                 .replace(/\n/g, '<br>');
-                
               contentEl.innerHTML = formattedContent;
-              console.log('Applied standard formatting to updated command message');
+              // console.log('Applied standard formatting to updated command message');
             }
           } else {
-            // Regular message formatting for updates
             const sanitizedContent = (message.content || '')
-              .replace(/</g, "&lt;").replace(/>/g, "&gt;");
-            
-            // Format the content with markdown-like formatting
-            let formattedContent = sanitizedContent
+              .replace(/</g, "<").replace(/>/g, ">");
+            let formattedContent = formatUrls(sanitizedContent)
               .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
               .replace(/\*(.*?)\*/g, '<em>$1</em>')
               .replace(/\n/g, '<br>')
               .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
             
-            // Check if the message has report URLs to display
             if (message.reportUrls && message.reportUrls.length > 0) {
-              // Add a simple separator
               formattedContent += '<div class="report-links-inline">';
-              
-              // Add inline links for each report - USING window.open() APPROACH
               message.reportUrls.forEach((report, index) => {
-                // Choose appropriate icon based on report type
                 let icon = 'fa-file';
                 if (report.type === 'nexus') icon = 'fa-chart-bar';
                 if (report.type === 'landing') icon = 'fa-file-alt';
                 if (report.type === 'error') icon = 'fa-exclamation-triangle';
-                
-                // Create link that bypasses React Router
                 const fullUrl = report.url.startsWith('/') ? window.location.origin + report.url : report.url;
-                formattedContent += `<a href="javascript:void(0)" onclick="window.open('${fullUrl}', '_blank')" class="inline-report-link ${report.type}-report">
+                const encodedUrl = encodeURIComponent(fullUrl);
+                formattedContent += `<a href="javascript:void(0)" class="inline-report-link ${report.type}-report open-link" data-url="${encodedUrl}">
                   <i class="fas ${icon}"></i> ${report.label}</a>`;
-                
-                // Add separator between links, but not after the last one
                 if (index < message.reportUrls.length - 1) {
                   formattedContent += ' | ';
                 }
               });
-              
               formattedContent += '</div>';
             }
             
@@ -1009,12 +860,10 @@ export function MessageTimeline(props = {}) {
           }
         }
       } else {
-        // New message - create and queue for addition
         messagesToAdd.push(message);
       }
     });
     
-    // Batch DOM operations - add all new messages at once
     if (messagesToAdd.length > 0) {
       const fragment = document.createDocumentFragment();
       messagesToAdd.forEach(message => {
@@ -1028,149 +877,117 @@ export function MessageTimeline(props = {}) {
       messagesContainer.appendChild(fragment);
     }
     
-    // Handle removing messages that are no longer in the filtered set
     currentMessageIds.forEach(id => {
       const msgToRemove = messagesContainer.querySelector(`[data-message-id="${id}"]`);
       if (msgToRemove) {
-        // Add a fade-out animation before removing
         msgToRemove.classList.add('fade-out-message');
         setTimeout(() => msgToRemove.remove(), 300);
       }
     });
     
-    // Scroll to bottom if needed
     if (shouldAutoScroll) {
       scrollToBottom();
     }
     
-    // After first load, clear the flag
     if (isFirstLoad) {
       isFirstLoad = false;
-      // Triple guarantee we scroll to bottom on first load
       setTimeout(scrollToBottom, 100);
       setTimeout(scrollToBottom, 500);
     }
   }
-
-  // Handle chat updates with fresh messages
+  
+  // Updated handleChatUpdate function
   function handleChatUpdate(message) {
-    console.log("MessageTimeline received chat-update:", message);
+    // console.log("MessageTimeline received chat-update:", message);
     const { timeline } = messagesStore.getState();
     
-    // Create base message structure
     const baseMessage = {
       role: message.role || MESSAGE_ROLES.ASSISTANT,
       type: message.type || MESSAGE_TYPES.CHAT,
       content: message.payload?.text || '',
       timestamp: message.timestamp || Date.now(),
-      id: message.id // Use server-provided ID if available
+      id: message.id
     };
     
-    // Check if this is a system message and if we already have one with the same content
     if (baseMessage.role === 'system' && baseMessage.content) {
-      // Look for an existing system message with the same content
-      const duplicate = timeline.find(msg => 
-        msg.role === 'system' && 
-        msg.content?.trim() === baseMessage.content?.trim()
+      const duplicate = timeline.find(msg =>
+        msg.role === 'system' &&
+        msg.content?.trim() === baseMessage.content.trim()
       );
-      
       if (duplicate) {
         console.log('Detected duplicate system message in chat update, ignoring:', baseMessage.content);
-        return; // Don't add duplicate system messages
+        return;
       }
     }
-
-    // Handle different message types
+    
     switch (message.type) {
       case 'user_message':
-        // User messages should always have a unique ID
         baseMessage.id = message.id || `user-${Date.now()}`;
         baseMessage.role = MESSAGE_ROLES.USER;
         break;
-
       case 'ai_thought_stream':
       case 'thought':
-        // Handle thought streaming, both from chat and tasks
         if (message.id) {
-          // If we have an ID, use it to update the existing message
           const updatedTimeline = timeline.map(msg =>
             msg.id === message.id ? { ...msg, content: message.payload?.text || message.content || '', streaming: true } : msg
           );
           messagesStore.setState({ timeline: updatedTimeline });
           return;
         }
-        // If no ID, create a new thought
         baseMessage.id = `thought-${Date.now()}`;
         baseMessage.type = MESSAGE_TYPES.THOUGHT;
         baseMessage.streaming = true;
-        // For task thoughts, check if they have a taskId to associate them
         if (message.taskId) {
           baseMessage.taskId = message.taskId;
-          console.log(`[MessageTimeline] Associated thought with task: ${message.taskId}`);
+          //console.log(`[MessageTimeline] Associated thought with task: ${message.taskId}`);
         }
         break;
-
       case 'chat_response':
-        // Handle final responses
         if (message.id) {
-          // If we have an ID, use it to update the existing message
           const updatedTimeline = timeline.map(msg =>
             msg.id === message.id ? { ...msg, content: message.payload?.text || '', streaming: false } : msg
           );
           messagesStore.setState({ timeline: updatedTimeline });
           return;
         }
-        // If no ID, create a new message
         baseMessage.id = `response-${Date.now()}`;
         break;
-
       default:
-        console.warn(`MessageTimeline received unhandled chat-update type: ${message.type}`);
+        //console.warn(`MessageTimeline received unhandled chat-update type: ${message.type}`);
         return;
     }
-
-    // More robust check for duplicates - check both assistant and system roles
+    
     if ((baseMessage.role === 'assistant' || baseMessage.role === 'system') && baseMessage.type === 'chat' && baseMessage.content) {
       const normalizedContent = baseMessage.content.trim();
-      
-      // Look for any existing message with the same content that is a system message
       const isDuplicatingSystem = timeline.some(msg =>
-        msg.id !== baseMessage.id && // Not the same message
-        msg.role === 'system' && // Is a system message
-        msg.content?.trim() === normalizedContent // Same content
+        msg.id !== baseMessage.id &&
+        msg.role === 'system' &&
+        msg.content?.trim() === normalizedContent
       );
-      
       if (isDuplicatingSystem) {
         console.log('Detected message duplicating system message content, ignoring:', normalizedContent);
-        return; // Don't add messages that duplicate system content
+        return;
       }
       
-      // Also check if this message might be duplicating an existing assistant chat message
       const isDuplicatingAssistant = timeline.some(msg =>
-        msg.id !== baseMessage.id && // Not the same message
-        msg.role === 'assistant' && // Is an assistant message
-        msg.type === 'chat' && // Is a chat message
-        msg.content?.trim() === normalizedContent // Same content
+        msg.id !== baseMessage.id &&
+        msg.role === 'assistant' &&
+        msg.type === 'chat' &&
+        msg.content?.trim() === normalizedContent
       );
-      
       if (isDuplicatingAssistant) {
         console.log('Detected duplicate assistant message content, ignoring:', normalizedContent);
-        return; // Don't add duplicate assistant messages
+        return;
       }
     }
     
-    // Remove any existing messages with the same content and type
-    const uniqueTimeline = timeline.filter(msg => 
+    const uniqueTimeline = timeline.filter(msg =>
       !(msg.content === baseMessage.content && msg.type === baseMessage.type)
     );
-
-    // Add the new message
-    const newTimeline = [...uniqueTimeline, baseMessage];
     
-    // Sort by timestamp to maintain proper order
+    const newTimeline = [...uniqueTimeline, baseMessage];
     const sortedTimeline = newTimeline.sort((a, b) => a.timestamp - b.timestamp);
     
-    // Update the store with the fresh timeline
     messagesStore.setState({
       timeline: sortedTimeline
     });
@@ -1188,7 +1005,7 @@ export function MessageTimeline(props = {}) {
     const sinceParam = since ? since.toISOString() : null;
     
     // Log what we're doing
-    console.log(`Loading messages${sinceParam ? ` since ${sinceParam}` : ' (all history)'}`);
+    //console.log(`Loading messages${sinceParam ? ` since ${sinceParam}` : ' (all history)'}`);
     
     // Show loading indicator while messages load
     const showLoadingIndicator = () => {
@@ -1217,23 +1034,18 @@ export function MessageTimeline(props = {}) {
     getMessageHistory(1, initialBatchSize, sinceParam)
       .then(data => {
         if (data && Array.isArray(data.items)) {
-          console.log(`Received ${data.items.length} messages from API (initial batch)`);
+          //console.log(`Received ${data.items.length} messages from API (initial batch)`);
           
           // Log the structure of the first message to understand its format
           if (data.items.length > 0) {
             // Log complete unfiltered message objects to understand their structure
-            console.log('Complete message object:', data.items[0]);
-            console.log('Stringified message structure:', JSON.stringify(data.items[0], null, 2));
+            // console.log('Complete message object:', data.items[0]);
+            // console.log('Stringified message structure:', JSON.stringify(data.items[0], null, 2));
             
             // Log a task message specifically if one exists
             const taskMessage = data.items.find(msg => 
               msg.type === MESSAGE_TYPES.COMMAND && 
               (msg.content?.includes('Task:') || msg.content?.includes('Reports Available')));
-              
-            if (taskMessage) {
-              console.log('Task message example:', taskMessage);
-              console.log('Task message content:', taskMessage.content);
-            }
             
             // Log task-related messages specifically
             const taskMessages = data.items.filter(msg => 
@@ -1243,7 +1055,7 @@ export function MessageTimeline(props = {}) {
                msg.reportUrls)));
             
             if (taskMessages.length > 0) {
-              console.log('Task message examples:', taskMessages.slice(0, 2));
+              // console.log('Task message examples:', taskMessages.slice(0, 2));
             }
           }
           
@@ -1253,7 +1065,7 @@ export function MessageTimeline(props = {}) {
           });
           
           // Log the data for debugging
-          console.log('Raw API response:', JSON.stringify(data, null, 2));
+          // console.log('Raw API response:', JSON.stringify(data, null, 2));
           
           // Filter out chat messages that duplicate system messages
           const systemMessages = new Map(); // Map content to message object
@@ -1273,7 +1085,7 @@ export function MessageTimeline(props = {}) {
               if (systemMessages.has(normalizedContent)) {
                 const systemMsg = systemMessages.get(normalizedContent);
                 if (systemMsg.id !== msg.id) { // Ensure we're not filtering out the actual system message
-                  console.log('Filtering out message duplicating system message:', normalizedContent);
+                 //console.log('Filtering out message duplicating system message:', normalizedContent);
                   return false;
                 }
               }
@@ -1320,8 +1132,8 @@ export function MessageTimeline(props = {}) {
                       }
                     });
                     
-                    console.log('Message types found:', Object.keys(messageTypes));
-                    console.log('Message type examples:', messageTypes);
+                    //console.log('Message types found:', Object.keys(messageTypes));
+                    //console.log('Message type examples:', messageTypes);
                     
                     // Look for specifically task-related messages
                     const taskMessages = fullData.items.filter(msg => 
@@ -1331,11 +1143,11 @@ export function MessageTimeline(props = {}) {
                        msg.reportUrls)));
                     
                     if (taskMessages.length > 0) {
-                      console.log(`Found ${taskMessages.length} task-related messages in full dataset`);
+                      //console.log(`Found ${taskMessages.length} task-related messages in full dataset`);
                       // Log a sample task message to help with debugging formatting issues
                       const sampleMessage = taskMessages[0];
-                      console.log('Sample task message:', sampleMessage);
-                      console.log('Sample task content:', sampleMessage.content);
+                      //console.log('Sample task message:', sampleMessage);
+                      //console.log('Sample task content:', sampleMessage.content);
                     }
                     
                     // Sort full message set
@@ -1361,7 +1173,7 @@ export function MessageTimeline(props = {}) {
                         if (systemMessages.has(normalizedContent)) {
                           const systemMsg = systemMessages.get(normalizedContent);
                           if (systemMsg.id !== msg.id) { // Ensure we're not filtering out the actual system message
-                            console.log('Filtering out chat message duplicating system message in full dataset:', normalizedContent);
+                            //console.log('Filtering out chat message duplicating system message in full dataset:', normalizedContent);
                             return false;
                           }
                         }

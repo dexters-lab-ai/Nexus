@@ -18,11 +18,11 @@ const setStaticFileHeaders = (res, filePath) => {
 
   // Cache control for different file types
   const cacheControl = {
-    'default': 'public, max-age=31536000, immutable',
-    'html': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-    'api': 'no-cache, no-store, must-revalidate'
+    default: 'public, max-age=31536000, immutable',
+    html: 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    api: 'no-cache, no-store, must-revalidate',
   };
-  
+
   if (filePath.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|wasm|glb|hdr|webp|avif)$/i)) {
     res.setHeader('Cache-Control', cacheControl.default);
   } else if (filePath.match(/\.(html|htm)$/i)) {
@@ -36,13 +36,12 @@ const setStaticFileHeaders = (res, filePath) => {
  * Configure and serve static assets with proper security headers and caching
  * @param {Object} app - Express app instance
  */
-// Export the setStaticFileHeaders function for use in other files
 export { setStaticFileHeaders };
 
 export default function serveStaticAssets(app) {
   // Configure MIME types
   configureMime();
-  express.static.mime.define({'text/css': ['css']});
+  express.static.mime.define({ 'text/css': ['css'] });
 
   // Common static options
   const staticOptions = {
@@ -52,31 +51,82 @@ export default function serveStaticAssets(app) {
     dotfiles: 'ignore',
     etag: true,
     lastModified: true,
-    maxAge: '1y'
+    maxAge: '1y',
   };
 
   // ===== REPORT & RUN DIRECTORIES =====
   // Serve reports and run directories first (before other static files)
   app.use('/nexus_run', express.static(global.NEXUS_PATHS?.RUN_DIR || 'nexus_run', staticOptions));
-  
+
   // ===== CORE ASSETS =====
   // Main static directories
+  const isDev = process.env.NODE_ENV === 'development';
   const staticDirs = [
-    { path: path.join(process.cwd(), 'dist'), route: '/' },
-    { path: path.join(process.cwd(), 'public'), route: '/public' },
-    { path: path.join(process.cwd(), 'public', 'assets'), route: '/assets' },
-    { path: path.join(process.cwd(), 'public', 'models'), route: '/models' },
+    // In development, serve from src directory, otherwise from dist
+    ...(isDev
+      ? [
+          { path: path.join(process.cwd(), 'src'), route: '/' },
+          { path: path.join(process.cwd(), 'public'), route: '/public' },
+          { path: path.join(process.cwd(), 'public', 'assets'), route: '/assets' },
+          { path: path.join(process.cwd(), 'public', 'models'), route: '/models' },
+        ]
+      : [
+          { path: path.join(process.cwd(), 'dist'), route: '/' },
+          { path: path.join(process.cwd(), 'public'), route: '/public' },
+          { path: path.join(process.cwd(), 'public', 'assets'), route: '/assets' },
+          { path: path.join(process.cwd(), 'public', 'models'), route: '/models' },
+        ]),
     { path: path.join(process.cwd(), 'node_modules'), route: '/node_modules' },
-    { 
-      path: path.join(process.cwd(), 'node_modules', '@fortawesome', 'fontawesome-free', 'webfonts'), 
-      route: '/webfonts' 
+    // Serve Font Awesome webfonts from node_modules
+    {
+      path: path.join(process.cwd(), 'node_modules', '@fortawesome', 'fontawesome-free', 'webfonts'),
+      route: '/webfonts',
+      options: {
+        ...staticOptions,
+        setHeaders: (res, filePath) => {
+          setStaticFileHeaders(res, filePath);
+          if (filePath.endsWith('.ttf')) {
+            res.setHeader('Content-Type', 'font/ttf');
+          } else if (filePath.endsWith('.woff')) {
+            res.setHeader('Content-Type', 'font/woff');
+          } else if (filePath.endsWith('.woff2')) {
+            res.setHeader('Content-Type', 'font/woff2');
+          } else if (filePath.endsWith('.eot')) {
+            res.setHeader('Content-Type', 'application/vnd.ms-fontobject');
+          } else if (filePath.endsWith('.svg')) {
+            res.setHeader('Content-Type', 'image/svg+xml');
+          }
+        },
+      },
+    },
+    // Also serve webfonts from public/webfonts for any CSS that expects them there
+    {
+      path: path.join(process.cwd(), 'public', 'webfonts'),
+      route: '/webfonts',
+      options: {
+        ...staticOptions,
+        setHeaders: (res, filePath) => {
+          setStaticFileHeaders(res, filePath);
+          if (filePath.endsWith('.ttf')) {
+            res.setHeader('Content-Type', 'font/ttf');
+          } else if (filePath.endsWith('.woff')) {
+            res.setHeader('Content-Type', 'font/woff');
+          } else if (filePath.endsWith('.woff2')) {
+            res.setHeader('Content-Type', 'font/woff2');
+          } else if (filePath.endsWith('.eot')) {
+            res.setHeader('Content-Type', 'application/vnd.ms-fontobject');
+          } else if (filePath.endsWith('.svg')) {
+            res.setHeader('Content-Type', 'image/svg+xml');
+          }
+        },
+      },
     },
     { path: path.join(process.cwd(), 'bruno_demo_temp', 'static'), route: '/bruno_demo_temp/static' },
     { path: path.join(process.cwd(), 'public', 'vendors'), route: '/vendors' },
     { path: path.join(process.cwd(), 'public', 'lib'), route: '/lib' },
     { path: path.join(process.cwd(), 'src', 'styles'), route: '/styles' },
-    { 
-      path: path.join(process.cwd(), 'src', '3d'), 
+    {
+      path: path.join(process.cwd(), 'src', '3d'),
       route: '/js/3d',
       options: {
         ...staticOptions,
@@ -85,9 +135,9 @@ export default function serveStaticAssets(app) {
           if (filePath.endsWith('.glb')) {
             res.setHeader('Content-Type', 'model/gltf-binary');
           }
-        }
-      }
-    }
+        },
+      },
+    },
   ];
 
   // Apply static file serving for each directory
@@ -107,7 +157,7 @@ export default function serveStaticAssets(app) {
       setHeaders: (res) => {
         res.setHeader('Content-Type', 'text/css');
         setStaticFileHeaders(res, 'style.css');
-      }
+      },
     })
   );
 

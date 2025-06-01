@@ -16,9 +16,16 @@ const RETRY_DELAY = 5000;
 function initWebSocket(userId) {
   if (ws && ws.readyState === WebSocket.OPEN) return;
   
-  // Auto-detect WebSocket URL based on current protocol and host
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  let wsUrl = `${protocol}://${window.location.host}/ws`;
+  // Use environment configuration if available, otherwise fall back to current host
+  let wsUrl;
+  if (window.__ENV__ && window.__ENV__.wsUrl) {
+    // Use the WebSocket URL from environment config
+    wsUrl = window.__ENV__.wsUrl;
+  } else {
+    // Fallback to current host with appropriate protocol
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    wsUrl = `${protocol}://${window.location.host}/ws`;
+  }
   
   // Add userId as query parameter
   const separator = wsUrl.includes('?') ? '&' : '?';
@@ -210,7 +217,7 @@ function updateStepProgress(taskId, stepIndex, progress, message, log) {
 console.log('Script loaded'); // Confirm script runs
 
 const logger = {
-  // info: (...args) => console.log('[INFO]', ...args),
+  info: (...args) => console.log('[INFO]', ...args),
   warn: (...args) => console.warn('[WARN]', ...args),
   error: (...args) => console.error('[ERROR]', ...args),
 };

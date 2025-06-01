@@ -2,62 +2,23 @@
 <html lang="en" data-theme="dark">
 <head>
   <!-- Preconnect to local assets for better performance -->
-  <link rel="preconnect" href="/" crossorigin>
-  <link rel="dns-prefetch" href="/">
-  
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "/vendors/three/three.module.js",
+      "three/examples/jsm/": "/vendors/three/examples/jsm/",
+      "stats.js": "/vendors/three/examples/jsm/libs/stats.module.js",
+      "tweakpane": "/vendors/tweakpane/tweakpane.min.js",
+      "gsap": "/vendors/gsap/gsap.min.js"
+    }
+  }
+  </script>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta http-equiv="X-Content-Type-Options" content="nosniff">
   <meta http-equiv="X-Frame-Options" content="DENY">
-  <link rel="icon" href="/favicon.ico" type="image/x-icon">
-  
-  <!-- Inline critical CSS with nonce -->
-  <style nonce="<%= cspNonce %>">
-    :root {
-      --primary-color: #1b9bf0;
-      --primary-dark: #227fbc;
-      --primary-light: #48abee;
-      --background-dark: #0a0e17;
-      --background-darker: #050a14;
-      --text-primary: #e0e0e0;
-      --text-secondary: #a0a0a0;
-      --success-color: #28a745;
-      --error-color: #dc3545;
-      --warning-color: #ffc107;
-      --border-radius: 8px;
-      --transition-speed: 0.3s;
-    }
-    
-    /* Critical loading styles */
-    #app-loading {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: var(--background-darker);
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      z-index: 9999;
-      transition: opacity 0.5s ease-out;
-    }
-    
-    .loading-spinner {
-      width: 50px;
-      height: 50px;
-      border: 5px solid rgba(255, 255, 255, 0.1);
-      border-radius: 50%;
-      border-top-color: var(--primary-color);
-      animation: spin 1s ease-in-out infinite;
-      margin-bottom: 20px;
-    }
-    
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-  </style>
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="format-detection" content="telephone=no, date=no, email=no, address=no">
   <meta name="theme-color" content="#0f0c29">

@@ -27,10 +27,11 @@ router.post('/register', async (req, res) => {
 
 // POST /login
 router.post('/login', async (req, res) => {
-  console.log('👉 Login request received:', {
+  console.log('👉 Login request:', {
     headers: req.headers,
     body: req.body,
-    sessionID: req.sessionID
+    sessionID: req.sessionID,
+    cookies: req.headers.cookie,
   });
   
   const { email, password } = req.body;
@@ -53,7 +54,7 @@ router.post('/login', async (req, res) => {
     }
     
     req.session.user = user._id;
-    console.log('✅ Successful login for user:', user._id);
+    console.log('✅ Successful login:', { userId: user._id, sessionId: req.sessionID });
     res.json({ success: true, userId: user._id.toString() });
   } catch (err) {
     console.error('❌ Login error:', err);

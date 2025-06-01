@@ -787,14 +787,12 @@ export function TaskBar(props = {}) {
     container.scrollTop = container.scrollHeight;
   }
   
+  // Updated updateTasks function
   function updateTasks() {
-    // Get all tasks from store
     const { active: activeTasks = [] } = tasksStore.getState();
     
-    // Update task count first
     updateTaskCount(activeTasks.filter(t => t.status !== 'completed').length);
     
-    // Ensure containers exist and get references
     const { runningTasksContainer, completedTasksContainer } = initializeContainers();
     
     if (!runningTasksContainer || !completedTasksContainer) {
@@ -802,15 +800,12 @@ export function TaskBar(props = {}) {
       return;
     }
     
-    // Clear existing content but keep the containers
     runningTasksContainer.innerHTML = '';
     completedTasksContainer.innerHTML = '';
     
-    // Process tasks - separate into running and completed
     const runningTasks = [];
     const completedTasks = [];
     
-    // Separate tasks into running and completed
     activeTasks.forEach(task => {
       if (task.status === 'completed') {
         completedTasks.push(task);
@@ -819,24 +814,17 @@ export function TaskBar(props = {}) {
       }
     });
     
-    // Clear and update completed tasks container
-    
-    // Add completed tasks header if there are any completed tasks
     if (completedTasks.length > 0) {
       completedTasksContainer.innerHTML = '<h4 class="tasks-header">Completed Tasks</h4>';
       
-      // Process completed tasks
       completedTasks.forEach(task => {
-        // Check if task item already exists in completed container
         const existingItem = document.querySelector(`.task-bar-task-item[data-task-id="${task._id}"]`);
         
-        // Only process if not already in the completed container
         if (!existingItem || !existingItem.closest('.completed-tasks-container')) {
           const taskItem = document.createElement('div');
           taskItem.className = 'task-bar-task-item completed';
           taskItem.setAttribute('data-task-id', task._id);
           
-          // Add task content with enhanced title
           taskItem.innerHTML = `
             <div class="task-card completed">
               <div class="task-card-header">
@@ -854,12 +842,10 @@ export function TaskBar(props = {}) {
       });
     }
     
-    // Empty state - just leave the containers empty without any message
     if (!activeTasks || activeTasks.length === 0) {
       return;
     }
     
-    // Identify stale task items that need to be removed (tasks no longer active)
     const currentTaskIds = activeTasks.map(task => task._id);
     document.querySelectorAll('.task-bar-task-item').forEach(item => {
       const itemTaskId = item.getAttribute('data-task-id');
@@ -868,63 +854,46 @@ export function TaskBar(props = {}) {
       }
     });
     
-    // Now we have both running and completed tasks separated
-    
-    // Clear existing running tasks first
     runningTasksContainer.innerHTML = '';
     
-    // Track existing task items to prevent duplicates
     const existingTaskItems = new Set();
     
-    // Render running tasks
     runningTasks.forEach(task => {
-      // Check if task item already exists
       const existingItem = document.querySelector(`.task-bar-task-item[data-task-id="${task._id}"]`);
       let taskItem;
       
       if (existingItem) {
-        // Reuse existing item
         taskItem = existingItem;
-        // Clear any existing content
         taskItem.innerHTML = '';
       } else {
-        // Create new task item
         taskItem = document.createElement('div');
         taskItem.className = `task-bar-task-item ${task.status === 'completed' ? 'completed' : ''}`;
         taskItem.setAttribute('data-task-id', task._id);
       }
       
-      // Add to container if not already there
       if (!existingItem) {
         runningTasksContainer.appendChild(taskItem);
       }
       
-      // Track this task item to prevent duplicates
       existingTaskItems.add(task._id);
       
-      // Get latest logs dynamically
       const logsForTask = tasksStore.getState().stepLogs[task._id] || [];
       const overallProgress = Math.min(Math.max(task.progress || 0, 0), 100);
       
-      // Better step count calculation - check for stepNumber in planLog entries
       let currentStep = 0;
       let matchedStepNumbers = logsForTask
         .filter(log => log.type === 'planLog' && log.stepNumber)
         .map(log => log.stepNumber);
       
       if (matchedStepNumbers.length > 0) {
-        // Use the highest step number that has been recorded
         currentStep = Math.max(...matchedStepNumbers);
       } else {
-        // Fallback to counting stepProgress logs
         const latestStep = logsForTask.filter(l => l.type === 'stepProgress').slice(-1)[0] || {};
         currentStep = latestStep.stepIndex || 0;
       }
       
-      // Get total steps from task if available, otherwise default to 10
       const totalSteps = task.totalSteps || 10;
       
-      // Get latest function call and plan log
       const latestFunctionCall = logsForTask
         .filter(l => l.type === 'functionCallPartial')
         .slice(-1)[0] || {};
@@ -933,18 +902,14 @@ export function TaskBar(props = {}) {
         .filter(l => l.type === 'planLog')
         .slice(-1)[0] || {};
       
-      // Format progress text
       const progressText = `${currentStep}/${totalSteps} steps | ${overallProgress}% complete`;
       
-      // Format current action
       const currentAction = latestFunctionCall.message || latestPlanLog.message || 'Waiting...';
       
-      // Check for task completion and report URLs
       const isCompleted = task.status === 'completed';
       const hasLandingReport = task.result?.landingReportUrl;
       const hasDetailedReport = task.result?.detailedReportUrl;
       
-      // Build report links section for completed tasks
       let reportLinksHTML = '';
       if (isCompleted && (hasLandingReport || hasDetailedReport)) {
         reportLinksHTML = `
@@ -954,30 +919,30 @@ export function TaskBar(props = {}) {
             </div>
             <div class="task-reports-links">
               ${hasLandingReport ? (() => {
-  const url = task.result.landingReportUrl.startsWith('/') ? window.location.origin + task.result.landingReportUrl : task.result.landingReportUrl;
-  return `<a href="javascript:void(0)" onclick="window.open('${url}', '_blank')" class="task-report-link landing-report">
-    <i class="fas fa-chart-pie"></i> Landing Report
-  </a>`;
-})() : ''}
+                const url = task.result.landingReportUrl.startsWith('/') ? window.location.origin + task.result.landingReportUrl : task.result.landingReportUrl;
+                const encodedUrl = encodeURIComponent(url);
+                return `<a href="javascript:void(0)" class="task-report-link landing-report open-link" data-url="${encodedUrl}">
+                  <i class="fas fa-chart-pie"></i> Landing Report
+                </a>`;
+              })() : ''}
               ${hasDetailedReport ? (() => {
-  const url = task.result.detailedReportUrl.startsWith('/') ? window.location.origin + task.result.detailedReportUrl : task.result.detailedReportUrl;
-  return `<a href="javascript:void(0)" onclick="window.open('${url}', '_blank')" class="task-report-link detailed-report">
-    <i class="fas fa-file-code"></i> Detailed Report
-  </a>`;
-})() : ''}
+                const url = task.result.detailedReportUrl.startsWith('/') ? window.location.origin + task.result.detailedReportUrl : task.result.detailedReportUrl;
+                const encodedUrl = encodeURIComponent(url);
+                return `<a href="javascript:void(0)" class="task-report-link detailed-report open-link" data-url="${encodedUrl}">
+                  <i class="fas fa-file-code"></i> Detailed Report
+                </a>`;
+              })() : ''}
             </div>
           </div>
         `;
       }
       
-      // Check for screenshot in result
       const hasScreenshot = task.result?.screenshot;
       const screenshotHTML = hasScreenshot ? `
         <div class="task-screenshot">
           <img src="${task.result.screenshot}" alt="Task result" style="max-width: 100%; border-radius: 4px; margin-top: 10px;" />
         </div>` : '';
 
-      // Task card HTML with conditional styling for completed tasks
       taskItem.innerHTML = `
         <div class="task-card ${isCompleted ? 'completed' : ''}">
           <div class="task-card-header">
@@ -1005,29 +970,25 @@ export function TaskBar(props = {}) {
           </div>
         </div>`;
       
-      // Render step logs
       if (logsForTask.length) {
         const logContainer = document.createElement('div');
         logContainer.className = 'task-step-logs';
         logContainer.style.maxHeight = '150px';
         logContainer.style.overflowY = 'auto';
         
-        // Process logs in chronological order (oldest first) for better reading
         const sortedLogs = [...logsForTask].sort((a, b) => {
           const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
           const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-          return timeA - timeB; // Sort oldest first for better reading
+          return timeA - timeB;
         });
         
         sortedLogs.forEach(entry => {
           const entryEl = document.createElement('div');
           entryEl.className = `log-entry ${entry.type}`;
           
-          // Create icon element
           const icon = document.createElement('i');
           let text = '';
           
-          // Set icon and text based on entry type
           switch (entry.type) {
             case 'planLog':
               icon.className = 'fas fa-shoe-prints';
@@ -1051,7 +1012,6 @@ export function TaskBar(props = {}) {
               text = entry.message || JSON.stringify(entry);
           }
           
-          // Add icon and text to entry
           entryEl.appendChild(icon);
           const textNode = document.createTextNode(` ${text}`);
           entryEl.appendChild(textNode);
@@ -1060,15 +1020,12 @@ export function TaskBar(props = {}) {
         
         taskItem.querySelector('.task-details').appendChild(logContainer);
         
-        // Auto-scroll to bottom after a small delay to ensure DOM is updated
         setTimeout(() => {
           scrollLogsToBottom(logContainer);
         }, 100);
       }
       
-      // Thumbnails for intermediate results with screenshots
       const items = tasksStore.getState().intermediateResults[task._id] || [];
-      // Filter items to only show those with screenshots
       const itemsWithScreenshots = items.filter(item => item && item.screenshot);
       
       if (itemsWithScreenshots.length > 0) {
@@ -1084,7 +1041,6 @@ export function TaskBar(props = {}) {
         taskItem.appendChild(thumbContainer);
       }
 
-      // Add cancel handler - with null check to prevent errors
       const cancelButton = taskItem.querySelector('.cancel-task');
       if (cancelButton) {
         cancelButton.addEventListener('click', () => {
@@ -1094,16 +1050,34 @@ export function TaskBar(props = {}) {
         console.warn(`[DEBUG] Cancel button not found for task ${task._id}`);
       }
       
-      // Add step info click handler
       taskItem.addEventListener('click', () => {
         const stepDetails = taskItem.querySelector('.task-step-details');
         if (stepDetails) {
           stepDetails.classList.toggle('expanded');
         }
       });
-
     });
   }
+
+  // Event Delegation Logic
+  // Attach to tasksSection (parent of runningTasksContainer and completedTasksContainer)
+  function attachTaskLinkListeners() {
+    tasksSection.addEventListener('click', (event) => {
+      const link = event.target.closest('.open-link');
+      if (link) {
+        event.preventDefault();
+        const url = decodeURIComponent(link.getAttribute('data-url'));
+        if (url) {
+          window.open(url, '_blank', 'noopener,noreferrer');
+        } else {
+          console.warn('No URL found for link:', link);
+        }
+      }
+    });
+  }
+
+  // Initialize event listener (call this in your component setup, e.g., useEffect)
+  attachTaskLinkListeners();
   
   /**
    * Get a formatted display title with emoji for a task object

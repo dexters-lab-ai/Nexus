@@ -1011,13 +1011,21 @@ export async function generateReport(prompt, results, screenshotPath, runId, rep
       <img src="/favicon.ico" alt="OPERATOR_logo" class="logo"/>
       <h1>O.P.E.R.A.T.O.R – Sentinel Report</h1>
       <div class="action-buttons">
-        <a id="replayButton" href="javascript:void(0)" onclick="window.open('${nexusReportUrl}', '_blank')" class="btn primary-btn">Replay</a>
+        <a id="replayButton" href="javascript:void(0)" class="btn primary-btn open-link" data-url="${encodeURIComponent(nexusReportUrl)}">Replay</a>
       </div>
       
       <!-- Image Modal for viewing screenshots in full size -->
       <div id="imageModal" class="img-modal">
-        <span class="img-modal-close">&times;</span>
+        <span class="img-modal-close">×</span>
         <img class="img-modal-content" id="modalImage">
+      </div>
+
+      <!-- Raw Report Modal (assumed, as referenced in script) -->
+      <div id="rawReportModal" class="modal" style="display: none;">
+        <div class="modal-content">
+          <span class="close-modal">×</span>
+          <div id="rawReportContent"></div>
+        </div>
       </div>
     </div>
     <div class="content">
@@ -1055,17 +1063,18 @@ export async function generateReport(prompt, results, screenshotPath, runId, rep
         : ''}
     </div>
   </div>
+  </body>
   
   <script>
     // This function safely extracts body content from HTML
     function extractBodyContent(htmlString) {
-      var content = htmlString;
+      let content = htmlString;
       
       if (typeof htmlString === 'string' && htmlString.indexOf('<body') !== -1) {
-        var bodyStartIndex = htmlString.indexOf('<body');
+        const bodyStartIndex = htmlString.indexOf('<body');
         if (bodyStartIndex !== -1) {
-          var bodyContentStartIndex = htmlString.indexOf('>', bodyStartIndex) + 1;
-          var bodyEndIndex = htmlString.indexOf('</body>', bodyContentStartIndex);
+          const bodyContentStartIndex = htmlString.indexOf('>', bodyStartIndex) + 1;
+          const bodyEndIndex = htmlString.indexOf('</body>', bodyContentStartIndex);
           
           if (bodyContentStartIndex > 0 && bodyEndIndex !== -1) {
             content = htmlString.substring(bodyContentStartIndex, bodyEndIndex);
@@ -1075,50 +1084,41 @@ export async function generateReport(prompt, results, screenshotPath, runId, rep
       
       return content;
     }
-    
+
     // Function to open the raw report modal
     function openRawReportModal(url) {
-      var modal = document.getElementById('rawReportModal');
-      var contentDiv = document.getElementById('rawReportContent');
+      const modal = document.getElementById('rawReportModal');
+      const contentDiv = document.getElementById('rawReportContent');
       
       if (!modal || !contentDiv) {
         console.error('Modal elements not found');
         return;
       }
       
-      // Show loading state
       contentDiv.textContent = 'Loading raw report data...';
       modal.style.display = 'flex';
       
-      // Force reflow to ensure animation plays
       void modal.offsetWidth;
       modal.classList.add('open');
       
-      // Fetch the report content
       fetch(url)
-        .then(function(response) {
-          // Check if the response is HTML
+        .then(response => {
           const contentType = response.headers.get('content-type');
           if (contentType && contentType.includes('text/html')) {
             return response.text()
               .then(html => {
-                // Parse the HTML to extract the body content
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
-                // Return the body's innerHTML for rendering
                 return doc.body.innerHTML;
               });
           }
-          // For non-HTML content, return as text
           return response.text();
         })
-        .then(function(processedContent) {
-          // Clear container and add content safely
+        .then(processedContent => {
           while (contentDiv.firstChild) {
             contentDiv.removeChild(contentDiv.firstChild);
           }
           
-          // Create a container for the content
           const container = document.createElement('div');
           container.style.maxHeight = '80vh';
           container.style.overflowY = 'auto';
@@ -1127,15 +1127,12 @@ export async function generateReport(prompt, results, screenshotPath, runId, rep
           container.style.borderRadius = '4px';
           container.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
           
-          // Check if the content is HTML or plain text
           if (typeof processedContent === 'string' && 
               (processedContent.trim().startsWith('<') || 
-               processedContent.includes('</') || 
-               processedContent.includes('/>'))) {
-            // It's HTML, so set it as innerHTML
+              processedContent.includes('</') || 
+              processedContent.includes('/>'))) {
             container.innerHTML = processedContent;
           } else {
-            // It's plain text, create a pre element
             const pre = document.createElement('pre');
             pre.style.whiteSpace = 'pre-wrap';
             pre.textContent = processedContent;
@@ -1144,86 +1141,89 @@ export async function generateReport(prompt, results, screenshotPath, runId, rep
           
           contentDiv.appendChild(container);
           
-          // Make sure images and other resources load properly
           container.querySelectorAll('img').forEach(img => {
             if (img.src.startsWith('/')) {
-              // Convert relative URLs to absolute
               img.src = window.location.origin + img.src;
             }
-            // Ensure images are responsive
             img.style.maxWidth = '100%';
             img.style.height = 'auto';
           });
         })
-        .catch(function(error) {
-          // Handle errors safely
+        .catch(error => {
           while (contentDiv.firstChild) {
             contentDiv.removeChild(contentDiv.firstChild);
           }
           
-          var errorDiv = document.createElement('div');
+          const errorDiv = document.createElement('div');
           errorDiv.className = 'error';
           errorDiv.textContent = 'Error loading report: ' + 
             (error && typeof error.message === 'string' ? error.message : 'Unknown error');
           contentDiv.appendChild(errorDiv);
         });
       
-      // Setup close functionality
-      var closeBtn = modal.querySelector('.close-modal');
+      const closeBtn = modal.querySelector('.close-modal');
       if (closeBtn) {
-        closeBtn.onclick = function() {
-          closeModal(modal);
-        };
+        closeBtn.addEventListener('click', () => closeModal(modal));
       }
       
-      // Close when clicking outside content
-      modal.onclick = function(event) {
+      modal.addEventListener('click', event => {
         if (event.target === modal) {
           closeModal(modal);
         }
-      };
+      });
     }
-    
+
     // Helper function to close any modal
     function closeModal(modalElement) {
       if (!modalElement) return;
       
       modalElement.classList.remove('open');
-      setTimeout(function() {
+      setTimeout(() => {
         modalElement.style.display = 'none';
       }, 300);
     }
-    
-    // Initialize image modal functionality when page loads
-    document.addEventListener('DOMContentLoaded', function() {
-      var imgModal = document.getElementById('imageModal');
-      var modalImg = document.getElementById('modalImage');
-      var closeImgBtn = document.querySelector('.img-modal-close');
+
+    // Initialize functionality when page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      // Event delegation for open-link (replay button)
+      const container = document.querySelector('.container');
+      if (container) {
+        container.addEventListener('click', event => {
+          const link = event.target.closest('.open-link');
+          if (link) {
+            event.preventDefault();
+            const url = decodeURIComponent(link.getAttribute('data-url'));
+            if (url) {
+              window.open(url, '_blank', 'noopener,noreferrer');
+            } else {
+              console.warn('No URL found for link:', link);
+            }
+          }
+        });
+      }
+
+      // Image modal setup
+      const imgModal = document.getElementById('imageModal');
+      const modalImg = document.getElementById('modalImage');
+      const closeImgBtn = document.querySelector('.img-modal-close');
       
       if (!imgModal || !modalImg || !closeImgBtn) {
         console.error('Image modal elements not found');
         return;
       }
       
-      // Make all screenshots interactive
-      var screenshots = document.querySelectorAll('.screenshot');
-      for (var i = 0; i < screenshots.length; i++) {
-        screenshots[i].addEventListener('click', function() {
-          modalImg.src = this.src;
+      document.querySelectorAll('.screenshot').forEach(screenshot => {
+        screenshot.addEventListener('click', () => {
+          modalImg.src = screenshot.src;
           imgModal.style.display = 'flex';
-          
-          // Force reflow to ensure animation plays
           void imgModal.offsetWidth;
           imgModal.classList.add('open');
         });
-      }
-      
-      // Close image modal functionality
-      closeImgBtn.addEventListener('click', function() {
-        closeModal(imgModal);
       });
       
-      imgModal.addEventListener('click', function(event) {
+      closeImgBtn.addEventListener('click', () => closeModal(imgModal));
+      
+      imgModal.addEventListener('click', event => {
         if (event.target === imgModal) {
           closeModal(imgModal);
         }

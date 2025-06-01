@@ -246,7 +246,7 @@ export async function editMidsceneReport(reportPath) {
   
   // If the original path was different, log the redirection
   if (nexusReportPath !== reportPath) {
-    console.log(`[NexusReport] Redirecting report path from ${reportPath} to ${nexusReportPath}`);
+    console.log(`[NexusReportEditor] Redirecting report path from ${reportPath} to ${nexusReportPath}`);
     reportPath = nexusReportPath;
     
     // Check if the file exists in the original midscene_run path but not in nexus_run path
@@ -255,20 +255,20 @@ export async function editMidsceneReport(reportPath) {
       const reportDir = path.dirname(reportPath);
       if (!fs.existsSync(reportDir)) {
         fs.mkdirSync(reportDir, { recursive: true });
-        console.log(`[NexusReport] Created directory ${reportDir}`);
+        console.log(`[NexusReportEditor] Created directory ${reportDir}`);
       }
       
       // Copy the file from midscene_run to nexus_run
       fs.copyFileSync(originalReportPath, reportPath);
-      console.log(`[NexusReport] Copied report from ${originalReportPath} to ${reportPath}`);
+      console.log(`[NexusReportEditor] Copied report from ${originalReportPath} to ${reportPath}`);
     }
   }
   
-  console.log(`[NexusReport] Editing report at ${reportPath}`);
+  console.log(`[NexusReportEditor] Editing report at ${reportPath}`);
 
   // Check if file exists in nexus_run path
   if (!fs.existsSync(reportPath)) {
-    console.error(`[NexusReport] Report file not found at ${reportPath}`);
+    console.error(`[NexusReportEditor] Report file not found at ${reportPath}`);
     throw new Error(`Report file not found at ${reportPath}`);
   }
 
@@ -355,7 +355,7 @@ export async function editMidsceneReport(reportPath) {
           writeStream.write(JSON.stringify(data));
 
         } catch (err) {
-          console.error('[NexusReport] JSON parse error, writing raw dump:', err);
+          console.error('[NexusReportEditor] JSON parse error, writing raw dump:', err);
           writeStream.write(scriptContent);
         }
 
@@ -377,14 +377,14 @@ export async function editMidsceneReport(reportPath) {
     },
 
     onerror(err) {
-      console.error('[NexusReport] Parser error:', err);
+      console.error('[NexusReportEditor] Parser error:', err);
     }
   }, { decodeEntities: true });
 
   // Pipe through parser
   readStream.on('data', chunk => parser.write(chunk));
   readStream.on('end',  ()    => { parser.end(); writeStream.end(); });
-  readStream.on('error', err  => { console.error('[NexusReport] Read error:', err); writeStream.end(); });
+  readStream.on('error', err  => { console.error('[NexusReportEditor] Read error:', err); writeStream.end(); });
 
   // Replace original when done
   return new Promise((resolve, reject) => {
@@ -392,9 +392,9 @@ export async function editMidsceneReport(reportPath) {
       try {
         // Try to rename the file (this is the operation that fails with EPERM)
         fs.renameSync(tempPath, reportPath);
-        console.log(`[NexusReport] Updated report at ${reportPath}`);
+        console.log(`[NexusReportEditor] Updated report at ${reportPath}`);
       } catch (renameError) {
-        console.error(`[NexusReport] Rename error, trying alternative approach:`, renameError);
+        console.error(`[NexusReportEditor] Rename error, trying alternative approach:`, renameError);
         
         try {
           // Alternative approach 1: Try to copy the file content instead of renaming
@@ -406,23 +406,23 @@ export async function editMidsceneReport(reportPath) {
               fs.unlinkSync(reportPath);
             }
           } catch (unlinkError) {
-            console.warn(`[NexusReport] Could not delete original report:`, unlinkError);
+            console.warn(`[NexusReportEditor] Could not delete original report:`, unlinkError);
           }
           
           // Write content directly
           fs.writeFileSync(reportPath, tempContent, 'utf8');
-          console.log(`[NexusReport] Updated report via copy method at ${reportPath}`);
+          console.log(`[NexusReportEditor] Updated report via copy method at ${reportPath}`);
           
           // Try to clean up temp file
           try {
             fs.unlinkSync(tempPath);
           } catch (cleanupError) {
-            console.warn(`[NexusReport] Could not clean up temp file:`, cleanupError);
+            console.warn(`[NexusReportEditor] Could not clean up temp file:`, cleanupError);
           }
         } catch (copyError) {
-          console.error(`[NexusReport] Copy method also failed:`, copyError);
+          console.error(`[NexusReportEditor] Copy method also failed:`, copyError);
           // Return success anyway - we don't want the report error to fail the whole task
-          console.warn(`[NexusReport] Will continue task execution despite report generation failure`);
+          console.warn(`[NexusReportEditor] Will continue task execution despite report generation failure`);
         }
       }
       
@@ -431,7 +431,7 @@ export async function editMidsceneReport(reportPath) {
       resolve(reportPath);
     });
     writeStream.on('error', (err) => {
-      console.error(`[NexusReport] Write stream error:`, err);
+      console.error(`[NexusReportEditor] Write stream error:`, err);
       // Also resolve here instead of rejecting - don't let report errors fail the task
       resolve(reportPath);
     });

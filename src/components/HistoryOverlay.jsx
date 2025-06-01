@@ -431,61 +431,49 @@ function createHistoryOverlay() {
     }
     
     historyGrid.innerHTML = items.map(item => {
-      // Generate link badges if URLs are available
       let reportLinks = [];
       
-      // Nexus report link (Analysis Report)
       if (item.nexusReportUrl) {
-        // Convert relative URLs to absolute to prevent React Router interference
-        const fullNexusUrl = item.nexusReportUrl.startsWith('/') ? 
-          (window.location.origin + item.nexusReportUrl) : item.nexusReportUrl;
-        // Add to links array
+        const fullNexusUrl = item.nexusReportUrl.startsWith('/') ? window.location.origin + item.nexusReportUrl : item.nexusReportUrl;
+        const encodedUrl = encodeURIComponent(fullNexusUrl);
         reportLinks.push(`
           <a href="javascript:void(0)" 
-             onclick="window.open('${fullNexusUrl}', '_blank')" 
-             class="report-link nexus-link futuristic-button" 
+             class="report-link nexus-link futuristic-button open-link" 
+             data-url="${encodedUrl}"
              title="View detailed execution analysis">
              <i class="fas fa-chart-line"></i> Analysis
           </a>
         `);
       }
       
-      // Landing report link
       if (item.landingReportUrl) {
-        // Convert relative URLs to absolute to prevent React Router interference
-        const fullLandingUrl = item.landingReportUrl.startsWith('/') ? 
-          (window.location.origin + item.landingReportUrl) : item.landingReportUrl;
-        // Add to links array
+        const fullLandingUrl = item.landingReportUrl.startsWith('/') ? window.location.origin + item.landingReportUrl : item.landingReportUrl;
+        const encodedUrl = encodeURIComponent(fullLandingUrl);
         reportLinks.push(`
           <a href="javascript:void(0)" 
-             onclick="window.open('${fullLandingUrl}', '_blank')" 
-             class="report-link landing-link futuristic-button" 
+             class="report-link landing-link futuristic-button open-link" 
+             data-url="${encodedUrl}"
              title="View landing page report">
              <i class="fas fa-file-code"></i> Report
           </a>
         `);
       }
       
-      // Raw report link
       if (item.reportUrl && !reportLinks.length) {
-        // Convert relative URLs to absolute
-        const fullReportUrl = item.reportUrl.startsWith('/') ? 
-          (window.location.origin + item.reportUrl) : item.reportUrl;
-        // Add to links array if we don't have other links
+        const fullReportUrl = item.reportUrl.startsWith('/') ? window.location.origin + item.reportUrl : item.reportUrl;
+        const encodedUrl = encodeURIComponent(fullReportUrl);
         reportLinks.push(`
           <a href="javascript:void(0)" 
-             onclick="window.open('${fullReportUrl}', '_blank')" 
-             class="report-link raw-link futuristic-button" 
+             class="report-link raw-link futuristic-button open-link" 
+             data-url="${encodedUrl}"
              title="View raw report">
              <i class="fas fa-file-alt"></i> Report
           </a>
         `);
       }
       
-      // Join all links
       const reportLinksHtml = reportLinks.join('');
       
-      // Badge for task type
       const typeBadge = `
         <div class="task-type-badge ${item.type}-type">
           <i class="fas ${item.type === 'task' ? 'fa-robot' : 'fa-comment'}"></i>
@@ -493,21 +481,17 @@ function createHistoryOverlay() {
         </div>
       `;
       
-      // Generate screenshot preview if available with better URL checking
       let screenshotUrl = item.screenshot || '';
       console.log(`Rendering screenshot for card ${item.id}:`, screenshotUrl);
       
       let screenshotPreview = '';
       if (screenshotUrl) {
-        // Make sure URL is properly formatted
         if (!screenshotUrl.startsWith('http') && !screenshotUrl.startsWith('data:') && !screenshotUrl.startsWith('/')) {
           screenshotUrl = '/' + screenshotUrl;
         }
         
-        // Add proper escaping for quotes in the URL
         const escapedUrl = screenshotUrl.replace(/"/g, '&quot;');
         
-        // Add additional debugging attributes to help troubleshoot
         screenshotPreview = `
           <div class="screenshot-preview" 
                style="background-image: url(${escapedUrl})" 
@@ -516,36 +500,23 @@ function createHistoryOverlay() {
             <div class="screenshot-error" style="display: none;">Failed to load</div>
           </div>
         `;
-        
-        // We'll add error handling in the event listeners
       }
       
       return `
         <div class="history-card futuristic-card" data-id="${item.id}" data-command="${item.command}">
-          <!-- Status indicator strip at top -->
           <div class="history-card-status-strip ${getStatusClass(item.status)}"></div>
-          
-          <!-- Card header with type badge and date -->
           <div class="history-card-header">
             ${typeBadge}
             <div class="history-date"><i class="far fa-clock"></i> ${formatDate(item.date)}</div>
           </div>
-          
-          <!-- Screenshot with overlay effect -->
           ${screenshotPreview}
-          
-          <!-- Card title and content -->
           <div class="history-card-content">
             <h3 class="history-title">${item.title}</h3>
             <div class="history-summary">${item.summary}</div>
           </div>
-          
-          <!-- Report links in their own section -->
           <div class="history-reports">
             ${reportLinksHtml}
           </div>
-          
-          <!-- Action buttons with clear separation -->
           <div class="history-card-footer">
             <div class="history-actions">
               <button class="history-action-btn view-btn futuristic-button" title="View Details">
@@ -563,12 +534,9 @@ function createHistoryOverlay() {
       `;
     }).join('');
     
-    // Add card action handlers
     attachCardActions();
     
-    // Add screenshot error handling
     setTimeout(() => {
-      // Test each screenshot to see if it loads properly
       document.querySelectorAll('.screenshot-preview').forEach(preview => {
         const src = preview.getAttribute('data-src');
         if (!src) return;
@@ -578,18 +546,15 @@ function createHistoryOverlay() {
         const testImg = new Image();
         testImg.onload = () => {
           console.log('Screenshot loaded successfully:', src);
-          // Ensure the background-image is properly set
           preview.style.backgroundImage = `url(${src})`;
         };
         
         testImg.onerror = () => {
           console.error('Failed to load screenshot:', src);
-          // Show error message
           const errorElement = preview.querySelector('.screenshot-error');
           if (errorElement) {
             errorElement.style.display = 'block';
             preview.classList.add('loading-error');
-            // Add a default background
             preview.style.backgroundImage = 'none';
             preview.style.backgroundColor = '#f0f0f0';
           }
@@ -597,15 +562,15 @@ function createHistoryOverlay() {
         
         testImg.src = src;
       });
-    }, 500); // Small delay to ensure the DOM is fully updated
+    }, 500);
   }
   
-  // Render list view
+  // Updated renderListView function
   function renderListView(data) {
     console.log('Rendering list view with data:', data);
     const tableBody = listView.querySelector('tbody');
     tableBody.innerHTML = '';
-
+  
     if (!data || data.length === 0) {
       const emptyRow = document.createElement('tr');
       emptyRow.className = 'empty-row';
@@ -621,36 +586,27 @@ function createHistoryOverlay() {
       return;
     }
     
-    // Make sure list view is shown
     listView.style.display = 'block';
     
-    // Generate table rows
     data.forEach(item => {
-      // Generate link badges if URLs are available
       const links = [];
       
       if (item.landingReportUrl) {
-        // Convert relative URLs to absolute to prevent React Router interference
-        const fullLandingUrl = item.landingReportUrl.startsWith('/') ? 
-          (window.location.origin + item.landingReportUrl) : item.landingReportUrl;
-        // Use onclick with window.open to completely bypass React Router
-        links.push(`<a href="javascript:void(0)" onclick="window.open('${fullLandingUrl}', '_blank')" class="report-badge landing">Landing</a>`);
+        const fullLandingUrl = item.landingReportUrl.startsWith('/') ? window.location.origin + item.landingReportUrl : item.landingReportUrl;
+        const encodedUrl = encodeURIComponent(fullLandingUrl);
+        links.push(`<a href="javascript:void(0)" class="report-badge landing open-link" data-url="${encodedUrl}">Landing</a>`);
       }
       
       if (item.nexusReportUrl) {
-        // Convert relative URLs to absolute to prevent React Router interference
-        const fullNexusUrl = item.nexusReportUrl.startsWith('/') ? 
-          (window.location.origin + item.nexusReportUrl) : item.nexusReportUrl;
-        // Use onclick with window.open to completely bypass React Router
-        links.push(`<a href="javascript:void(0)" onclick="window.open('${fullNexusUrl}', '_blank')" class="report-badge nexus">Nexus</a>`);
+        const fullNexusUrl = item.nexusReportUrl.startsWith('/') ? window.location.origin + item.nexusReportUrl : item.nexusReportUrl;
+        const encodedUrl = encodeURIComponent(fullNexusUrl);
+        links.push(`<a href="javascript:void(0)" class="report-badge nexus open-link" data-url="${encodedUrl}">Nexus</a>`);
       }
       
       if (item.errorReportUrl) {
-        // Convert relative URLs to absolute to prevent React Router interference
-        const fullErrorUrl = item.errorReportUrl.startsWith('/') ? 
-          (window.location.origin + item.errorReportUrl) : item.errorReportUrl;
-        // Use onclick with window.open to completely bypass React Router
-        links.push(`<a href="javascript:void(0)" onclick="window.open('${fullErrorUrl}', '_blank')" class="report-badge error">Error</a>`);
+        const fullErrorUrl = item.errorReportUrl.startsWith('/') ? window.location.origin + item.errorReportUrl : item.errorReportUrl;
+        const encodedUrl = encodeURIComponent(fullErrorUrl);
+        links.push(`<a href="javascript:void(0)" class="report-badge error open-link" data-url="${encodedUrl}">Error</a>`);
       }
       
       const linksHtml = links.length > 0 ? links.join('') : '<span class="no-reports">No reports</span>';
@@ -675,12 +631,46 @@ function createHistoryOverlay() {
       tableBody.appendChild(tr);
     });
     
-    // Add row action handlers
     attachTableActions();
-    
-    // Make rows clickable
     makeRowsClickable();
   }
+  
+  // Event Delegation Logic
+  // Attach to historyGrid and listView containers
+  function attachHistoryLinkListeners() {
+    // Handle clicks in historyGrid (card view)
+    historyGrid.addEventListener('click', (event) => {
+      const link = event.target.closest('.open-link');
+      if (link) {
+        event.preventDefault();
+        const url = decodeURIComponent(link.getAttribute('data-url'));
+        if (url) {
+          window.open(url, '_blank', 'noopener,noreferrer');
+        } else {
+          console.warn('No URL found for link:', link);
+        }
+      }
+    });
+    
+    // Handle clicks in listView (list view)
+    listView.addEventListener('click', (event) => {
+      const link = event.target.closest('.open-link');
+      if (link) {
+        event.preventDefault();
+        const url = decodeURIComponent(link.getAttribute('data-url'));
+        if (url) {
+          window.open(url, '_blank', 'noopener,noreferrer');
+        } else {
+          console.warn('No URL found for link:', link);
+        }
+      }
+    });
+  }
+  
+  // Initialize event listeners (call this in your component setup, e.g., useEffect)
+  attachHistoryLinkListeners();
+  
+  
   function attachCardActions() {
     // View details
     historyGrid.querySelectorAll('.view-btn').forEach(btn => {

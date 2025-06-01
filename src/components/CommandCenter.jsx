@@ -10,6 +10,8 @@ import Button from './base/Button.jsx';
 import Dropdown from './base/Dropdown.jsx';
 import api from '../utils/api.js';
 import NeuralFlow from '../utils/NeuralFlow.js';
+// Import environment config
+import config from '../config/env.js';
 
 // Tab types
 export const TAB_TYPES = {
@@ -419,7 +421,7 @@ export function CommandCenter(props = {}) {
   // Define tabs
   const tabs = [
     { id: TAB_TYPES.NLI, label: 'Chat', icon: 'fa-comments' },
-    { id: TAB_TYPES.MANUAL, label: 'General Task', icon: 'fa-tasks' },
+    { id: TAB_TYPES.MANUAL, label: 'Plugins', icon: 'fa-tasks' },
     { id: TAB_TYPES.REPETITIVE, label: 'Repetitive', icon: 'fa-sync' },
     { id: TAB_TYPES.SCHEDULED, label: 'Scheduled', icon: 'fa-calendar' }
   ];
@@ -434,15 +436,22 @@ export function CommandCenter(props = {}) {
   let reconnectAttempts = 0;
   let userId = null; // Will be fetched
 
-  // WebSocket Constants
-  const WS_URL = `ws://${window.location.host}/ws`;
+  // WebSocket Constants - Get from environment config
+  const WS_URL = config.wsUrl.endsWith('/ws') ? config.wsUrl : `${config.wsUrl}/ws`;
   const RETRY_DELAY = 5000; // 5 seconds
+  
+  // Debug logging for WebSocket configuration
+  console.log('=== WebSocket Configuration ===');
+  console.log('WebSocket URL from config:', config.wsUrl);
+  console.log('Environment:', process.env.NODE_ENV);
+  console.log('===============================');
 
   // --- User ID Management Helper with /api/whoami sync and force sync on load ---
   async function syncUserIdWithBackend() {
     try {
       const resp = await fetch('/api/whoami');
       const data = await resp.json();
+      console.log('[DEBUG] syncUserIdWithBackend: Response from /api/whoami:', data);
       if (data.userId) {
         localStorage.setItem('userId', data.userId);
         sessionStorage.setItem('userId', data.userId);
@@ -459,16 +468,49 @@ export function CommandCenter(props = {}) {
 
   // --- On app load: force userId sync before anything else ---
   (async () => {
-    const userId = await syncUserIdWithBackend();
-    console.debug('[DEBUG] App load: userId after sync', userId);
-    // WebSocket is initialized in syncUserIdWithBackend, no need to init twice
+    try {
+      // Always sync with backend to ensure we have the latest user info
+      const userId = await syncUserIdWithBackend();
+      console.debug('[DEBUG] App load: userId after sync', userId);
+      
+      // If we have a userId but sync didn't complete, ensure WebSocket is initialized
+      if (!userId) {
+        const localUserId = localStorage.getItem('userId');
+        if (localUserId && window.handleUserAuthentication) {
+          console.debug('[DEBUG] Using local userId for WebSocket init:', localUserId);
+          window.handleUserAuthentication(localUserId);
+        }
+      }
+    } catch (error) {
+      console.error('[DEBUG] Error during initial sync:', error);
+    }
   })();
 
   // --- User ID Management Helper with /api/whoami sync ---
   async function getOrSyncUserId() {
+    // Always try to sync with backend first
+    try {
+      const resp = await fetch('/api/whoami');
+      const data = await resp.json();
+      if (data.userId) {
+        console.debug('[DEBUG] getOrSyncUserId: Got fresh userId from /api/whoami:', data.userId);
+        if (window.handleUserAuthentication) {
+          window.handleUserAuthentication(data.userId);
+        }
+        return data.userId;
+      }
+    } catch (err) {
+      console.warn('[DEBUG] getOrSyncUserId: Failed to fetch from /api/whoami, falling back to localStorage', err);
+    }
+    
+    // Fallback to localStorage if backend is not available
     let userId = localStorage.getItem('userId');
     if (userId) {
-      console.debug('[DEBUG] getOrSyncUserId: Found userId in localStorage:', userId);
+      console.debug('[DEBUG] getOrSyncUserId: Using userId from localStorage:', userId);
+      // Ensure WebSocket is initialized with the local userId
+      if (window.handleUserAuthentication) {
+        window.handleUserAuthentication(userId);
+      }
       return userId;
     }
     // Try to get from sessionStorage (if backend writes it)
@@ -521,11 +563,59 @@ export function CommandCenter(props = {}) {
       ws.close(1000, 'Reinitializing connection');
     }
 
-    const wsUrl = `${WS_URL}?userId=${encodeURIComponent(userId)}`;
-    console.log(`[DEBUG] CommandCenter: Attempting WebSocket connection to: ${wsUrl}`);
+    // Use the WebSocket URL from the config
+    let wsUrl = config.wsUrl;
+    
+    // Ensure the WebSocket URL has the correct protocol
+    if (!wsUrl) {
+      // Fallback to current host with correct protocol if config.wsUrl is not available
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      wsUrl = `${protocol}://${window.location.host}/ws`;
+    } else if (!wsUrl.startsWith('ws')) {
+      // Ensure the URL has a WebSocket protocol
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      wsUrl = wsUrl.replace(/^https?:/, protocol);
+    }
+
+    // Add userId as query parameter
+    const separator = wsUrl.includes('?') ? '&' : '?';
+    wsUrl = `${wsUrl}${separator}userId=${encodeURIComponent(userId)}`;
+    
+    console.log(`[CommandCenter] Connecting to WebSocket: ${wsUrl}`);
     try {
       ws = new WebSocket(wsUrl);
-      console.log('[DEBUG] CommandCenter: WebSocket object created.');
+
+      // Handle native WebSocket pings
+      ws.addEventListener('pong', () => {
+        console.debug('[WebSocket] Received pong (native)');
+        ws.isAlive = true; // For server-side keep-alive
+      });
+
+      // Clear existing ping interval
+      if (window.wsHeartbeatInterval) {
+        clearInterval(window.wsHeartbeatInterval);
+      }
+
+      // Send application-level ping every 20s
+      window.wsHeartbeatInterval = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          try {
+            // Send both native ping (empty message) and application-level ping
+            // ws.ping(); // throwing error
+            ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+            console.debug('[WebSocket] Sent ping (both native and app-level)');
+          } catch (error) {
+            console.error('Error sending ping:', error);
+          }
+        }
+      }, 250000); // 
+
+      ws.addEventListener('close', () => {
+        if (window.wsHeartbeatInterval) {
+          clearInterval(window.wsHeartbeatInterval);
+          window.wsHeartbeatInterval = null;
+        }
+      });
     } catch (e) {
       connecting = false;
       console.error('[DEBUG] CommandCenter: Error creating WebSocket object:', e);
@@ -533,13 +623,24 @@ export function CommandCenter(props = {}) {
     }
 
     ws.onopen = () => {
-      console.log(`[DEBUG] CommandCenter: WebSocket ONOPEN event for userId=${userId}`);
+      console.log(`[WebSocket] Connection established for userId=${userId}`);
+      console.log(`[WebSocket] Ready state: ${ws.readyState} (OPEN=${WebSocket.OPEN})`);
+      console.log(`[WebSocket] URL: ${ws.url}`);
       connecting = false;
       wsConnected = true;
-      reconnectAttempts = 0; // Reset attempts on successful connection
-
-      // Optional: Send any queued messages if needed
-      // flushUnsentMessages(userId);
+      reconnectAttempts = 0;
+      
+      // Send a test message to verify the connection
+      try {
+        ws.send(JSON.stringify({
+          type: 'connection_test',
+          userId: userId,
+          timestamp: new Date().toISOString()
+        }));
+        console.log('[WebSocket] Sent test message');
+      } catch (error) {
+        console.error('[WebSocket] Failed to send test message:', error);
+      }
     };
 
     ws.onmessage = (event) => {
@@ -552,7 +653,9 @@ export function CommandCenter(props = {}) {
 
         // Parse message safely
         const message = JSON.parse(event.data);
-        console.log('WebSocket: Received message:', message);
+        if (message.event != 'functionCallPartial') {
+          console.log('WebSocket: Received message:', message);
+        }
         
         // Declare event handled flag at proper scope
         let eventHandled = false;
@@ -2155,70 +2258,111 @@ export function CommandCenter(props = {}) {
   
   // Function to set the selected engine
   const setEngine = async (engineId) => {
-    // Check if engine is available
-    if (!availableEngines.includes(engineId)) {
-      showNotification({
-        title: 'API Key Required',
-        message: `Please configure an API key for ${engineDisplayNames[engineId]} in Settings.`,
-        type: 'warning',
-        buttons: [
-          {
+    // Show loading state
+    const loadingId = `engine-loading-${Date.now()}`;
+    showNotification({
+      id: loadingId,
+      type: 'info',
+      title: 'Switching Engine',
+      message: `Setting ${engineDisplayNames[engineId]} as your default engine...`,
+      loading: true
+    });
+    
+    try {
+      // Check if engine is available (except for Gemini which is always available)
+      if (!availableEngines.includes(engineId) && engineId !== 'gemini') {
+        showNotification({
+          type: 'warning',
+          title: 'API Key Required',
+          message: `Please configure an API key for ${engineDisplayNames[engineId]} in Settings.`,
+          buttons: [{
             text: 'Configure',
             onClick: () => {
-              // Open settings modal to API keys tab
               const event = new CustomEvent('open-settings', {
                 detail: { tab: 'llm-engines' }
               });
               window.dispatchEvent(event);
             }
-          }
-        ]
-      });
-      return;
-    }
-    
-    try {
+          }]
+        });
+        return;
+      }
+      
       const response = await fetch('/api/user/set-engine', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        credentials: 'include',
         body: JSON.stringify({ engineId })
       });
       
       const result = await response.json();
       
-      if (result.success) {
-        selectedEngine = engineId;
-        
-        // Update the dropdown trigger
-        const iconEl = engineTrigger.querySelector('i:first-child');
-        const labelEl = engineTrigger.querySelector('.engine-label');
-        
-        if (iconEl && labelEl) {
-          iconEl.className = `fas ${engineIcons[engineId]}`;
-          labelEl.textContent = engineDisplayNames[engineId];
-        }
-        
-        // Emit event for engine change
-        eventBus.emit('engineChange', { engine: engineId });
-        
-        // Show success notification
-        showNotification({
-          title: 'Engine Changed',
-          message: `Now using ${engineDisplayNames[engineId]} for tasks`,
-          type: 'success'
-        });
-      } else {
-        throw new Error(result.error || 'Failed to set engine');
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to update engine');
       }
+
+      // Update UI state
+      selectedEngine = engineId;
+      
+      // Update the dropdown trigger
+      const iconEl = engineTrigger.querySelector('i:first-child');
+      const labelEl = engineTrigger.querySelector('.engine-label');
+      
+      if (iconEl && labelEl) {
+        iconEl.className = `fas ${engineIcons[engineId]}`;
+        labelEl.textContent = engineDisplayNames[engineId];
+      }
+      
+      // Emit event for engine change
+      eventBus.emit('engineChange', { 
+        engine: engineId,
+        engineName: engineDisplayNames[engineId]
+      });
+      
+      // Show success notification
+      showNotification({
+        type: 'success',
+        title: 'Engine Updated',
+        message: `Now using ${engineDisplayNames[engineId]} for tasks`,
+        duration: 3000
+      });
+
+      // Show warning if using default key
+      if (result.warning) {
+        showNotification({
+          type: 'warning',
+          title: 'API Key Notice',
+          message: result.warning,
+          duration: 8000,
+          buttons: [{
+            text: 'Settings',
+            onClick: () => {
+              const event = new CustomEvent('open-settings', {
+                detail: { tab: 'llm-engines' }
+              });
+              window.dispatchEvent(event);
+            }
+          }]
+        });
+      }
+      
     } catch (error) {
       console.error('Error changing engine:', error);
       
       // Show error notification
       showNotification({
+        type: 'error',
         title: 'Engine Change Failed',
-        message: error.message,
-        type: 'error'
+        message: error.message || 'Failed to update engine. Please try again.',
+        duration: 5000
       });
+    } finally {
+      // Remove loading notification
+      const loadingNotifications = document.querySelectorAll('.notification.loading');
+      loadingNotifications.forEach(notification => notification.remove());
     }
   };
   
@@ -2493,10 +2637,10 @@ export function CommandCenter(props = {}) {
     es.onerror = err => console.error('[DEBUG] SSE error', err);
     es.onmessage = e => {
       const raw = e.data;
-      console.debug('[DEBUG] SSE raw event data:', raw);
+      //console.debug('[DEBUG] SSE raw event data:', raw);
       try {
         const data = JSON.parse(raw);
-        console.debug('[DEBUG] Parsed SSE event:', data);
+        //console.debug('[DEBUG] Parsed SSE event:', data);
         switch (data.event) {
           case 'taskStart':
             console.debug('[DEBUG] taskStart:', data.payload);
@@ -3356,22 +3500,18 @@ export function CommandCenter(props = {}) {
     const taskId = data.taskId;
     if (!taskId) return;
     
-    // Track if this task was initiated from chat, so we can improve task-chat integration
+    // Track if this task was initiated from chat
     const taskInitiatedFromChat = sessionStorage.getItem(`chatInitiatedTask-${taskId}`) === 'true';
     if (taskInitiatedFromChat) {
       console.log(`[CommandCenter] Task ${taskId} was initiated from chat, will ensure chat knows about completion`);
     }
     
-    // Find any thought messages related to this task and update them
+    // Find and update thought messages related to this task
     console.log(`[DEBUG] Task completed: ${taskId}, updating thought messages`);
+    transitionThoughtBubbles(taskId, true); // Force transition
+    transitionThoughtBubble(taskId, true); // Legacy approach
     
-    // Ensure any thought bubbles for this task are properly transitioned
-    transitionThoughtBubbles(taskId, true); // Force transition regardless of current state
-    
-    // Also handle any thought bubbles for this task (legacy approach)
-    transitionThoughtBubble(taskId, true); // Force transition regardless of current state
-    
-    // Parse result string if needed (server sends as string to avoid JSON issues)
+    // Parse result string
     let finalResult = {};
     try {
       if (typeof data.result === 'string') {
@@ -3381,14 +3521,13 @@ export function CommandCenter(props = {}) {
       }
     } catch (e) {
       console.error('[CommandCenter] Error parsing task result:', e);
-      finalResult = data.result || {}; // Use as-is if parse fails
+      finalResult = data.result || {};
     }
     
     const error = data.error || null;
     
-    // For tasks initiated from chat, send a notification to the chat interface
+    // Handle chat-initiated tasks
     if (taskInitiatedFromChat && !error) {
-      // Get the task summary and original command
       let taskSummary = '';
       const originalCommand = finalResult.originalCommand || data.command || 'Task completed';
       
@@ -3400,7 +3539,6 @@ export function CommandCenter(props = {}) {
         taskSummary = `Task completed successfully`;
       }
       
-      // Create a completion card with the original command
       const completionCard = document.createElement('div');
       completionCard.className = 'task-completion-card';
       completionCard.innerHTML = `
@@ -3411,14 +3549,12 @@ export function CommandCenter(props = {}) {
         <div class="task-completion-summary">${taskSummary}</div>
       `;
       
-      // Add to message timeline
       const messageTimeline = document.querySelector('.message-timeline');
       if (messageTimeline) {
         messageTimeline.appendChild(completionCard);
         completionCard.scrollIntoView({ behavior: 'smooth' });
       }
       
-      // Get any report URLs
       const reportInfo = [];
       if (finalResult.nexusReportUrl) {
         reportInfo.push(`Analysis Report: ${finalResult.nexusReportUrl}`);
@@ -3427,7 +3563,6 @@ export function CommandCenter(props = {}) {
         reportInfo.push(`Landing Page Report: ${finalResult.landingReportUrl}`);
       }
       
-      // Create a chat notification including task result and links
       const chatNotification = {
         role: 'assistant',
         content: `✅ Task completed: "${originalCommand || data.command || ''}"\n\n${taskSummary}${reportInfo.length > 0 ? '\n\nTask Reports Available:\n- ' + reportInfo.join('\n- ') : ''}`,
@@ -3436,62 +3571,45 @@ export function CommandCenter(props = {}) {
         taskId: taskId
       };
       
-      // Add this notification to the chat
-      addChatMessage(chatNotification);
+      addChatMessage(chatNotification); // Assuming addChatMessage is defined
       console.log(`[CommandCenter] Added task completion notification to chat for task ${taskId}`);
-      
-      // Clear the chat-initiated flag as we've handled it
       sessionStorage.removeItem(`chatInitiatedTask-${taskId}`);
     }
     
-    // Simplified logging focused on essential information
     console.log('[Task Complete] Task ID:', taskId);
     
-    // Mark task as completed in store
+    // Update task in store
     tasksStore.updateTask(taskId, {
       status: 'completed',
       progress: 100,
       result: finalResult,
       error
-    });
+    }); // Assuming tasksStore is defined
     
-    // Enhanced URL extraction with better fallbacks for the reported issue
-    // Extract the screenshot path first as it's the most reliable
-    const screenshotPath = finalResult.screenshotPath || 
-                          (finalResult.aiPrepared && finalResult.aiPrepared.screenshotPath) || 
+    // Enhanced URL extraction
+    const screenshotPath = finalResult.screenshotPath ||
+                          (finalResult.aiPrepared && finalResult.aiPrepared.screenshotPath) ||
+                          '';
+    const screenshotUrl = finalResult.screenshot ||
+                          (finalResult.aiPrepared && finalResult.aiPrepared.screenshot) ||
+                          (screenshotPath ? screenshotPath : '');
+    
+    let nexusReportUrl = finalResult.nexusReportUrl ||
+                        (finalResult.aiPrepared && finalResult.aiPrepared.nexusReportUrl) ||
+                        finalResult.reportUrl ||
+                        '';
+    let landingReportUrl = finalResult.landingReportUrl ||
+                          (finalResult.aiPrepared && finalResult.aiPrepared.landingReportUrl) ||
+                          finalResult.runReport ||
                           '';
     
-    // When server sends null URLs but has a screenshot path, convert it to a valid URL
-    // This fixes the specific issue seen in the logs
-    const screenshotUrl = finalResult.screenshot || 
-                         (finalResult.aiPrepared && finalResult.aiPrepared.screenshot) || 
-                         (screenshotPath ? screenshotPath : '');
-    
-    // For nexusReportUrl, check if there's a screenshot path pattern that contains web-*.html
-    // This helps recover report URLs when they're null but screenshot path exists
-    let nexusReportUrl = finalResult.nexusReportUrl || 
-                       (finalResult.aiPrepared && finalResult.aiPrepared.nexusReportUrl) || 
-                       finalResult.reportUrl || 
-                       '';
-    
-    // Similarly for landing report URL                    
-    let landingReportUrl = finalResult.landingReportUrl || 
-                         (finalResult.aiPrepared && finalResult.aiPrepared.landingReportUrl) || 
-                         finalResult.runReport || 
-                         '';
-    
-    // If we have a screenshot path but null report URLs, try to extract report URLs from the path
-    // This handles the case where report URLs are null but should be derived from the screenshot path
     if ((!nexusReportUrl || !landingReportUrl) && screenshotPath) {
-      // Extract the run ID from the screenshot path
-      const runIdMatch = screenshotPath.match(/\/nexus_run\/([^/]+)\//); 
+      const runIdMatch = screenshotPath.match(/\/nexus_run\/([^/]+)\//);
       if (runIdMatch && runIdMatch[1]) {
         const runId = runIdMatch[1];
         console.log(`[Task Complete] Extracted run ID from screenshot path: ${runId}`);
         
-        // If nexusReportUrl is empty, try to construct it
         if (!nexusReportUrl) {
-          // Check if this appears to be a date-based filename which indicates a web report
           const dateMatch = screenshotPath.match(/web-[\d_-]+\.html/);
           if (dateMatch) {
             nexusReportUrl = `/nexus_run/report/${dateMatch[0]}`;
@@ -3499,206 +3617,154 @@ export function CommandCenter(props = {}) {
           }
         }
         
-        // If landingReportUrl is empty, try to construct a probable landing report URL
         if (!landingReportUrl) {
-          // These usually follow the landing-report-timestamp.html pattern
           landingReportUrl = `/nexus_run/report/landing-report-${Date.now()}.html`;
           console.log(`[Task Complete] Constructed fallback landingReportUrl: ${landingReportUrl}`);
         }
       }
     }
     
-    console.log('[Task Complete] Report URLs:', { 
-      nexusReportUrl, 
-      landingReportUrl, 
-      screenshotUrl 
+    console.log('[Task Complete] Report URLs:', {
+      nexusReportUrl,
+      landingReportUrl,
+      screenshotUrl
     });
     
-    // Extract AI summary from standard locations
-    const aiSummary = finalResult.aiPrepared?.summary || 
-                     finalResult.summary || 
-                     finalResult.extractedInfo || 
-                     (finalResult.aiSummary?.summary) || 
-                     '';
+    const aiSummary = finalResult.aiPrepared?.summary ||
+                      finalResult.summary ||
+                      finalResult.extractedInfo ||
+                      (finalResult.aiSummary?.summary) ||
+                      '';
     
-    // Get plan text if available
     const planEntries = tasksStore.getState().stepLogs[taskId] || [];
     const lastPlan = planEntries.filter(l => l.type === 'planLog').slice(-1)[0];
     const planText = lastPlan ? lastPlan.message : '';
     
-    // IMPORTANT: Add to message-timeline-container, not message-timeline
-    const timelineEl = document.querySelector('.message-timeline-container'); 
+    const timelineEl = document.querySelector('.message-timeline-container');
     if (timelineEl) {
-      // Check if we already have a completion card for this task to avoid duplicates
       const existingCard = timelineEl.querySelector(`.task-complete-card[data-task-id="${taskId}"]`);
       if (existingCard) {
         console.log(`[renderTaskCompletion] Task completion card already exists for ${taskId}, skipping duplicate`);
         return;
       }
-      // Remove any existing task completion cards for this task to avoid duplicates
-      document.querySelectorAll(`.task-complete-card[data-task-id="${taskId}"]`)
-        .forEach(el => el.remove());
+      document.querySelectorAll(`.task-complete-card[data-task-id="${taskId}"]`).forEach(el => el.remove());
       
-      // Create a modern, chat-style completion card that's outside the canvas
       const card = document.createElement('div');
       card.className = 'msg-item msg-assistant task-complete-card';
       card.setAttribute('data-task-id', taskId);
       
-      // Format timestamp
       const now = new Date();
-      const timeStr = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       
-      // Build HTML with report links - focused on providing clear access to reports
-      let reportsHtml = '';
-      
-      // Focus on the important report links and create a clean, compact display
-      reportsHtml += '<div class="task-report-links compact-links">';
-      
-      // Display links inline with icons for a cleaner look
-      // Build available reports list
+      let reportsHtml = '<div class="task-report-links compact-links">';
       const reportLinks = [];
       
-      // Check for analysis report (nexusReportUrl)
       if (nexusReportUrl && (nexusReportUrl.startsWith('/') || nexusReportUrl.startsWith('http'))) {
-        // Convert relative URLs to absolute to prevent React Router interference
-        const fullNexusUrl = nexusReportUrl.startsWith('/') ? 
-          (window.location.origin + nexusReportUrl) : nexusReportUrl;
-        // Use onclick with window.open to completely bypass React Router
-        reportLinks.push(`<a href="javascript:void(0)" onclick="window.open('${fullNexusUrl}', '_blank')" class="report-link analysis-report">
+        const fullNexusUrl = nexusReportUrl.startsWith('/') ? window.location.origin + nexusReportUrl : nexusReportUrl;
+        const encodedUrl = encodeURIComponent(fullNexusUrl);
+        reportLinks.push(`<a href="javascript:void(0)" class="report-link analysis-report open-link" data-url="${encodedUrl}">
           <i class="fa fa-chart-bar"></i> Analysis Report</a>`);
       }
       
-      // Check for landing page report (landingReportUrl)
       if (landingReportUrl && (landingReportUrl.startsWith('/') || landingReportUrl.startsWith('http'))) {
-        // Convert relative URLs to absolute to prevent React Router interference
-        const fullLandingUrl = landingReportUrl.startsWith('/') ? 
-          (window.location.origin + landingReportUrl) : landingReportUrl;
-        // Use onclick with window.open to completely bypass React Router
-        reportLinks.push(`<a href="javascript:void(0)" onclick="window.open('${fullLandingUrl}', '_blank')" class="report-link landing-report">
+        const fullLandingUrl = landingReportUrl.startsWith('/') ? window.location.origin + landingReportUrl : landingReportUrl;
+        const encodedUrl = encodeURIComponent(fullLandingUrl);
+        reportLinks.push(`<a href="javascript:void(0)" class="report-link landing-report open-link" data-url="${encodedUrl}">
           <i class="fa fa-external-link-alt"></i> Landing Page Report</a>`);
       }
       
-      // Check for screenshot path as a fallback for reports
       if ((!nexusReportUrl && !landingReportUrl) && screenshotPath && (screenshotPath.startsWith('/') || screenshotPath.startsWith('http'))) {
-        // If we have a web report pattern in the screenshot path, use it as a report link
         if (screenshotPath.includes('web-') && screenshotPath.includes('.html')) {
-          // Convert relative URLs to absolute to prevent React Router interference
-          const fullScreenshotUrl = screenshotPath.startsWith('/') ? 
-            (window.location.origin + screenshotPath) : screenshotPath;
-          // Use onclick with window.open to completely bypass React Router
-          reportLinks.push(`<a href="javascript:void(0)" onclick="window.open('${fullScreenshotUrl}', '_blank')" class="report-link analysis-report">
+          const fullScreenshotUrl = screenshotPath.startsWith('/') ? window.location.origin + screenshotPath : screenshotPath;
+          const encodedUrl = encodeURIComponent(fullScreenshotUrl);
+          reportLinks.push(`<a href="javascript:void(0)" class="report-link analysis-report open-link" data-url="${encodedUrl}">
             <i class="fa fa-chart-bar"></i> Web Report</a>`);
         }
       }
       
-      // Removed duplicate Report button that was formerly here
-      
-      // Check for generic report URL
-      if (finalResult.reportUrl && (finalResult.reportUrl.startsWith('/') || finalResult.reportUrl.startsWith('http')) && 
+      if (finalResult.reportUrl && (finalResult.reportUrl.startsWith('/') || finalResult.reportUrl.startsWith('http')) &&
           finalResult.reportUrl !== nexusReportUrl && finalResult.reportUrl !== landingReportUrl) {
-        // Convert relative URLs to absolute to prevent React Router interference
-        const fullReportUrl = finalResult.reportUrl.startsWith('/') ? 
-          (window.location.origin + finalResult.reportUrl) : finalResult.reportUrl;
-        reportLinks.push(`<a href="javascript:void(0)" onclick="window.open('${fullReportUrl}', '_blank')" class="report-link generic-report"><i class="fa fa-file"></i> View Results</a>`);
+        const fullReportUrl = finalResult.reportUrl.startsWith('/') ? window.location.origin + finalResult.reportUrl : finalResult.reportUrl;
+        const encodedUrl = encodeURIComponent(fullReportUrl);
+        reportLinks.push(`<a href="javascript:void(0)" class="report-link generic-report open-link" data-url="${encodedUrl}">
+          <i class="fa fa-file"></i> View Results</a>`);
       }
       
-      // Check for runReport if it's different from the above links
-      if (finalResult.runReport && (finalResult.runReport.startsWith('/') || finalResult.runReport.startsWith('http')) && 
+      if (finalResult.runReport && (finalResult.runReport.startsWith('/') || finalResult.runReport.startsWith('http')) &&
           finalResult.runReport !== nexusReportUrl && finalResult.runReport !== landingReportUrl && finalResult.runReport !== finalResult.reportUrl) {
-        // Convert relative URLs to absolute to prevent React Router interference
-        const fullRunReportUrl = finalResult.runReport.startsWith('/') ? 
-          (window.location.origin + finalResult.runReport) : finalResult.runReport;
-        reportLinks.push(`<a href="javascript:void(0)" onclick="window.open('${fullRunReportUrl}', '_blank')" class="report-link run-report"><i class="fa fa-running"></i> Run Report</a>`);
+        const fullRunReportUrl = finalResult.runReport.startsWith('/') ? window.location.origin + finalResult.runReport : finalResult.runReport;
+        const encodedUrl = encodeURIComponent(fullRunReportUrl);
+        reportLinks.push(`<a href="javascript:void(0)" class="report-link run-report open-link" data-url="${encodedUrl}">
+          <i class="fa fa-running"></i> Run Report</a>`);
       }
       
-      // Add available screenshots as a final option if other reports aren't available
-      // First check for screenshotUrl, then fall back to screenshotPath
       const effectiveScreenshotUrl = screenshotUrl || screenshotPath || '';
       if (reportLinks.length === 0 && effectiveScreenshotUrl && (effectiveScreenshotUrl.startsWith('/') || effectiveScreenshotUrl.startsWith('http'))) {
-        // Convert relative URLs to absolute to prevent React Router interference
-        const fullScreenshotUrl = effectiveScreenshotUrl.startsWith('/') ? 
-          (window.location.origin + effectiveScreenshotUrl) : effectiveScreenshotUrl;
-        reportLinks.push(`<a href="javascript:void(0)" onclick="window.open('${fullScreenshotUrl}', '_blank')" class="report-link screenshot-link"><i class="fa fa-image"></i> Screenshot</a>`);
+        const fullScreenshotUrl = effectiveScreenshotUrl.startsWith('/') ? window.location.origin + effectiveScreenshotUrl : effectiveScreenshotUrl;
+        const encodedUrl = encodeURIComponent(fullScreenshotUrl);
+        reportLinks.push(`<a href="javascript:void(0)" class="report-link screenshot-link open-link" data-url="${encodedUrl}">
+          <i class="fa fa-image"></i> Screenshot</a>`);
       }
       
-      // Add logging for debugging what links we actually display
       console.log('[Task Complete] Report links displayed:', reportLinks.length > 0 ? reportLinks : 'None');
       console.log('[Task Complete] Effective fallback URLs used:', {
         effectiveScreenshotUrl,
-        nexusReportUrl, 
-        landingReportUrl, 
+        nexusReportUrl,
+        landingReportUrl,
         screenshotPath
       });
       
-      // Add report links section if we have any links
       if (reportLinks.length > 0) {
         reportsHtml += reportLinks.join('');
       } else {
         reportsHtml += '<span class="no-reports">No reports available</span>';
       }
-      
       reportsHtml += '</div>';
       
-      // Get the original command from any available source
-      const originalCommand = data.command || 
-                            finalResult.originalCommand || 
-                            finalResult.userCommand || 
-                            finalResult.prompt || 
-                            (finalResult.raw && finalResult.raw.command);
+      const originalCommand = data.command ||
+                              finalResult.originalCommand ||
+                              finalResult.userCommand ||
+                              finalResult.prompt ||
+                              (finalResult.raw && finalResult.raw.command);
       
-      // Check if this is a YAML task (multiple detection methods for robustness)
-      const isYamlTask = 
-        finalResult.yamlMapId || 
-        finalResult.yamlMapName || 
-        (finalResult.raw && finalResult.raw.yamlMapId) || 
-        (finalResult.raw && finalResult.raw.yamlMapName) || 
-        (originalCommand && originalCommand.startsWith('/yaml'));
+      const isYamlTask = finalResult.yamlMapId ||
+                         finalResult.yamlMapName ||
+                         (finalResult.raw && finalResult.raw.yamlMapId) ||
+                         (finalResult.raw && finalResult.raw.yamlMapName) ||
+                         (originalCommand && originalCommand.startsWith('/yaml'));
       
-      // Extract the YAML map name for YAML tasks
-      const yamlMapName = isYamlTask ? (finalResult.yamlMapName || 
-                         (finalResult.raw && finalResult.raw.yamlMapName) || 
+      const yamlMapName = isYamlTask ? (finalResult.yamlMapName ||
+                         (finalResult.raw && finalResult.raw.yamlMapName) ||
                          'Unknown YAML Map') : null;
       
-      // Clean up the AI summary when it contains raw JSON
       let cleanSummary = aiSummary;
-      
-      // Check if aiSummary contains JSON content
       if (aiSummary && (aiSummary.includes('{') || aiSummary.includes('}') || aiSummary.includes('":'))) {
-        // Extract clean info from execution result if available
         if (finalResult.executionResult) {
           try {
-            const result = typeof finalResult.executionResult === 'string' 
-              ? JSON.parse(finalResult.executionResult) 
+            const result = typeof finalResult.executionResult === 'string'
+              ? JSON.parse(finalResult.executionResult)
               : finalResult.executionResult;
-              
-            // Extract actual description if available
             if (result['0'] && result['0'].description) {
               cleanSummary = result['0'].description;
             } else if (typeof result === 'object') {
-              // Look for description in any first-level property
               for (const key in result) {
                 if (result[key] && typeof result[key] === 'object' && result[key].description) {
                   cleanSummary = result[key].description;
                   break;
                 }
               }
-              
-              // If we still don't have a clean message, use a default
               if (cleanSummary === aiSummary) {
                 cleanSummary = `Successfully ran YAML map: ${yamlMapName}`;
               }
             }
           } catch (e) {
-            // Fallback to a clean default message
             cleanSummary = `Successfully ran YAML map: ${yamlMapName}`;
           }
         } else {
-          // No execution result but messy aiSummary, use default
           cleanSummary = `Successfully ran YAML map: ${yamlMapName}`;
         }
       }
       
-      // Create a more modern, chat-like message with success styling - without redundant header
       card.innerHTML = `
         <div class="msg-meta">
           <span class="msg-type task-success"><i class="fas fa-check-circle"></i> Task Completed</span>
@@ -3707,13 +3773,9 @@ export function CommandCenter(props = {}) {
         <div class="msg-content">
           <div class="task-success-container">
             <div class="task-title">${
-              // Show original command if available
-              originalCommand ? 
-                `${originalCommand}` : 
-                // Fall back to YAML map name for YAML tasks
-                isYamlTask ? 
-                  `YAML map ${yamlMapName} executed` : 
-                  'Task completed'
+              originalCommand ? `${originalCommand}` :
+              isYamlTask ? `YAML map ${yamlMapName} executed` :
+              'Task completed'
             }</div>
             <div class="task-success-summary">${cleanSummary}</div>
             ${planText ? `<div class="task-success-plan">${planText}</div>` : ''}
@@ -3724,16 +3786,28 @@ export function CommandCenter(props = {}) {
       
       timelineEl.appendChild(card);
       
-      // Add a small delay before adding the system message to let the task completion card appear first
+      // Commented-out system message card (updated with event delegation)
       /*
       setTimeout(() => {
-        // Create a system message from AI with the summary
         if (aiSummary) {
           const messageCard = document.createElement('div');
           messageCard.className = 'msg-item msg-assistant system-message-card';
           messageCard.setAttribute('data-task-id', taskId);
           
-          // Format content that looks like a message from the AI assistant
+          let linksHtml = '';
+          if (landingReportUrl && (landingReportUrl.startsWith('/') || landingReportUrl.startsWith('http'))) {
+            const fullLandingUrl = landingReportUrl.startsWith('/') ? window.location.origin + landingReportUrl : landingReportUrl;
+            const encodedUrl = encodeURIComponent(fullLandingUrl);
+            linksHtml += `<a href="javascript:void(0)" class="report-link landing-report open-link" data-url="${encodedUrl}">
+              <i class="fa fa-rocket"></i> Landing</a>`;
+          }
+          if (nexusReportUrl && (nexusReportUrl.startsWith('/') || nexusReportUrl.startsWith('http'))) {
+            const fullNexusUrl = nexusReportUrl.startsWith('/') ? window.location.origin + nexusReportUrl : nexusReportUrl;
+            const encodedUrl = encodeURIComponent(fullNexusUrl);
+            linksHtml += `<a href="javascript:void(0)" class="report-link analysis-report open-link" data-url="${encodedUrl}">
+              <i class="fa fa-chart-line"></i> Analysis</a>`;
+          }
+          
           messageCard.innerHTML = `
             <div class="msg-meta">
               <span class="msg-avatar"><i class="fas fa-robot"></i></span>
@@ -3743,20 +3817,18 @@ export function CommandCenter(props = {}) {
               <div class="markdown-content">
                 <p>${aiSummary}</p>
                 <p class="system-msg-links">
-                  ${landingReportUrl ? `<a href="javascript:void(0)" onclick="window.open('${landingReportUrl.startsWith('/') ? window.location.origin + landingReportUrl : landingReportUrl}', '_blank')" class="report-link landing-report"><i class="fa fa-rocket"></i> Landing</a>` : ''}
-                  ${nexusReportUrl ? `<a href="javascript:void(0)" onclick="window.open('${nexusReportUrl.startsWith('/') ? window.location.origin + nexusReportUrl : nexusReportUrl}', '_blank')" class="report-link analysis-report"><i class="fa fa-chart-line"></i> Analysis</a>` : ''}
+                  ${linksHtml}
                 </p>
               </div>
             </div>
           `;
           
           timelineEl.appendChild(messageCard);
-          timelineEl.scrollTop = timelineEl.scrollHeight; // Auto-scroll to show new content
+          timelineEl.scrollTop = timelineEl.scrollHeight;
         }
-      }, 500); // Short delay to sequence the messages
+      }, 500);
       */
       
-      // Scroll immediately to show the task completion card
       timelineEl.scrollTop = timelineEl.scrollHeight;
     }
   };

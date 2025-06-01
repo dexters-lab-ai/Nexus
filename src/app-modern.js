@@ -7,6 +7,9 @@
 import './styles/main.css';
 import './styles/futuristic.css';
 
+// API imports
+import { getSettings } from './api/settings';
+
 // Component styles
 import './styles/components/command-center.css';
 import './styles/components/components.css';

@@ -18,161 +18,9 @@
   <link rel="apple-touch-icon" href="/assets/images/apple-touch-icon.png">
   <link rel="manifest" href="/assets/images/site.webmanifest">
   <meta name="theme-color" content="#0f0c29">
-  <style>
-    /* ----------- ROOT & RESET ----------- */
-    :root {
-      --purple: #6e3eff;
-      --purple-dark: #522ddb;
-      --bg: #121417;
-      --card: #1f2028;
-      --text: #ececf1;
-      --text-muted: #8f8fa1;
-      --error: #ff3d71;
-    }
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-    body {
-      background: radial-gradient(circle at top left,
-                  rgba(110, 62, 255, 0.2), transparent),
-                  var(--bg);
-      color: var(--text);
-      font-family: 'Nunito', sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      padding: 1rem;
-    }
-
-    /* ----------- CARD ----------- */
-    .card {
-      background: var(--card);
-      border-radius: 12px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-      width: 100%;
-      max-width: 360px;
-      padding: 2rem;
-      position: relative;
-      overflow: hidden;
-    }
-    .card::before {
-      content: '';
-      position: absolute;
-      top: -40%;
-      left: -40%;
-      width: 200%;
-      height: 200%;
-      background: conic-gradient(from 180deg at 50% 50%,
-        transparent 0%, transparent 60%,
-        rgba(110, 62, 255, 0.4) 60%, rgba(110, 62, 255, 0.4) 90%,
-        transparent 90%);
-      animation: rotate 6s linear infinite;
-    }
-    @keyframes rotate {
-      to { transform: rotate(1turn); }
-    }
-    .card-content {
-      position: relative;
-      z-index: 1;
-    }
-
-    /* ----------- TITLE ----------- */
-    .card h2 {
-      text-align: center;
-      font-size: 1.8rem;
-      margin-bottom: 1.5rem;
-      background: linear-gradient(90deg, var(--purple), var(--purple-dark));
-      -webkit-background-clip: text;
-      color: transparent;
-    }
-
-    /* ----------- FORM ----------- */
-    .form-group {
-      position: relative;
-      margin-bottom: 1.5rem;
-    }
-    .form-group input {
-      width: 100%;
-      padding: 0.75rem 2.5rem 0.75rem 2.5rem;
-      border: none;
-      border-radius: 6px;
-      background: #2a2b32;
-      color: var(--text);
-      font-size: 1rem;
-      transition: border 0.2s;
-    }
-    .form-group input:focus {
-      outline: none;
-      border: 2px solid var(--purple);
-    }
-    .form-group label {
-      position: absolute;
-      top: 50%;
-      left: 2.5rem;
-      transform: translateY(-50%);
-      color: var(--text-muted);
-      font-size: 0.9rem;
-      pointer-events: none;
-      transition: top 0.2s, font-size 0.2s, color 0.2s;
-    }
-    .form-group input:focus + label,
-    .form-group input:not(:placeholder-shown) + label {
-      top: 0.2rem;
-      font-size: 0.75rem;
-      color: var(--purple);
-    }
-    .form-group .fa-icon {
-      position: absolute;
-      top: 50%;
-      left: 1rem;
-      transform: translateY(-50%);
-      color: var(--text-muted);
-      font-size: 1.1rem;
-    }
-
-    /* ----------- BUTTON ----------- */
-    .btn {
-      width: 100%;
-      padding: 0.75rem;
-      background: var(--purple);
-      border: none;
-      border-radius: 6px;
-      color: white;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.3s, transform 0.2s;
-    }
-    .btn:hover {
-      background: var(--purple-dark);
-      transform: translateY(-2px);
-    }
-
-    /* ----------- TOGGLE & ERROR ----------- */
-    .toggle {
-      text-align: center;
-      margin-top: 1rem;
-      font-size: 0.9rem;
-    }
-    .toggle a {
-      color: var(--purple);
-      text-decoration: none;
-      transition: color 0.2s;
-    }
-    .toggle a:hover {
-      color: var(--purple-dark);
-    }
-    .error-message {
-      color: var(--error);
-      font-size: 0.85rem;
-      margin-top: 0.5rem;
-      text-align: center;
-      display: none;
-    }
-  </style>
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="/css/login.css">
 </head>
 <body>
   <div class="card">
@@ -198,61 +46,14 @@
 
       <div class="error-message" id="error-message"></div>
 
-      <button class="btn" onclick="submitForm()">Login</button>
+      <button class="btn" id="submit-btn">Login</button>
 
       <div class="toggle">
-        <a href="#" onclick="toggleForm()">Switch to Register</a>
+        <a href="#" id="toggle-link">Switch to Register</a>
       </div>
     </div>
   </div>
 
-  <script>
-    let isLogin = true;
-    function toggleForm() {
-      isLogin = !isLogin;
-      document.getElementById('form-title').textContent = isLogin
-        ? 'Login'
-        : 'Register';
-      document.querySelector('.btn').textContent = isLogin
-        ? 'Login'
-        : 'Register';
-      document.querySelector('.toggle a').textContent = isLogin
-        ? 'Switch to Register'
-        : 'Switch to Login';
-      document.getElementById('error-message').style.display = 'none';
-    }
-
-    async function submitForm() {
-      const email = document.getElementById('email').value.trim();
-      const password = document.getElementById('password').value.trim();
-      const errEl = document.getElementById('error-message');
-      if (!email || !password) {
-        errEl.textContent = 'Please fill out both fields.';
-        return (errEl.style.display = 'block');
-      }
-
-      const url = isLogin ? '/api/auth/login' : '/api/auth/register';
-      try {
-        const res = await fetch(url, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
-          },
-          body: JSON.stringify({ email, password }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          // After login/register, go to main interface
-          return (window.location.href = '/');
-        }
-        errEl.textContent = data.error;
-      } catch {
-        errEl.textContent = 'Network error, please try again.';
-      }
-      errEl.style.display = 'block';
-    }
-  </script>
+  <script src="/js/login.js"></script>
 </body>
 </html>
