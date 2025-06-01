@@ -249,7 +249,8 @@ function setupWebSocketServer(server) {
     try {
       const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
       
-      if (pathname === '/ws') {
+      // Accept both /ws and root path for WebSocket connections
+      if (pathname === '/ws' || pathname === '/') {
         wss.handleUpgrade(request, socket, head, (ws) => {
           // The connection will be handled by the 'connection' event handler above
           wss.emit('connection', ws, request);
@@ -840,8 +841,59 @@ const guard = (req, res, next) => {
 app.use('/api/auth', authRoutes);
 
 // Health check endpoint (public)
+app.get('/health', (req, res) => {
+  try {
+    // Basic health status
+    const healthStatus = {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      service: 'operator-agent',
+      version: process.env.npm_package_version || 'unknown',
+      node: {
+        env: process.env.NODE_ENV || 'development',
+        uptime: process.uptime(),
+        memory: {
+          rss: `${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`,
+          heapTotal: `${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`,
+          heapUsed: `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`,
+          external: `${(process.memoryUsage().external / 1024 / 1024).toFixed(2)} MB`
+        }
+      },
+      // Database status (non-blocking check)
+      database: {
+        status: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+        readyState: mongoose.connection.readyState
+      },
+      // System resources
+      system: {
+        loadavg: process.platform === 'win32' ? null : require('os').loadavg(),
+        freemem: `${(require('os').freemem() / 1024 / 1024).toFixed(2)} MB`,
+        totalmem: `${(require('os').totalmem() / 1024 / 1024).toFixed(2)} MB`
+      }
+    };
+
+    // Set cache control headers
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('X-Response-Time', `${Date.now() - res.locals.startTime}ms`);
+
+    // Return health status with 200 OK
+    res.status(200).json(healthStatus);
+  } catch (error) {
+    // If we get here, something is seriously wrong
+    console.error('Health check failed:', error);
+    res.status(500).json({
+      status: 'error',
+      error: 'Health check failed',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Keep the old health check for backward compatibility
 app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.redirect('/health');
 });
 
 // API: Who Am I (userId sync endpoint) - Moved to robust implementation below

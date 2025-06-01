@@ -52,10 +52,31 @@ const config = {
     ? getEnv('API_URL') || getEnv('VITE_API_URL') || '/api'
     : getEnv('API_URL') || getEnv('VITE_API_URL') || 'http://localhost:3420',
   
-  wsUrl: isProduction
-    ? getEnv('WS_URL') || getEnv('OPERATOR_APP_WS_URL') || getEnv('VITE_WS_URL') || 
-      `wss://${getEnv('FRONTEND_DOMAIN', isBrowser ? window.location.host : '')}`
-    : getEnv('WS_URL') || getEnv('VITE_WS_URL') || 'ws://localhost:3420/ws',
+  // WebSocket URL configuration with proper path handling
+  wsUrl: (() => {
+    // Get the base URL from environment or use defaults
+    let url = isProduction
+      ? getEnv('WS_URL') || getEnv('OPERATOR_APP_WS_URL') || getEnv('VITE_WS_URL') || 
+          `wss://${getEnv('FRONTEND_DOMAIN', isBrowser ? window.location.host : '')}`
+      : getEnv('WS_URL') || getEnv('VITE_WS_URL') || 'ws://localhost:3420';
+    
+    // Ensure the URL has the correct protocol
+    if (url.startsWith('http://')) {
+      url = 'ws://' + url.substring(7);
+    } else if (url.startsWith('https://')) {
+      url = 'wss://' + url.substring(8);
+    } else if (!url.startsWith('ws')) {
+      // If no protocol specified, use wss:// in production, ws:// in development
+      url = (isProduction ? 'wss://' : 'ws://') + url;
+    }
+    
+    // Ensure the URL ends with /ws but doesn't have double slashes
+    if (!url.endsWith('/ws')) {
+      url = url.replace(/\/+$/, '') + '/ws';
+    }
+    
+    return url;
+  })(),
     
   frontendUrl: isProduction
     ? getEnv('FRONTEND_URL') || getEnv('VITE_FRONTEND_URL') || 
@@ -83,23 +104,10 @@ if (config.apiUrl.endsWith('/')) {
   config.apiUrl = config.apiUrl.slice(0, -1);
 }
 
-// Ensure WebSocket URL is properly formatted
-if (config.wsUrl) {
-  if (config.wsUrl.startsWith('http://')) {
-    config.wsUrl = 'ws://' + config.wsUrl.substring(7);
-  } else if (config.wsUrl.startsWith('https://')) {
-    config.wsUrl = 'wss://' + config.wsUrl.substring(8);
-  }
-  // Always ensure /ws is present at the end (for both dev and prod)
-  if (!config.wsUrl.endsWith('/ws')) {
-    // Remove trailing slash if present, then append /ws
-    config.wsUrl = config.wsUrl.replace(/\/$/, '') + '/ws';
-  }
-}
-
 // Log configuration in development
 if (config.isDevelopment) {
   console.log('Environment Configuration:', JSON.stringify(config, null, 2));
 }
 
+// WebSocket URL normalization is now handled in the wsUrl getter
 export default config;
