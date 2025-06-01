@@ -55,8 +55,8 @@ export default defineConfig(({ mode }) => {
           const allowedOrigins = [
             /^https?:\/\/localhost(?:\:\d+)?$/,  // Localhost with any port
             /^https?:\/\/127\.0\.0\.1(?:\:\d+)?$/, // 127.0.0.1 with any port
-            /^https?:\/\/\S+\.yourdomain\.com$/, // Your production domain
-            /^https?:\/\/your-production-domain\.com$/ // Your production domain without subdomain
+            /^https?:\/\/\S+\.operator-344ej\.ondigitalocean\.app$/, // Your production domain
+            /^https?:\/\/operator-344ej\.ondigitalocean\.app$/ // Your production domain without subdomain
           ];
           
           // Check if the origin matches any of the allowed patterns
