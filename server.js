@@ -840,10 +840,10 @@ const guard = (req, res, next) => {
 // Public API routes (no auth required)
 app.use('/api/auth', authRoutes);
 
-// Health check endpoint (public)
+// Simple health check endpoint (public)
 app.get('/health', (req, res) => {
   try {
-    // Basic health status
+    const memory = process.memoryUsage();
     const healthStatus = {
       status: 'ok',
       timestamp: new Date().toISOString(),
@@ -853,34 +853,23 @@ app.get('/health', (req, res) => {
         env: process.env.NODE_ENV || 'development',
         uptime: process.uptime(),
         memory: {
-          rss: `${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`,
-          heapTotal: `${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`,
-          heapUsed: `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`,
-          external: `${(process.memoryUsage().external / 1024 / 1024).toFixed(2)} MB`
+          rss: Math.round(memory.rss / (1024 * 1024)) + ' MB',
+          heapTotal: Math.round(memory.heapTotal / (1024 * 1024)) + ' MB',
+          heapUsed: Math.round(memory.heapUsed / (1024 * 1024)) + ' MB'
         }
       },
-      // Database status (non-blocking check)
       database: {
         status: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
         readyState: mongoose.connection.readyState
-      },
-      // System resources
-      system: {
-        loadavg: process.platform === 'win32' ? null : require('os').loadavg(),
-        freemem: `${(require('os').freemem() / 1024 / 1024).toFixed(2)} MB`,
-        totalmem: `${(require('os').totalmem() / 1024 / 1024).toFixed(2)} MB`
       }
     };
 
-    // Set cache control headers
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.set('Pragma', 'no-cache');
     res.set('X-Response-Time', `${Date.now() - res.locals.startTime}ms`);
 
-    // Return health status with 200 OK
     res.status(200).json(healthStatus);
   } catch (error) {
-    // If we get here, something is seriously wrong
     console.error('Health check failed:', error);
     res.status(500).json({
       status: 'error',
