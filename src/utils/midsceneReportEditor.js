@@ -204,6 +204,32 @@ img[src*="Midscene.png" i], img[alt*="midscene" i], img[class*="logo" i], img[sr
   text-shadow: 0 0 10px rgba(0, 120, 255, 0.4);
 }
 
+/* Download button styles */
+#nexus-download-btn {
+  background: linear-gradient(135deg, #4e6fff, #8a4fff);
+  color: white;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: bold;
+  box-shadow: 0 4px 12px rgba(78, 111, 255, 0.3);
+  transition: all 0.2s ease;
+  margin-left: 15px;
+}
+
+#nexus-download-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(78, 111, 255, 0.5);
+}
+
+#nexus-download-btn .download-icon {
+  font-size: 16px;
+}
+
 /* Checkbox styling */
 :where(.css-dev-only-do-not-override-14qiums).ant-checkbox-wrapper {
   color: whitesmoke!important;
@@ -366,6 +392,42 @@ export async function editMidsceneReport(reportPath) {
         if (!cssInjected) {
           // Inject our custom CSS
           writeStream.write(`\n<style>${customCss}</style>\n`);
+          
+          // Add inline JavaScript to inject the download button
+          const downloadButtonScript = `
+          <script>
+            // Wait for DOM to be fully loaded
+            document.addEventListener('DOMContentLoaded', function() {
+              // Get the current URL pathname
+              const pathname = window.location.pathname;
+              
+              // Extract the report filename from the URL
+              const reportFilename = pathname.split('/').pop();
+              
+              // Create the download button
+              const downloadBtn = document.createElement('a');
+              downloadBtn.id = 'nexus-download-btn';
+              downloadBtn.href = '/download-report/' + reportFilename;
+              downloadBtn.download = reportFilename;
+              downloadBtn.innerHTML = '<span class="download-icon">⬇️</span> Download Report';
+              downloadBtn.setAttribute('title', 'Download this report as HTML');
+              
+              // Find the page-nav div to append the button
+              const interval = setInterval(() => {
+                const pageNav = document.querySelector('.page-nav');
+                if (pageNav) {
+                  clearInterval(interval);
+                  pageNav.appendChild(downloadBtn);
+                  console.log('Download button injected into Nexus report');
+                }
+              }, 500);
+              
+              // Timeout after 10 seconds if page-nav is never found
+              setTimeout(() => clearInterval(interval), 10000);
+            });
+          </script>`;
+          
+          writeStream.write(downloadButtonScript);
           cssInjected = true;
         }
         writeStream.write('</head>');

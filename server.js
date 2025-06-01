@@ -611,25 +611,16 @@ app.use((req, res, next) => {
   const isDev = process.env.NODE_ENV !== 'production';
   const fontAwesomeUrl = process.env.CSP_FONTAWESOME_URL || 'https://cdnjs.cloudflare.com';
 
-  const csp = isDev
-    ? `default-src 'self' http://localhost:* blob: data:; ` +
-      `script-src 'self' http://localhost:*; ` +
-      `style-src 'self' ${fontAwesomeUrl} 'unsafe-inline'; ` +
-      `img-src 'self' data: blob:; ` +
-      `connect-src 'self' ws: wss: http://localhost:* blob: data:; ` +
-      `font-src 'self' data:; ` +
-      `media-src 'self' blob: data:; ` +
-      `worker-src 'self' blob: data:; ` +
-      `child-src 'self' blob: data:;`
-    : `default-src 'self'; ` +
-      `script-src 'self'; ` +
-      `style-src 'self' ${fontAwesomeUrl} 'unsafe-inline'; ` +
-      `img-src 'self' data: blob:; ` +
-      `connect-src 'self' ws: wss:; ` +
-      `font-src 'self'; ` +
-      `media-src 'self' blob:; ` +
-      `worker-src 'self' blob:; ` +
-      `child-src 'self' blob:;`;
+  // Use the same permissive CSP for both development and production for testing
+  const csp = `default-src 'self' http://localhost:* blob: data:; ` +
+    `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' http://localhost:*; ` +
+    `style-src 'self' ${fontAwesomeUrl} 'unsafe-inline'; ` +
+    `img-src 'self' data: blob:; ` +
+    `connect-src 'self' ws: wss: http://localhost:* blob: data:; ` +
+    `font-src 'self' ${fontAwesomeUrl} data:; ` +
+    `media-src 'self' blob: data:; ` +
+    `worker-src 'self' blob: data:; ` +
+    `child-src 'self' blob: data:;`;
 
   res.setHeader('Content-Security-Policy', csp);
   next();

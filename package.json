@@ -1,6 +1,6 @@
 {
     "name": "operator-agent",
-    "version": "1.3.8",
+    "version": "1.3.9",
     "description": "O.P.E.R.A.T.O.R - Advanced autonomous agent with browser and computer use capabilities. Nexus Engine written in NodeJs. Product of D.A.I.L",
     "type": "module",
     "repository": {

@@ -1978,10 +1978,10 @@ export function CommandCenter(props = {}) {
             // Add loading state
             thoughtContainer.classList.add('loading');
             
-            // Find the message timeline and append
+            // Find the message timeline and insert above neural canvas
             const timeline = document.querySelector('.message-timeline-container');
             if (timeline) {
-              timeline.appendChild(thoughtContainer); // Add bubble to timeline container
+              insertAboveNeuralCanvas(timeline, thoughtContainer); // Insert bubble above neural canvas
             }
           }
 
@@ -3001,8 +3001,8 @@ export function CommandCenter(props = {}) {
       }
       thoughtMsg.appendChild(contentDiv);
       
-      // Add to message timeline
-      messageTimeline.appendChild(thoughtMsg);
+      // Add to message timeline using our helper to ensure correct positioning
+      insertAboveNeuralCanvas(messageTimeline, thoughtMsg);
       thoughtMsg.scrollIntoView({ behavior: 'smooth', block: 'end' });
       
       // Also create neural flow canvas
@@ -3068,7 +3068,13 @@ export function CommandCenter(props = {}) {
         
         // Add to DOM
         canvasBubble.appendChild(canvasContainer);
+        
+        // Always append the neural canvas to the end of the timeline
+        // This ensures it's always the last element (except for task-complete cards)
         messageTimeline.appendChild(canvasBubble);
+        
+        // Log the insertion for debugging
+        console.log('[createNeuralFlowCanvas] Neural canvas appended to bottom of timeline');
         
         // Initialize neural flow
         const neuralFlow = new NeuralFlow(canvasContainer);
@@ -3193,10 +3199,10 @@ export function CommandCenter(props = {}) {
         thoughtContainer = result.container;
         contentDiv = result.contentDiv;
         
-        // Add to timeline in correct position
+        // Add to timeline in correct position (above neural canvas)
         const messageTimeline = document.querySelector('.message-timeline-container');
         if (messageTimeline) {
-          messageTimeline.appendChild(thoughtContainer);
+          insertAboveNeuralCanvas(messageTimeline, thoughtContainer);
         }
       }
       
@@ -3326,9 +3332,30 @@ export function CommandCenter(props = {}) {
             thoughtMessage.classList.remove('transitioning');
           }
           
-          // For NLI tasks, we DO NOT want to reposition the thought bubbles
-          // This was causing the unwanted transition where thought bubbles moved
-          // REMOVED: The code that was repositioning elements in the DOM
+          // For NLI tasks, we DO NOT want to animate the repositioning of thought bubbles
+          // However, we DO need to ensure they're in the correct DOM position
+          // (above neural canvas) to fix the ordering glitch
+          
+          // Only do this for actual thought bubbles (not type elements)
+          if (thoughtMessage.classList.contains('msg-thought') || 
+              thoughtMessage.classList.contains('thought-bubble') ||
+              thoughtMessage.classList.contains('msg-thought-item')) {
+            
+            // Get the timeline container
+            const messageTimeline = document.querySelector('.message-timeline-container');
+            if (messageTimeline && messageTimeline.contains(thoughtMessage)) {
+              // Check if this is positioned correctly relative to neural canvas
+              const neuralCanvas = document.querySelector('.neural-flow-container');
+              
+              // If neural canvas exists AND appears before this thought in the DOM,
+              // we need to fix the order by reinserting it
+              if (neuralCanvas && messageTimeline.contains(neuralCanvas)) {
+                // Use our helper to ensure correct positioning
+                insertAboveNeuralCanvas(messageTimeline, thoughtMessage);
+                console.log('[DEBUG] Repositioned thought bubble to maintain correct order');
+              }
+            }
+          }
           
           // CRITICAL: Direct targeting of the "Thinking..." text elements
           // First look for the specific msg-type elements which contain the "Thinking..." text

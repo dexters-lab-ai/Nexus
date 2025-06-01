@@ -27,12 +27,14 @@ router.post('/register', async (req, res) => {
 
 // POST /login
 router.post('/login', async (req, res) => {
+  /*
   console.log('👉 Login request:', {
     headers: req.headers,
     body: req.body,
     sessionID: req.sessionID,
     cookies: req.headers.cookie,
   });
+  */
   
   const { email, password } = req.body;
   if (!email || !password) {
@@ -55,7 +57,15 @@ router.post('/login', async (req, res) => {
     
     req.session.user = user._id;
     console.log('✅ Successful login:', { userId: user._id, sessionId: req.sessionID });
-    res.json({ success: true, userId: user._id.toString() });
+    
+    // Save session explicitly before responding
+    req.session.save(err => {
+      if (err) {
+        console.error('❌ Session save error:', err);
+        return res.status(500).json({ success: false, error: 'Session error' });
+      }
+      res.json({ success: true, userId: user._id.toString() });
+    });
   } catch (err) {
     console.error('❌ Login error:', err);
     res.status(400).json({ success: false, error: 'Invalid credentials' });

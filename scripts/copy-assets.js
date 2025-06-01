@@ -80,4 +80,20 @@ assetMappings.forEach(({ src, dest }) => {
   }
 });
 
+// Copy Bruno demo assets to dist
+const brunoSrc = 'bruno_demo_temp';
+const brunoDest = path.join('dist', 'bruno_demo_temp');
+
+if (fs.existsSync(brunoSrc)) {
+  console.log(`Copying Bruno demo assets to ${brunoDest}`);
+  fs.copySync(brunoSrc, brunoDest, { 
+    overwrite: true,
+    filter: (src) => !src.includes('node_modules') && 
+                    !src.includes('.git') &&
+                    !src.includes('src')
+  });
+} else {
+  console.warn('Bruno demo assets directory not found:', brunoSrc);
+}
+
 console.log('Asset copy complete!');

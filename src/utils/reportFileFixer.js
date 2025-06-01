@@ -34,6 +34,47 @@ function getWithTTL(key) {
  * @param {Object} app - Express app instance
  */
 export function setupReportServing(app) {
+  // Route for downloading reports as files
+  app.get('/download-report/:reportName', async (req, res, next) => {
+    try {
+      const { reportName } = req.params;
+      // Validate report name to prevent directory traversal
+      if (!/^[a-zA-Z0-9_.\-]+\.html$/.test(reportName)) {
+        console.warn(`[ReportServer] Invalid report name attempted for download: ${reportName}`);
+        return res.status(400).send('Invalid report name');
+      }
+      
+      // Prefer nexus_run, fallback to midscene_run
+      let reportPath = path.join(process.cwd(), 'nexus_run', 'report', reportName);
+      let reportFound = fs.existsSync(reportPath);
+      
+      if (!reportFound) {
+        const fallbackPath = path.join(process.cwd(), 'midscene_run', 'report', reportName);
+        if (fs.existsSync(fallbackPath)) {
+          reportPath = fallbackPath;
+          reportFound = true;
+          console.log(`[ReportServer] Found report to download in fallback location: ${fallbackPath}`);
+        }
+      }
+      
+      if (!reportFound) {
+        console.warn(`[ReportServer] Report not found for download: ${reportName}`);
+        return res.status(404).send(`Report "${reportName}" not found. Please check the report name and try again.`);
+      }
+      
+      // Set appropriate headers for file download
+      res.setHeader('Content-Disposition', `attachment; filename="${reportName}"`);
+      res.setHeader('Content-Type', 'text/html');
+      
+      // Stream the file directly to the client
+      const fileStream = fs.createReadStream(reportPath);
+      fileStream.pipe(res);
+    } catch (error) {
+      console.error(`[ReportServer] Error downloading report: ${error.message}`);
+      res.status(500).send(`Error downloading report: ${error.message}`);
+    }
+  });
+  
   // Route for processed/external reports
   // Single robust /external-report/:reportName route
   app.get('/external-report/:reportName', async (req, res, next) => {

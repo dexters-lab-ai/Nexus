@@ -237,7 +237,9 @@ export default function Sidebar(props = {}) {
   
   const sdkTitle = document.createElement('div');
   sdkTitle.className = 'sdk-title';
-  sdkTitle.innerHTML = 'Nexus SDK <span class="coming-soon-badge">v1.0.0</span>';
+  // Get version from package.json
+  const packageVersion = window.appConfig?.version || '1.3.9';
+  sdkTitle.innerHTML = `Nexus SDK <span class="coming-soon-badge">v${packageVersion}</span>`;
   
   const sdkDescription = document.createElement('div');
   sdkDescription.className = 'sdk-description';

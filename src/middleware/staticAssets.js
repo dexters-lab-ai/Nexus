@@ -61,21 +61,49 @@ export default function serveStaticAssets(app) {
   // ===== CORE ASSETS =====
   // Main static directories
   const isDev = process.env.NODE_ENV === 'development';
+  // Common static directories for both dev and prod
   const staticDirs = [
-    // In development, serve from src directory, otherwise from dist
-    ...(isDev
-      ? [
-          { path: path.join(process.cwd(), 'src'), route: '/' },
-          { path: path.join(process.cwd(), 'public'), route: '/public' },
-          { path: path.join(process.cwd(), 'public', 'assets'), route: '/assets' },
-          { path: path.join(process.cwd(), 'public', 'models'), route: '/models' },
-        ]
-      : [
-          { path: path.join(process.cwd(), 'dist'), route: '/' },
-          { path: path.join(process.cwd(), 'public'), route: '/public' },
-          { path: path.join(process.cwd(), 'public', 'assets'), route: '/assets' },
-          { path: path.join(process.cwd(), 'public', 'models'), route: '/models' },
-        ]),
+    // Serve from dist in production, src in development
+    {
+      path: isDev ? path.join(process.cwd(), 'src') : path.join(process.cwd(), 'dist'),
+      route: '/',
+      options: {
+        ...staticOptions,
+        setHeaders: (res) => {
+          // Allow CORS for all static assets
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        }
+      }
+    },
+    // Public directory
+    { 
+      path: path.join(process.cwd(), 'public'), 
+      route: '/public',
+      options: staticOptions 
+    },
+    // Assets directory
+    { 
+      path: path.join(process.cwd(), 'public', 'assets'), 
+      route: '/assets',
+      options: staticOptions 
+    },
+    // Models directory
+    { 
+      path: path.join(process.cwd(), 'public', 'models'), 
+      route: '/models',
+      options: staticOptions 
+    },
+    // Bruno demo assets - only in production (handled by copy-assets.js)
+    ...(isDev 
+      ? [] 
+      : [{
+          path: path.join(process.cwd(), 'bruno_demo_temp', 'static'),
+          route: '/bruno_demo_temp/static',
+          options: staticOptions
+        }]
+    ),
     { path: path.join(process.cwd(), 'node_modules'), route: '/node_modules' },
     // Serve Font Awesome webfonts from node_modules
     {
@@ -121,7 +149,12 @@ export default function serveStaticAssets(app) {
         },
       },
     },
-    { path: path.join(process.cwd(), 'bruno_demo_temp', 'static'), route: '/bruno_demo_temp/static' },
+    // Bruno demo assets - development
+    {
+      path: path.join(process.cwd(), 'bruno_demo_temp', 'static'),
+      route: '/bruno_demo_temp/static',
+      options: staticOptions
+    },
     { path: path.join(process.cwd(), 'public', 'vendors'), route: '/vendors' },
     { path: path.join(process.cwd(), 'public', 'lib'), route: '/lib' },
     { path: path.join(process.cwd(), 'src', 'styles'), route: '/styles' },

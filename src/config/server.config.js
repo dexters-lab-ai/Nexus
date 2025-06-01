@@ -1,6 +1,6 @@
 export default {
     cors: {
-      allowedOrigins: (process.env.ALLOWED_CORS_ORIGINS || 'http://localhost:3000').split(','),
+      allowedOrigins: (process.env.ALLOWED_CORS_ORIGINS || 'http://localhost:3000,http://localhost:3420').split(','),
     },
     session: {
       secret: process.env.SESSION_SECRET || 'your-secret-key',

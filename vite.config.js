@@ -8,10 +8,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default defineConfig(({ mode }) => {
-  // Load env files based on mode
+  // Load environment variables
   const env = loadEnv(mode, process.cwd(), '');
-  
-  // Debug env loading
+  const isDev = mode === 'development';
+
   console.log('Vite Env:', {
     mode,
     VITE_API_URL: env.VITE_API_URL,
@@ -20,121 +20,97 @@ export default defineConfig(({ mode }) => {
   });
 
   process.env.NODE_ENV = mode;
-  
+
   return {
-    mode,
     root: __dirname,
-    // Serve static files from public directory
     publicDir: 'public',
-    // Base public path when served in production
     base: '/',
     logLevel: 'info',
-    // Configure how static assets are handled
-    assetsInclude: ['**/*.glb', '**/*.hdr', '**/*.wasm', '**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.gif', '**/*.svg', '**/*.mp4'],
-    // Server configuration
+
+    // Development server configuration
     server: {
       port: 3000,
       strictPort: true,
-      cors: true,
-      headers: {
-        'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-        'Cross-Origin-Resource-Policy': 'cross-origin'
+      open: true,
+      fs: {
+        strict: true,
+        allow: [
+          __dirname,
+          path.join(__dirname, 'src'),
+          path.join(__dirname, 'public'),
+          path.join(__dirname, 'bruno_demo_temp')
+        ],
+        deny: [
+          '**/node_modules/.vite',
+          '**/.git',
+          '**/nexus_run/report/**',
+          '**/midscene_run/report/**'
+        ]
+      },
+      cors: {
+        origin: '*',
+        methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+        preflightContinue: false,
+        optionsSuccessStatus: 204,
+        credentials: true
+      },
+      // Proxy configuration for development
+      proxy: {
+        '/api': { 
+          target: env.VITE_API_URL || 'http://localhost:3420',
+          changeOrigin: true,
+          secure: false,
+          ws: true
+        },
+        '/ws': { 
+          target: env.VITE_WS_URL || 'ws://localhost:3420',
+          ws: true,
+          changeOrigin: true,
+          secure: false
+        },
+        '/uploads': { 
+          target: env.VITE_API_URL || 'http://localhost:3420',
+          changeOrigin: true
+        },
+        '/nexus_run': {
+          target: env.VITE_API_URL || 'http://localhost:3420',
+          changeOrigin: true,
+          rewrite: (path) => path
+        }
       },
       // Enable HMR with custom host
       hmr: {
         host: 'localhost',
         port: 24678
-      },
-      // Proxy configuration
-      proxy: {
-        '/api': { 
-          target: env.VITE_API_URL || 'http://localhost:3420', 
-          changeOrigin: true, 
-          secure: false, 
-          ws: true 
-        },
-        '/ws': { 
-          target: env.VITE_WS_URL || 'ws://localhost:3420', 
-          ws: true, 
-          changeOrigin: true, 
-          secure: false 
-        },
-        '/settings': { 
-          target: env.VITE_API_URL || 'http://localhost:3420', 
-          changeOrigin: true 
-        },
-        '/auth': { 
-          target: env.VITE_API_URL || 'http://localhost:3420', 
-          changeOrigin: true 
-        },
-        '/uploads': { 
-          target: env.VITE_API_URL || 'http://localhost:3420', 
-          changeOrigin: true 
-        },
-        '/external-report': {
-          target: 'http://localhost:3420',
-          changeOrigin: true,
-          rewrite: (path) => path, // No rewriting needed
-        },
-        '/nexus_run': {
-          target: 'http://localhost:3420',
-          changeOrigin: true,
-          rewrite: (path) => path, // No rewriting needed
-        },
       }
     },
-    // Build configuration for production
+
     build: {
       outDir: 'dist',
       assetsDir: 'assets',
-      target: 'es2020',
-      sourcemap: mode !== 'production',
-      minify: mode === 'production' ? 'terser' : false,
-      terserOptions: {
-        compress: {
-          drop_console: mode === 'production', // Remove console logs in production
-          drop_debugger: true,
-        },
-      },
-      // Show build info
-      reportCompressedSize: true,
+      sourcemap: isDev,
+      minify: !isDev ? 'terser' : false,
       chunkSizeWarningLimit: 2000,
       rollupOptions: {
+        input: path.resolve(__dirname, 'index.html'),
         output: {
-          manualChunks: (id) => {
-            if (id.includes('node_modules')) {
-              if (id.includes('three') || id.includes('@react-three')) {
-                return 'vendor_three';
-              }
-              if (id.includes('@mantine')) {
-                return 'vendor_mantine';
-              }
-              if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
-                return 'vendor_react';
-              }
-              return 'vendor';
-            }
-          },
           entryFileNames: 'assets/js/[name]-[hash].js',
           chunkFileNames: 'assets/js/[name]-[hash].js',
           assetFileNames: (assetInfo) => {
             const ext = assetInfo.name.split('.').pop().toLowerCase();
-            if (ext === 'css') return 'assets/css/[name]-[hash][extname]';
-            if (['woff', 'woff2', 'ttf', 'eot'].includes(ext)) return 'assets/fonts/[name]-[hash][extname]';
-            if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'assets/images/[name]-[hash][extname]';
-            if (['glb', 'gltf', 'hdr', 'bin', 'wasm'].includes(ext)) return 'assets/models/[name]-[hash][extname]';
-            if (['mp4', 'webm', 'ogg'].includes(ext)) return 'assets/media/[name]-[hash][extname]';
-            return 'assets/[name]-[hash][extname]';
+            if (ext === 'css') return 'assets/css/[name][extname]';
+            if (['woff', 'woff2', 'ttf', 'eot'].includes(ext)) return 'assets/fonts/[name][extname]';
+            if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'assets/images/[name][extname]';
+            if (['glb', 'gltf', 'hdr', 'bin', 'wasm'].includes(ext)) return 'assets/models/[name][extname]';
+            if (['mp4', 'webm', 'ogg'].includes(ext)) return 'assets/media/[name][extname]';
+            return 'assets/[name][extname]';
           }
         }
-      },
-      // Copy public directory to dist
-      copyPublicDir: true
+      }
     },
+
     optimizeDeps: {
       include: [
-        'lil-gui',
         'react',
         'react-dom',
         'react-router-dom',
@@ -142,43 +118,17 @@ export default defineConfig(({ mode }) => {
         '@mantine/hooks',
         '@mantine/notifications',
         '@floating-ui/react',
-        '@floating-ui/react/dom'
+        '@floating-ui/react/dom',
+        'lil-gui'
       ],
       exclude: ['@babel/runtime'],
       esbuildOptions: {
-        target: 'es2020',
-      },
-    },
-    plugins: [
-      react(),
-      visualizer({
-        open: true,
-        gzipSize: true,
-        brotliSize: true,
-      })
-    ],
-    css: {
-      devSourcemap: mode !== 'production',
-      modules: false,
-      preprocessorOptions: {
-        scss: {
-          additionalData: `@import "@/styles/theme.css";`
-        }
-      },
-      postcss: {
-        plugins: [
-          {
-            postcssPlugin: 'internal:charset-removal',
-            AtRule: {
-              charset: (atRule) => {
-                if (atRule.name === 'charset') atRule.remove();
-              }
-            }
-          }
-        ]
+        target: 'es2020'
       }
     },
-    resolve: { 
+
+    // Resolve configuration
+    resolve: {
       extensions: ['.js', '.jsx', '.ts', '.tsx'],
       alias: {
         '@': path.resolve(__dirname, 'src'),
@@ -193,13 +143,23 @@ export default defineConfig(({ mode }) => {
         '@fortawesome/fontawesome-free/webfonts': path.resolve(__dirname, 'node_modules/@fortawesome/fontawesome-free/webfonts'),
         '@floating-ui/react-dom': path.resolve(__dirname, 'node_modules/@floating-ui/react-dom')
       },
-      dedupe: ['@mantine/core', '@mantine/hooks', '@mantine/notifications', '@floating-ui/react', '@floating-ui/react-dom']
+      dedupe: ['@mantine/core', '@mantine/hooks', '@mantine/notifications']
     },
+
+    // Define global constants
     define: {
       'process.env.NODE_ENV': JSON.stringify(mode),
-      'process.env.VITE_API_URL': JSON.stringify(process.env.VITE_API_URL || 'http://localhost:3420'),
-      'process.env.VITE_WS_URL': JSON.stringify(process.env.VITE_WS_URL || 'ws://localhost:3420')
+      'process.env.VITE_API_URL': JSON.stringify(env.VITE_API_URL || 'http://localhost:3420'),
+      'process.env.VITE_WS_URL': JSON.stringify(env.VITE_WS_URL || 'ws://localhost:3420')
     },
-    // OptimizeDeps configuration is now at the top of the config
+
+    plugins: [
+      react(),
+      visualizer({
+        open: true,
+        gzipSize: true,
+        brotliSize: true,
+      })
+    ]
   };
 });

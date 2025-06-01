@@ -26,6 +26,8 @@ async function submitForm() {
 
   const url = isLogin ? '/api/auth/login' : '/api/auth/register';
   try {
+    console.log(`Attempting to ${isLogin ? 'login' : 'register'}...`);
+    
     const res = await fetch(url, {
       method: 'POST',
       credentials: 'include',
@@ -35,15 +37,32 @@ async function submitForm() {
       },
       body: JSON.stringify({ email, password }),
     });
+    
+    console.log(`Response status: ${res.status}`);
+    
+    // Handle non-JSON responses
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await res.text();
+      console.error('Non-JSON response:', text);
+      errorEl.textContent = `Error: Server returned non-JSON response (${res.status})`;
+      errorEl.style.display = 'block';
+      return;
+    }
+    
     const data = await res.json();
+    console.log('Response data:', data);
+    
     if (data.success) {
       console.log('Login successful, redirecting...');
       window.location.href = '/';
       return;
     }
-    errorEl.textContent = data.error;
-  } catch {
-    errorEl.textContent = 'Network error, please try again.';
+    
+    errorEl.textContent = data.error || 'Unknown error occurred';
+  } catch (error) {
+    console.error('Login error:', error);
+    errorEl.textContent = `Network error: ${error.message || 'Please try again'}`;
   }
   errorEl.style.display = 'block';
 }

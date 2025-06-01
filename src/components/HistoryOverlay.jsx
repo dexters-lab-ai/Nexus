@@ -436,6 +436,11 @@ function createHistoryOverlay() {
       if (item.nexusReportUrl) {
         const fullNexusUrl = item.nexusReportUrl.startsWith('/') ? window.location.origin + item.nexusReportUrl : item.nexusReportUrl;
         const encodedUrl = encodeURIComponent(fullNexusUrl);
+        
+        // Extract report filename from URL for download
+        const reportFilename = item.nexusReportUrl.split('/').pop();
+        const downloadUrl = `/download-report/${reportFilename}`;
+        
         reportLinks.push(`
           <a href="javascript:void(0)" 
              class="report-link nexus-link futuristic-button open-link" 
@@ -443,18 +448,35 @@ function createHistoryOverlay() {
              title="View detailed execution analysis">
              <i class="fas fa-chart-line"></i> Analysis
           </a>
+          <a href="${downloadUrl}" 
+             class="report-link nexus-download futuristic-button" 
+             title="Download analysis report"
+             download>
+             <i class="fas fa-download"></i>
+          </a>
         `);
       }
       
       if (item.landingReportUrl) {
         const fullLandingUrl = item.landingReportUrl.startsWith('/') ? window.location.origin + item.landingReportUrl : item.landingReportUrl;
         const encodedUrl = encodeURIComponent(fullLandingUrl);
+        
+        // Extract report filename from URL for download
+        const reportFilename = item.landingReportUrl.split('/').pop();
+        const downloadUrl = `/download-report/${reportFilename}`;
+        
         reportLinks.push(`
           <a href="javascript:void(0)" 
              class="report-link landing-link futuristic-button open-link" 
              data-url="${encodedUrl}"
              title="View landing page report">
              <i class="fas fa-file-code"></i> Report
+          </a>
+          <a href="${downloadUrl}" 
+             class="report-link landing-download futuristic-button" 
+             title="Download landing report"
+             download>
+             <i class="fas fa-download"></i>
           </a>
         `);
       }
@@ -594,13 +616,29 @@ function createHistoryOverlay() {
       if (item.landingReportUrl) {
         const fullLandingUrl = item.landingReportUrl.startsWith('/') ? window.location.origin + item.landingReportUrl : item.landingReportUrl;
         const encodedUrl = encodeURIComponent(fullLandingUrl);
-        links.push(`<a href="javascript:void(0)" class="report-badge landing open-link" data-url="${encodedUrl}">Landing</a>`);
+        
+        // Extract report filename from URL for download
+        const reportFilename = item.landingReportUrl.split('/').pop();
+        const downloadUrl = `/download-report/${reportFilename}`;
+        
+        links.push(`
+          <a href="javascript:void(0)" class="report-badge landing open-link" data-url="${encodedUrl}">Landing</a>
+          <a href="${downloadUrl}" class="report-badge download-badge" title="Download landing report" download><i class="fas fa-download"></i></a>
+        `);
       }
       
       if (item.nexusReportUrl) {
         const fullNexusUrl = item.nexusReportUrl.startsWith('/') ? window.location.origin + item.nexusReportUrl : item.nexusReportUrl;
         const encodedUrl = encodeURIComponent(fullNexusUrl);
-        links.push(`<a href="javascript:void(0)" class="report-badge nexus open-link" data-url="${encodedUrl}">Nexus</a>`);
+        
+        // Extract report filename from URL for download
+        const reportFilename = item.nexusReportUrl.split('/').pop();
+        const downloadUrl = `/download-report/${reportFilename}`;
+        
+        links.push(`
+          <a href="javascript:void(0)" class="report-badge nexus open-link" data-url="${encodedUrl}">Nexus</a>
+          <a href="${downloadUrl}" class="report-badge download-badge" title="Download nexus report" download><i class="fas fa-download"></i></a>
+        `);
       }
       
       if (item.errorReportUrl) {

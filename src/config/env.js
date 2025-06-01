@@ -5,10 +5,21 @@ const nodeEnv = process.env.NODE_ENV || 'development';
 
 // Helper function to safely get environment variables
 const getEnv = (key, defaultValue = '') => {
+  // Browser environment: Check Vite imports first
   if (isBrowser && typeof import.meta !== 'undefined' && import.meta.env) {
-    return import.meta.env[key] || process.env[`VITE_${key}`] || process.env[key] || defaultValue;
+    // Check all possible variations of the key
+    const value = import.meta.env[`VITE_${key}`] || 
+                 import.meta.env[key] || 
+                 (typeof window.__ENV__ !== 'undefined' ? window.__ENV__[key] : null);
+    if (value) return value;
+    return defaultValue;
   }
-  return process.env[`VITE_${key}`] || process.env[key] || defaultValue;
+  
+  // Server environment
+  // Check all possible variations of the key
+  if (process.env[key]) return process.env[key];
+  if (process.env[`VITE_${key}`]) return process.env[`VITE_${key}`];
+  return defaultValue;
 };
 
 // In browser, use import.meta.env, in Node.js use process.env
@@ -18,9 +29,9 @@ const env = isBrowser ? (typeof import.meta !== 'undefined' ? import.meta.env : 
 console.log('Environment:', {
   NODE_ENV: nodeEnv,
   isProduction,
-  VITE_API_URL: getEnv('API_URL'),
-  VITE_WS_URL: getEnv('WS_URL'),
-  VITE_FRONTEND_URL: getEnv('FRONTEND_URL')
+  API_URL: getEnv('API_URL'),
+  WS_URL: getEnv('WS_URL'),
+  FRONTEND_URL: getEnv('FRONTEND_URL')
 });
 
 // Helper function to get the current host in browser
@@ -38,16 +49,18 @@ const config = {
 
   // API Configuration
   apiUrl: isProduction
-    ? getEnv('API_URL', '/api')
-    : getEnv('API_URL', 'http://localhost:3420'),
+    ? getEnv('API_URL') || getEnv('VITE_API_URL') || '/api'
+    : getEnv('API_URL') || getEnv('VITE_API_URL') || 'http://localhost:3420',
   
   wsUrl: isProduction
-    ? getEnv('WS_URL', `wss://${getEnv('FRONTEND_DOMAIN', isBrowser ? window.location.host : '')}`)
-    : getEnv('WS_URL', 'ws://localhost:3420/ws'),
+    ? getEnv('WS_URL') || getEnv('OPERATOR_APP_WS_URL') || getEnv('VITE_WS_URL') || 
+      `wss://${getEnv('FRONTEND_DOMAIN', isBrowser ? window.location.host : '')}`
+    : getEnv('WS_URL') || getEnv('VITE_WS_URL') || 'ws://localhost:3420/ws',
     
   frontendUrl: isProduction
-    ? getEnv('FRONTEND_URL', `https://${getEnv('FRONTEND_DOMAIN', isBrowser ? window.location.host : '')}`)
-    : getEnv('FRONTEND_URL', 'http://localhost:3000'),
+    ? getEnv('FRONTEND_URL') || getEnv('VITE_FRONTEND_URL') || 
+      `https://${getEnv('FRONTEND_DOMAIN', isBrowser ? window.location.host : '')}`
+    : getEnv('FRONTEND_URL') || getEnv('VITE_FRONTEND_URL') || 'http://localhost:3000',
   
   // Paths
   basePath: getEnv('BASE_PATH', ''),
