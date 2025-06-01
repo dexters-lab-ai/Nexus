@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
 
 # Copy package files first for better layer caching
 COPY package*.json ./
+COPY .npmrc ./
 
 # Clean up any existing node_modules and lock files
 RUN rm -rf node_modules package-lock.json pnpm-lock.yaml
@@ -25,6 +26,9 @@ RUN echo "Installing dependencies..." && \
 
 # Verify Rollup installation
 RUN ls -la node_modules/@rollup/
+
+# Copy environment files
+COPY .env* ./
 
 # Create necessary directories
 RUN mkdir -p nexus_run && \

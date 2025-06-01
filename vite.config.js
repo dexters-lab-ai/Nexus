@@ -48,11 +48,24 @@ export default defineConfig(({ mode }) => {
         ]
       },
       cors: {
-        origin: '*',
-        methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-        preflightContinue: false,
-        optionsSuccessStatus: 204,
-        credentials: true
+        origin: (origin) => {
+          // Allow requests with no origin (like mobile apps or curl requests)
+          if (!origin) return true;
+          
+          const allowedOrigins = [
+            /^https?:\/\/localhost(?:\:\d+)?$/,  // Localhost with any port
+            /^https?:\/\/127\.0\.0\.1(?:\:\d+)?$/, // 127.0.0.1 with any port
+            /^https?:\/\/\S+\.yourdomain\.com$/, // Your production domain
+            /^https?:\/\/your-production-domain\.com$/ // Your production domain without subdomain
+          ];
+          
+          // Check if the origin matches any of the allowed patterns
+          return allowedOrigins.some(regex => regex.test(origin));
+        },
+        methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+        allowedHeaders: 'Content-Type, Authorization',
+        credentials: true,
+        optionsSuccessStatus: 204
       },
       // Proxy configuration for development
       proxy: {
@@ -60,22 +73,31 @@ export default defineConfig(({ mode }) => {
           target: env.VITE_API_URL || 'http://localhost:3420',
           changeOrigin: true,
           secure: false,
-          ws: true
+          ws: true,
+          xfwd: true,
+          cookieDomainRewrite: {
+            '*': '' // Remove domain from cookies
+          }
         },
         '/ws': { 
           target: env.VITE_WS_URL || 'ws://localhost:3420',
           ws: true,
           changeOrigin: true,
-          secure: false
+          secure: false,
+          xfwd: true
         },
         '/uploads': { 
           target: env.VITE_API_URL || 'http://localhost:3420',
-          changeOrigin: true
+          changeOrigin: true,
+          xfwd: true
         },
         '/nexus_run': {
           target: env.VITE_API_URL || 'http://localhost:3420',
           changeOrigin: true,
-          rewrite: (path) => path
+          xfwd: true,
+          cookieDomainRewrite: {
+            '*': '' // Remove domain from cookies
+          }
         }
       },
       // Enable HMR with custom host

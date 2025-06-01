@@ -321,16 +321,60 @@ const clientEnvVars = [
   'FRONTEND_URL'
 ];
 
-// Load environment variables based on NODE_ENV
-const envFile = process.env.NODE_ENV === 'production'
-  ? path.resolve(__dirname, '.env.production')
-  : path.resolve(__dirname, '.env.development');
+// Load environment variables with priority:
+// 1. Environment variables from DigitalOcean App Platform
+// 2. .env.production file (if exists)
+// 3. .env file (if exists)
 
-console.log('Loading environment from:', envFile);
-console.log('File exists:', fs.existsSync(envFile));
+// Determine environment
+const env = process.env.NODE_ENV || 'development';
+console.log(`Environment: ${env}`);
 
-// Load the environment file
-const result = dotenv.config({ path: envFile });
+// Try to load .env.production first in production, then fallback to .env
+const envPaths = [
+  path.resolve(process.cwd(), `.env.${env}`),
+  path.resolve(process.cwd(), '.env')
+];
+
+let envLoaded = false;
+for (const envPath of envPaths) {
+  if (fs.existsSync(envPath)) {
+    try {
+      console.log(`Loading environment from: ${envPath}`);
+      dotenv.config({ path: envPath });
+      envLoaded = true;
+      console.log(`Successfully loaded environment from ${path.basename(envPath)}`);
+      break;
+    } catch (err) {
+      console.warn(`Warning: Error loading ${envPath}:`, err.message);
+    }
+  } else {
+    console.log(`Environment file not found: ${envPath}`);
+  }
+}
+
+if (!envLoaded) {
+  console.log('No .env files found, using environment variables from platform config');
+}
+
+// Log non-sensitive environment variables for debugging
+const sensitiveKeys = ['key', 'secret', 'password', 'token', 'auth', 'mongo', 'jwt'];
+const envVars = Object.entries(process.env)
+  .filter(([key]) => !sensitiveKeys.some(sk => key.toLowerCase().includes(sk)))
+  .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
+
+console.log('Environment configuration:', {
+  NODE_ENV: process.env.NODE_ENV,
+  PORT: process.env.PORT,
+  API_URL: process.env.API_URL,
+  VITE_API_URL: process.env.VITE_API_URL,
+  FRONTEND_URL: process.env.FRONTEND_URL,
+  VITE_FRONTEND_URL: process.env.VITE_FRONTEND_URL,
+  WS_URL: process.env.WS_URL || process.env.VITE_WS_URL,
+  MONGO_URI: process.env.MONGO_URI ? '***' : 'Not set',
+  // Add other non-sensitive config you want to log
+  ...envVars
+});
 
 // Ensure VITE_ prefixed variables are set for the client
 clientEnvVars.forEach(key => {
@@ -355,11 +399,6 @@ Object.entries(process.env).forEach(([key, value]) => {
   }
 });
 console.log('Environment variables loaded:', relevantVars);
-
-if (result.error) {
-  console.error('Error loading .env file:', result.error);
-  process.exit(1);
-}
 
 // Import environment configuration
 import config from './src/config/env.js';
@@ -564,7 +603,7 @@ const sessionMiddleware = session({
     secure: process.env.NODE_ENV === 'production', // Set based on environment
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     domain: process.env.COOKIE_DOMAIN === 'localhost' ? undefined : process.env.COOKIE_DOMAIN
   },
   store: MongoStore.create({
@@ -575,6 +614,34 @@ const sessionMiddleware = session({
   }),
   name: 'nexus.sid',
   unset: 'destroy'
+});
+
+// Add CORS middleware to handle Cloudflare cookies
+app.use((req, res, next) => {
+  // Allow credentials
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  // Allow specific origin or use a whitelist
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'https://operator-344ej.ondigitalocean.app' // Replace with your production domain
+  ];
+  
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  
+  // Allow specific headers
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  
+  // Allow specific methods
+  if (req.method === 'OPTIONS') {
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE');
+    return res.status(200).json({});
+  }
+  
+  next();
 });
 
 // 8.1 Body parsers

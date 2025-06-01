@@ -10,66 +10,85 @@ services:
   instance_size_slug: professional-xs
   instance_count: 2
   run_command: node --max-old-space-size=4096 server.js
+  
+  # Environment variables
   envs:
     # Server Configuration
     - key: NODE_ENV
       value: production
     - key: PORT
       value: '3420'
+    - key: NODE_OPTIONS
+      value: --max-old-space-size=4096
     
     # API Configuration
     - key: VITE_API_URL
       value: https://operator-344ej.ondigitalocean.app
     - key: VITE_WS_URL
       value: wss://operator-344ej.ondigitalocean.app
+    - key: VITE_FRONTEND_URL
+      value: https://operator-344ej.ondigitalocean.app
     - key: API_URL
       value: https://operator-344ej.ondigitalocean.app
     - key: FRONTEND_URL
       value: https://operator-344ej.ondigitalocean.app
-    - key: NODE_OPTIONS
-      value: --max-old-space-size=4096
+    - key: WS_URL
+      value: wss://operator-344ej.ondigitalocean.app
     
     # Database
     - key: MONGO_URI
-      value: ${MONGO_URI}  # Will be set in DigitalOcean dashboard
+      value: ${MONGO_URI}
       scope: RUN_AND_BUILD_TIME
     
     # Session & Security
     - key: SESSION_SECRET
-      value: ${SESSION_SECRET}  # Will be set in DigitalOcean dashboard
+      value: ${SESSION_SECRET}
       scope: RUN_AND_BUILD_TIME
     - key: COOKIE_DOMAIN
       value: operator-344ej.ondigitalocean.app
     - key: SECURE_COOKIES
       value: 'true'
+    - key: SAME_SITE_COOKIE
+      value: 'none'  # Required for cross-site cookies
     
     # API Keys
     - key: OPENAI_API_KEY
-      value: ${OPENAI_API_KEY}  # Will be set in DigitalOcean dashboard
+      value: ${OPENAI_API_KEY}
       scope: RUN_AND_BUILD_TIME
     - key: HF_API_KEY
-      value: ${HF_API_KEY}  # Will be set in DigitalOcean dashboard
+      value: ${HF_API_KEY}
       scope: RUN_AND_BUILD_TIME
     - key: GOOGLE_API_KEY_FILE
-      value: config/google-key.json  # Will be uploaded as a secret file
+      value: config/google-key.json
     
     # Webhook & WebSocket
     - key: WEBHOOK_URL
       value: https://operator-344ej.ondigitalocean.app/api/webhook
     - key: WEBHOOK_SECRET
-      value: ${WEBHOOK_SECRET}  # Will be set in DigitalOcean dashboard
+      value: ${WEBHOOK_SECRET}
       scope: RUN_AND_BUILD_TIME
     - key: OPERATOR_APP_WS_URL
       value: wss://operator-344ej.ondigitalocean.app/ws
     - key: WS_SECRET
-      value: ${WS_SECRET}  # Will be set in DigitalOcean dashboard
+      value: ${WS_SECRET}
       scope: RUN_AND_BUILD_TIME
     
     # Midscene Configuration
     - key: MIDSCENE_MODEL_NAME
       value: gpt-4o-mini
     - key: MIDSCENE_RUN_DIR
-      value: nexus_run
+      value: /app/nexus_run
+    
+    # Additional required environment variables
+    - key: JWT_SECRET
+      value: ${JWT_SECRET}
+      scope: RUN_AND_BUILD_TIME
+    - key: COOKIE_DOMAIN
+      value: operator-344ej.ondigitalocean.app
+    - key: CORS_ORIGIN
+      value: https://operator-344ej.ondigitalocean.app
+    - key: TRUST_PROXY
+      value: '1'  # Trust first proxy
   
   # Health Check Configuration
   health_check:
