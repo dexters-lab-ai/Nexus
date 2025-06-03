@@ -1012,9 +1012,6 @@ export async function generateReport(prompt, results, screenshotPath, runId, rep
       <h1>O.P.E.R.A.T.O.R – Sentinel Report</h1>
       <div class="action-buttons">
         <a id="replayButton" href="javascript:void(0)" class="btn primary-btn open-link" data-url="${encodeURIComponent(nexusReportUrl)}">Replay</a>
-        <a id="downloadButton" href="/download-report/${reportNexusUrl.split('/').pop()}" class="btn secondary-btn" download>
-          <i class="fas fa-download" style="margin-right: 8px;"></i>Download
-        </a>
       </div>
       
       <!-- Image Modal for viewing screenshots in full size -->

@@ -47,17 +47,16 @@ export function cdnAndCookieFixer(req, res, next) {
       res.setHeader('Access-Control-Expose-Headers', '*');
     }
 
-    // 2. Remove problematic cookies for static assets only
-    // Don't modify cookies for API requests to preserve sessions
-    if (req.headers.cookie && !req.path.startsWith('/api/')) {
+    // 2. Remove problematic cookies
+    if (req.headers.cookie) {
       const cookies = req.headers.cookie.split(';').map((cookie) => cookie.trim());
       const filteredCookies = cookies.filter((cookie) => {
         const [name] = cookie.split('=').map((s) => s.trim());
         return !name.startsWith('__cf') && 
                !name.startsWith('_cf') && 
                !name.startsWith('cf_') && 
-               !name.startsWith('sb-'); 
-               // Keep connect.sid for all requests
+               !name.startsWith('sb-') && 
+               name !== 'connect.sid';
       });
 
       if (filteredCookies.length === 0) {
@@ -79,7 +78,12 @@ export function cdnAndCookieFixer(req, res, next) {
       return res.status(204).end();
     }
 
-    // Removed bruno_demo_temp path normalization to prevent duplicate paths
+    // 4. Normalize asset paths
+    if (req.path.includes('bruno_demo_temp')) {
+      const originalUrl = req.url;
+      req.url = req.url.replace(/\/bruno_demo_temp[\/]?/, '/');
+      log('debug', 'Normalized asset path', { requestId, originalUrl, normalizedUrl: req.url });
+    }
 
     // 5. Prevent Cloudflare cookies
     const cloudflareCookies = [

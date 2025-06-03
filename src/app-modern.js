@@ -28,8 +28,9 @@ import './styles/components/timeline.css';
 
 // App Initialization
 import { eventBus } from './utils/events.js';
-import { stores } from './store/index.js';
+import { WebSocketManager } from '../public/js/utils/WebSocketManager.js';
 import { initializeModernUI } from './app-modern-integration.js';
+import { stores } from './store/index.js';
 import ErrorBoundary from './components/base/ErrorBoundary.jsx';
 import { getAllHistory } from './api/history.js';
 // Import settings API
@@ -273,6 +274,19 @@ async function initializeComponents() {
     rootElement.innerHTML = '';
     rootElement.appendChild(errorBoundary);
     
+    // WebSocket is now initialized in entry.js
+    // Listen for authentication events to reinitialize WebSocket
+    eventBus.on('user-authenticated', (userData) => {
+      if (userData?.id) {
+        // Ensure WebSocketManager is available
+        if (window.WebSocketManager) {
+          window.WebSocketManager.init(userData.id);
+        } else {
+          console.warn('WebSocketManager not available during authentication');
+        }
+      }
+    });
+    
     // Wait for components to be ready
     return new Promise((resolve) => {
       // Listen for application-ready event
@@ -332,7 +346,7 @@ function finalizeInitialization() {
   console.log('Finalizing application initialization...');
   
   // Check for first-time users
-  const isFirstTime = localStorage.getItem('operator_first_visit') !== 'false';
+  const isFirstTime = localStorage.getItem('operator_first_visit') == 'false';
   if (!isFirstTime) {
     // Show welcome tips when application is ready
     eventBus.once('application-ready', () => {

@@ -31,25 +31,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       strictPort: true,
-      open: true,
-      host: '0.0.0.0',
-      headers: {
-        'Content-Security-Policy': "default-src 'self'; " +
-          "connect-src 'self' https://*.ondigitalocean.app https://*.cloudflare.com wss://*.ondigitalocean.app; " +
-          "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; " +
-          "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " +
-          "img-src 'self' data: https: http:; " +
-          "font-src 'self' https: data:; " +
-          "frame-src 'self' https:; " +
-          "media-src 'self' https:;",
-        'X-Content-Type-Options': 'nosniff',
-        'X-Frame-Options': 'SAMEORIGIN',
-        'X-XSS-Protection': '1; mode=block',
-        'Referrer-Policy': 'strict-origin-when-cross-origin',
-        'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-        'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Resource-Policy': 'cross-origin'
-      },
+      open: true, // Auto-opens browser, a nice touch from the new config
       fs: {
         strict: true,
         allow: [
@@ -66,69 +48,52 @@ export default defineConfig(({ mode }) => {
         ]
       },
       cors: {
-        origin: (origin) => {
-          // Allow requests with no origin (like mobile apps or curl requests)
-          if (!origin) return true;
-          
-          const allowedOrigins = [
-            /^https?:\/\/localhost(?:\:\d+)?$/,  // Localhost with any port
-            /^https?:\/\/127\.0\.0\.1(?:\:\d+)?$/, // 127.0.0.1 with any port
-            /^https?:\/\/\S+\.operator-344ej\.ondigitalocean\.app$/, // Your production domain
-            /^https?:\/\/operator-344ej\.ondigitalocean\.app$/ // Your production domain without subdomain
-          ];
-          
-          // Check if the origin matches any of the allowed patterns
-          return allowedOrigins.some(regex => regex.test(origin));
-        },
-        methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-        allowedHeaders: 'Content-Type, Authorization',
-        credentials: true,
-        optionsSuccessStatus: 204
+        origin: '*',
+        methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+        preflightContinue: false,
+        optionsSuccessStatus: 204,
+        credentials: true
       },
-      // Proxy configuration for development
+      headers: {
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+        'Cross-Origin-Resource-Policy': 'cross-origin'
+      },
       proxy: {
-        '/api': { 
+        '/api': {
           target: env.VITE_API_URL || 'http://localhost:3420',
           changeOrigin: true,
           secure: false,
-          ws: true,
-          xfwd: true,
-          cookieDomainRewrite: {
-            '*': '' // Remove domain from cookies
-          }
+          ws: true
         },
-        '/ws': { 
+        '/ws': {
           target: env.VITE_WS_URL || 'ws://localhost:3420',
           ws: true,
           changeOrigin: true,
-          secure: false,
-          xfwd: true
+          secure: false
         },
-        '/uploads': { 
+        '/uploads': {
           target: env.VITE_API_URL || 'http://localhost:3420',
-          changeOrigin: true,
-          xfwd: true
+          changeOrigin: true
         },
         '/nexus_run': {
           target: env.VITE_API_URL || 'http://localhost:3420',
           changeOrigin: true,
-          xfwd: true,
-          cookieDomainRewrite: {
-            '*': '' // Remove domain from cookies
-          }
+          rewrite: (path) => path
+        },
+        '/external-report': {
+          target: env.VITE_API_URL || 'http://localhost:3420',
+          changeOrigin: true,
+          rewrite: (path) => path
         }
       },
-      // Enable HMR with custom host
       hmr: {
         host: 'localhost',
-        port: 24678,
-        clientPort: 3000
-      },
-      watch: {
-        usePolling: true
+        port: 24678
       }
     },
 
+    // Build configuration
     build: {
       outDir: 'dist',
       assetsDir: 'assets',
@@ -142,17 +107,26 @@ export default defineConfig(({ mode }) => {
           chunkFileNames: 'assets/js/[name]-[hash].js',
           assetFileNames: (assetInfo) => {
             const ext = assetInfo.name.split('.').pop().toLowerCase();
-            if (ext === 'css') return 'assets/css/[name][extname]';
-            if (['woff', 'woff2', 'ttf', 'eot'].includes(ext)) return 'assets/fonts/[name][extname]';
-            if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'assets/images/[name][extname]';
-            if (['glb', 'gltf', 'hdr', 'bin', 'wasm'].includes(ext)) return 'assets/models/[name][extname]';
-            if (['mp4', 'webm', 'ogg'].includes(ext)) return 'assets/media/[name][extname]';
-            return 'assets/[name][extname]';
+            if (ext === 'css') return 'assets/css/[name]-[hash][extname]';
+            if (['woff', 'woff2', 'ttf', 'eot'].includes(ext)) return 'assets/fonts/[name]-[hash][extname]';
+            if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'assets/images/[name]-[hash][extname]';
+            if (['glb', 'gltf', 'hdr', 'bin', 'wasm'].includes(ext)) return 'assets/models/[name]-[hash][extname]';
+            if (['mp4', 'webm', 'ogg'].includes(ext)) return 'assets/media/[name]-[hash][extname]';
+            return 'assets/[name]-[hash][extname]';
+          },
+          manualChunks: (id) => {
+            if (id.includes('node_modules')) {
+              if (id.includes('three') || id.includes('@react-three')) return 'vendor_three';
+              if (id.includes('@mantine')) return 'vendor_mantine';
+              if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) return 'vendor_react';
+              return 'vendor';
+            }
           }
         }
       }
     },
 
+    // Dependency optimization
     optimizeDeps: {
       include: [
         'react',
@@ -171,18 +145,16 @@ export default defineConfig(({ mode }) => {
       }
     },
 
-    // Resolve configuration
+    // Path resolution
     resolve: {
       extensions: ['.js', '.jsx', '.ts', '.tsx'],
       alias: {
         '@': path.resolve(__dirname, 'src'),
         '@components': path.resolve(__dirname, 'src/components'),
         '@store': path.resolve(__dirname, 'src/store'),
-        // Static assets
         '/models': path.resolve(__dirname, 'public/models'),
         '/assets': path.resolve(__dirname, 'public/assets'),
         '/draco': path.resolve(__dirname, 'public/draco'),
-        // Ensure Mantine uses the correct Floating UI version
         '@floating-ui/react': path.resolve(__dirname, 'node_modules/@floating-ui/react'),
         '@fortawesome/fontawesome-free/webfonts': path.resolve(__dirname, 'node_modules/@fortawesome/fontawesome-free/webfonts'),
         '@floating-ui/react-dom': path.resolve(__dirname, 'node_modules/@floating-ui/react-dom')
@@ -190,19 +162,20 @@ export default defineConfig(({ mode }) => {
       dedupe: ['@mantine/core', '@mantine/hooks', '@mantine/notifications']
     },
 
-    // Define global constants
+    // Global constants
     define: {
       'process.env.NODE_ENV': JSON.stringify(mode),
       'process.env.VITE_API_URL': JSON.stringify(env.VITE_API_URL || 'http://localhost:3420'),
       'process.env.VITE_WS_URL': JSON.stringify(env.VITE_WS_URL || 'ws://localhost:3420')
     },
 
+    // Plugins
     plugins: [
       react(),
       visualizer({
         open: true,
         gzipSize: true,
-        brotliSize: true,
+        brotliSize: true
       })
     ]
   };

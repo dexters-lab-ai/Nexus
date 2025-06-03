@@ -3,15 +3,10 @@
  * This is the modernized version of the app.js that uses the component system
  */
 
-import { eventBus } from '../src/utils/events.js';
+import { eventBus } from './utils/events.js';
+import WebSocketManager from './utils/WebSocketManager.js';
 import { initializeModernUI } from './app-modern-integration.js';
-
-import * as App from '../src/api/index.js';
-import { stores } from '../src/store/index.js';
-import { getAllHistory } from '../src/api/history.js';
-import { getMessageHistory } from '../src/api/messages.js';
-import { submitNLI } from '../src/api/nli.js';
-import { getActiveTasks, cancelTask } from '../src/api/tasks.js';
+import { stores } from './store/index.js';
 
 // Maintain references to all initialized components
 let appComponents = null;
@@ -24,6 +19,19 @@ document.addEventListener('DOMContentLoaded', () => {
 // Initialize the application
 async function initializeApp() {
   console.log('Initializing modern OPERATOR application...');
+
+  // Initialize WebSocket connection
+  const userId = localStorage.getItem('userId');
+  if (userId) {
+    WebSocketManager.init(userId);
+  }
+  
+  // Listen for authentication events to reinitialize WebSocket
+  eventBus.on('user-authenticated', (userData) => {
+    if (userData?.id) {
+      WebSocketManager.init(userData.id);
+    }
+  });
   
   try {
     // Show splash screen during initialization

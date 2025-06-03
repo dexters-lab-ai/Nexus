@@ -4,6 +4,7 @@
  */
 
 import { eventBus } from '../src/utils/events.js';
+// WebSocketManager is now globally available via window.WebSocketManager
 import * as App from '../src/api/index.js';
 import { stores } from '../src/store/index.js';
 import { getAllHistory } from '../src/api/history.js';

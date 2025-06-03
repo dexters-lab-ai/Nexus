@@ -44,6 +44,24 @@ const unsentMessages = new Map(); // Maps userId -> Array of pending messages
 // Create WebSocket server and handle HTTP upgrade
 let wss;
 
+// Add this near the top of the file with other utility functions
+function isOriginAllowed(origin) {
+  if (!origin) return false;
+  
+  const allowedOrigins = [
+    'http://localhost:3000', // Development
+    'http://localhost:3001', // Alternative dev port
+    'https://your-production-domain.com' // Add your production domain here
+  ];
+  
+  // For development, allow all localhost origins
+  if (process.env.NODE_ENV === 'development' && origin.match(/^https?:\/\/localhost(:\d+)?$/)) {
+    return true;
+  }
+  
+  return allowedOrigins.includes(origin);
+}
+
 function setupWebSocketServer(server) {
   // Create WebSocket server
   const wss = new WebSocketServer({ noServer: true });
@@ -58,6 +76,23 @@ function setupWebSocketServer(server) {
 
   wss.on('error', (error) => {
     console.error('[WebSocket] Server error:', error);
+  });
+
+  wss.on('message', (message) => {
+    try {
+      const data = JSON.parse(message);
+      console.log(`[WebSocket] Message from ${ws.connectionId}:`, data);
+      
+      if (data.type === 'ping') {
+        console.log(`[WebSocket] Received app-level ping from ${ws.connectionId}`);
+        ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+        ws.isAlive = true;
+        return;
+      }
+      // ... rest of your message handling
+    } catch (error) {
+      console.error(`[WebSocket] Error processing message:`, error);
+    }
   });
 
   // Handle new WebSocket connections
@@ -281,7 +316,7 @@ function setupWebSocketServer(server) {
         console.error('Error in keep-alive check:', error);
       }
     });
-  }, 300000);
+  }, 30000);
   
   // Clean up interval on server close
   server.on('close', () => {
@@ -322,60 +357,16 @@ const clientEnvVars = [
   'FRONTEND_URL'
 ];
 
-// Load environment variables with priority:
-// 1. Environment variables from DigitalOcean App Platform
-// 2. .env.production file (if exists)
-// 3. .env file (if exists)
+// Load environment variables based on NODE_ENV
+const envFile = process.env.NODE_ENV === 'production'
+  ? path.resolve(__dirname, '.env.production')
+  : path.resolve(__dirname, '.env.development');
 
-// Determine environment
-const env = process.env.NODE_ENV || 'development';
-console.log(`Environment: ${env}`);
+console.log('Loading environment from:', envFile);
+console.log('File exists:', fs.existsSync(envFile));
 
-// Try to load .env.production first in production, then fallback to .env
-const envPaths = [
-  path.resolve(process.cwd(), `.env.${env}`),
-  path.resolve(process.cwd(), '.env')
-];
-
-let envLoaded = false;
-for (const envPath of envPaths) {
-  if (fs.existsSync(envPath)) {
-    try {
-      console.log(`Loading environment from: ${envPath}`);
-      dotenv.config({ path: envPath });
-      envLoaded = true;
-      console.log(`Successfully loaded environment from ${path.basename(envPath)}`);
-      break;
-    } catch (err) {
-      console.warn(`Warning: Error loading ${envPath}:`, err.message);
-    }
-  } else {
-    console.log(`Environment file not found: ${envPath}`);
-  }
-}
-
-if (!envLoaded) {
-  console.log('No .env files found, using environment variables from platform config');
-}
-
-// Log non-sensitive environment variables for debugging
-const sensitiveKeys = ['key', 'secret', 'password', 'token', 'auth', 'mongo', 'jwt'];
-const envVars = Object.entries(process.env)
-  .filter(([key]) => !sensitiveKeys.some(sk => key.toLowerCase().includes(sk)))
-  .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
-
-console.log('Environment configuration:', {
-  NODE_ENV: process.env.NODE_ENV,
-  PORT: process.env.PORT,
-  API_URL: process.env.API_URL,
-  VITE_API_URL: process.env.VITE_API_URL,
-  FRONTEND_URL: process.env.FRONTEND_URL,
-  VITE_FRONTEND_URL: process.env.VITE_FRONTEND_URL,
-  WS_URL: process.env.WS_URL || process.env.VITE_WS_URL,
-  MONGO_URI: process.env.MONGO_URI ? '***' : 'Not set',
-  // Add other non-sensitive config you want to log
-  ...envVars
-});
+// Load the environment file
+const result = dotenv.config({ path: envFile });
 
 // Ensure VITE_ prefixed variables are set for the client
 clientEnvVars.forEach(key => {
@@ -400,6 +391,11 @@ Object.entries(process.env).forEach(([key, value]) => {
   }
 });
 console.log('Environment variables loaded:', relevantVars);
+
+if (result.error) {
+  console.error('Error loading .env file:', result.error);
+  process.exit(1);
+}
 
 // Import environment configuration
 import config from './src/config/env.js';
@@ -604,7 +600,7 @@ const sessionMiddleware = session({
     secure: process.env.NODE_ENV === 'production', // Set based on environment
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
     httpOnly: true,
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    sameSite: 'lax',
     domain: process.env.COOKIE_DOMAIN === 'localhost' ? undefined : process.env.COOKIE_DOMAIN
   },
   store: MongoStore.create({
@@ -617,40 +613,17 @@ const sessionMiddleware = session({
   unset: 'destroy'
 });
 
-// Add CORS middleware to handle Cloudflare cookies
-app.use((req, res, next) => {
-  // Allow credentials
-  res.header('Access-Control-Allow-Credentials', 'true');
-  
-  // Allow specific origin or use a whitelist
-  const allowedOrigins = [
-    'http://localhost:3000',
-    'https://operator-344ej.ondigitalocean.app' // Replace with your production domain
-  ];
-  
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-  }
-  
-  // Allow specific headers
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  
-  // Allow specific methods
-  if (req.method === 'OPTIONS') {
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE');
-    return res.status(200).json({});
-  }
-  
-  next();
-});
-
-// 8.1 Session middleware - must come before body parsers
-app.use(sessionMiddleware);
-
-// 8.2 Body parsers
+// 8.1 Body parsers
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// 8.2 Session ,iddleware
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1); // Trust first proxy
+  sessionConfig.cookie.secure = true; // Serve secure cookies
+}
+app.use(sessionMiddleware);
+
 // 8.3 Custom request logging middleware to silence 404s for specific endpoints
 app.use((req, res, next) => {
   // Skip logging for 404s on specific endpoints
@@ -670,7 +643,7 @@ app.use((req, res, next) => {
 });
 
 // 8.4 CORS Middleware ** before routes **
-import corsMiddleware from './src/middleware/cors.middleware.js';
+import { corsMiddleware } from './src/middleware/cors.middleware.js';
 app.use(corsMiddleware);
 
 // 8.5 CSP Middleware - Session store configuration (moved to be right after Express app initialization)
@@ -782,22 +755,6 @@ console.log(`================================\n`);
         global.httpServer = httpServer;
         global.wss = wss;
         
-        // Set up keep-alive for WebSocket connections
-        const interval = setInterval(() => {
-          wss.clients.forEach((ws) => {
-            if (ws.isAlive === false) {
-              console.log(`Terminating stale WebSocket connection: ${ws.connectionId}`);
-              return ws.terminate();
-            }
-            ws.isAlive = false;
-            ws.ping(() => {});
-          });
-        }, 30000); // 30 second interval
-        
-        // Clean up interval on server close
-        httpServer.on('close', () => {
-          clearInterval(interval);
-        });
         
         resolve(httpServer);
       });
@@ -839,49 +796,9 @@ const guard = (req, res, next) => {
 // Public API routes (no auth required)
 app.use('/api/auth', authRoutes);
 
-// Simple health check endpoint (public)
-app.get('/health', (req, res) => {
-  try {
-    const memory = process.memoryUsage();
-    const healthStatus = {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      service: 'operator-agent',
-      version: process.env.npm_package_version || 'unknown',
-      node: {
-        env: process.env.NODE_ENV || 'development',
-        uptime: process.uptime(),
-        memory: {
-          rss: Math.round(memory.rss / (1024 * 1024)) + ' MB',
-          heapTotal: Math.round(memory.heapTotal / (1024 * 1024)) + ' MB',
-          heapUsed: Math.round(memory.heapUsed / (1024 * 1024)) + ' MB'
-        }
-      },
-      database: {
-        status: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-        readyState: mongoose.connection.readyState
-      }
-    };
-
-    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.set('Pragma', 'no-cache');
-    res.set('X-Response-Time', `${Date.now() - res.locals.startTime}ms`);
-
-    res.status(200).json(healthStatus);
-  } catch (error) {
-    console.error('Health check failed:', error);
-    res.status(500).json({
-      status: 'error',
-      error: 'Health check failed',
-      message: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
-// Keep the old health check for backward compatibility
+// Health check endpoint (public)
 app.get('/api/health', (req, res) => {
-  res.redirect('/health');
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // API: Who Am I (userId sync endpoint) - Moved to robust implementation below
@@ -1292,14 +1209,9 @@ if (NODE_ENV !== 'production') {
 app.get('/', guard, (req, res) => {
   const isDev = process.env.NODE_ENV === 'development';
   const indexPath = isDev 
-    ? path.join(__dirname, 'index.html') 
+    ? path.join(__dirname, 'src', 'index.html')
     : path.join(__dirname, 'dist', 'index.html');
     
-  // In development, redirect to Vite dev server if not already there
-  if (isDev && req.hostname === 'localhost' && req.get('host')?.includes('3420')) {
-    return res.redirect('http://localhost:3000');
-  }
-  
   res.sendFile(indexPath, {
     headers: {
       'Content-Type': 'text/html',
@@ -1742,13 +1654,14 @@ async function sendWebSocketUpdate(userId, data) {
 
   const connections = userConnections.get(userId);
   const connectionCount = connections ? connections.size : 0;
-  
+  /*
   console.log(`[WebSocket] Sending update to userId=${userId}`, {
     event: data.event,
     connectionCount,
     hasConnections: connectionCount > 0,
     timestamp: new Date().toISOString()
   });
+  */
 
   if (connections && connections.size > 0) {
     let successfulSends = 0;
@@ -1787,7 +1700,7 @@ async function sendWebSocketUpdate(userId, data) {
         console.warn(`[WebSocket] Skipping closed connection for userId=${userId}`, connectionInfo);
       }
     });
-
+    /*
     console.log(`[WebSocket] Send summary for userId=${userId}`, {
       totalConnections: connections.size,
       successfulSends,
@@ -1795,6 +1708,7 @@ async function sendWebSocketUpdate(userId, data) {
       closedConnections,
       timestamp: new Date().toISOString()
     });
+    */
   } else {
     console.log(`[WebSocket] No active connections for userId=${userId}. Queuing message.`);
     if (!unsentMessages.has(userId)) {
@@ -2234,7 +2148,7 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
           midsceneReportPath = await editMidsceneReport(midsceneReportPath);
           console.log(`[NexusReport] Updated report at ${midsceneReportPath}`);
           // Update Nexus Report Url
-          nexusReportUrl = midsceneReportPath;
+          nexusReportUrl = `/external-report/${path.basename(midsceneReportPath)}`;
         } catch (error) {
           console.warn(`[NexusReport] Error editing report: ${error.message}`);
         }
