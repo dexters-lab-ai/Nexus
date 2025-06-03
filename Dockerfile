@@ -92,4 +92,4 @@ HEALTHCHECK --interval=30s --timeout=3s \
   CMD curl -f http://localhost:3420/api/health || exit 1
 
 # Start the application
-CMD ["node", "--max-old-space-size=4096", "server.js"]
+CMD ["npm", "run", "dev", "--max-old-space-size=4096", "server.js"]
