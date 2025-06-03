@@ -131,6 +131,11 @@ services:
       headers:
         - name: Cache-Control
           value: "public, max-age=31536000, immutable"
+    - path: /public
+      directory: /app/public
+      headers:
+        - name: Cache-Control
+          value: "public, max-age=86400"  # 24 hours for public assets
     
     # Serve bruno_demo_temp directory
     - path: /bruno_demo_temp
