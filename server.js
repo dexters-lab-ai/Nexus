@@ -51,7 +51,8 @@ function isOriginAllowed(origin) {
   const allowedOrigins = [
     'http://localhost:3000', // Development
     'http://localhost:8080', // Alternative dev port
-    process.env.APP_DOMAIN // Add your production domain here
+    process.env.APP_DOMAIN, // Add your production domain here
+    'operator-io236.ondigitalocean.app',
   ];
   
   // For development, allow all localhost origins

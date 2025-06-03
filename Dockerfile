@@ -15,8 +15,18 @@ RUN apt-get update && apt-get install -y \
 # Copy package files first for better layer caching
 COPY package*.json ./
 
-# Install all dependencies including devDependencies
-RUN npm install --legacy-peer-deps
+
+# Clean up any existing node_modules and lock files
+RUN rm -rf node_modules package-lock.json pnpm-lock.yaml
+
+# Install dependencies with the correct Rollup binary
+RUN echo "Installing dependencies..." && \
+    npm install --legacy-peer-deps && \
+    npm install @rollup/rollup-linux-x64-gnu rollup-plugin-visualizer@5.9.2 --save-dev && \
+    echo "Dependency installation complete"
+
+# Verify Rollup installation
+RUN ls -la node_modules/@rollup/
 
 # Copy environment files
 COPY .env.development .env
@@ -26,6 +36,9 @@ RUN mkdir -p nexus_run public/{assets,models,textures}
 
 # Copy app source
 COPY . .
+
+# Set environment to use the correct Rollup binary
+ENV ROLLUP_INLINE_RUN=1
 
 # Expose ports (Vite + API)
 EXPOSE 3000 3420
