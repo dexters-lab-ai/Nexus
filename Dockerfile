@@ -27,7 +27,7 @@ RUN echo "Installing dependencies..." && \
 RUN ls -la node_modules/@rollup/
 
 # Copy environment files
-COPY .env.development .env
+COPY .env* ./
 
 # Create necessary directories
 RUN mkdir -p nexus_run && \
@@ -92,4 +92,4 @@ HEALTHCHECK --interval=30s --timeout=3s \
   CMD curl -f http://localhost:3420/api/health || exit 1
 
 # Start the application
-CMD ["npm", "run", "dev", "--max-old-space-size=4096", "server.js"]
+CMD ["node", "--max-old-space-size=4096", "server.js"]

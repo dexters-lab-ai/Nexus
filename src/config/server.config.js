@@ -1,6 +1,3 @@
-// src/config/server.config.js
-import corsConfig from './cors.config.js';
-
 // Export CORS configuration for middleware
 export const corsConfig = {
   allowedOrigins: ['*'],
