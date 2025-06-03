@@ -778,7 +778,6 @@ app.use(serveStaticAssets(app));
 import authRoutes from './src/routes/auth.js';
 import userRoutes from './src/routes/user.js';
 import taskRoutes from './src/routes/tasks.js';
-import reportRoutes from './src/routes/reports.js';
 import messageRoutes from './src/routes/messages.js';
 import messagesRouter from './src/routes/messages.js';
 import { setStaticFileHeaders } from './src/middleware/staticAssets.js';
