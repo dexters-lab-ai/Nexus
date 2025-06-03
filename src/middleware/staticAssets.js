@@ -61,14 +61,16 @@ const setStaticFileHeaders = (res, filePath) => {
   
   // Set Content-Security-Policy for additional security
   const csp = [
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "img-src 'self' data: blob: https: http:",
-    "font-src 'self' data: https://fonts.gstatic.com",
-    "connect-src 'self' https://api.openai.com wss://*",
+    "default-src 'self' https://*.ondigitalocean.app http://localhost:* blob: data:",
+    "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://*.ondigitalocean.app http://localhost:*",
+    "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://*.ondigitalocean.app",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' https://cdnjs.cloudflare.com https://*.ondigitalocean.app data:",
+    "connect-src 'self' ws: wss: http://localhost:* https://*.ondigitalocean.app blob: data:",
+    "media-src 'self' blob: data: https:",
+    "worker-src 'self' blob: data:",
+    "child-src 'self' blob: data:",
     "frame-src 'self' https://www.youtube.com",
-    "media-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'"

@@ -48,18 +48,24 @@ let wss;
 function isOriginAllowed(origin) {
   if (!origin) return false;
   
-  const allowedOrigins = [
-    'http://localhost:3000', // Development
-    'http://localhost:8080', // Alternative dev port
-    process.env.APP_DOMAIN, // Add your production domain here
-    'operator-io236.ondigitalocean.app',
-  ];
-  
   // For development, allow all localhost origins
   if (process.env.NODE_ENV === 'development' && origin.match(/^https?:\/\/localhost(:\d+)?$/)) {
     return true;
   }
-  
+
+  // Allow all DigitalOcean app subdomains
+  if (origin.match(/^https?:\/\/[a-zA-Z0-9-]+\.ondigitalocean\.app(:\d+)?$/)) {
+    return true;
+  }
+
+  // Specific allowed origins
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:8080',
+    process.env.APP_DOMAIN,
+    'operator-io236.ondigitalocean.app',
+  ].filter(Boolean); // Remove any falsy values
+
   return allowedOrigins.includes(origin);
 }
 
@@ -648,22 +654,19 @@ import { corsMiddleware } from './src/middleware/cors.middleware.js';
 app.use(corsMiddleware);
 
 // 8.5 CSP Middleware - Session store configuration (moved to be right after Express app initialization)
+// Add this in your server.js or middleware
 app.use((req, res, next) => {
-  const isDev = process.env.NODE_ENV !== 'production';
-  const fontAwesomeUrl = process.env.CSP_FONTAWESOME_URL || 'https://cdnjs.cloudflare.com';
-
-  // Use the same permissive CSP for both development and production for testing
-  const csp = `default-src 'self' http://localhost:* blob: data:; ` +
-    `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' http://localhost:*; ` +
-    `style-src 'self' ${fontAwesomeUrl} 'unsafe-inline'; ` +
-    `img-src 'self' data: blob:; ` +
-    `connect-src 'self' ws: wss: http://localhost:* blob: data:; ` +
-    `font-src 'self' ${fontAwesomeUrl} data:; ` +
-    `media-src 'self' blob: data:; ` +
-    `worker-src 'self' blob: data:; ` +
-    `child-src 'self' blob: data:;`;
-
-  res.setHeader('Content-Security-Policy', csp);
+  res.setHeader('Content-Security-Policy', 
+    `default-src 'self' https://*.ondigitalocean.app http://localhost:* blob: data:;
+     script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://*.ondigitalocean.app http://localhost:*;
+     style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://*.ondigitalocean.app;
+     img-src 'self' data: blob: https:;
+     connect-src 'self' ws: wss: http://localhost:* https://*.ondigitalocean.app blob: data:;
+     font-src 'self' https://cdnjs.cloudflare.com https://*.ondigitalocean.app data:;
+     media-src 'self' blob: data: https:;
+     worker-src 'self' blob: data:;
+     child-src 'self' blob: data:;`
+  );
   next();
 });
 
