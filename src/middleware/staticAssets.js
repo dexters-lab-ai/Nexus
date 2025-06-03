@@ -9,27 +9,72 @@ import configureMime from './mimeConfig.js';
  * @param {Object} res - Response object
  * @param {string} filePath - Path to the file being served
  */
+/**
+ * Set security and caching headers for static files
+ * @param {Object} res - Response object
+ * @param {string} filePath - Path to the file being served
+ */
 const setStaticFileHeaders = (res, filePath) => {
   // Security headers
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
+  
+  // Set CORS headers for all static assets
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
 
   // Cache control for different file types
   const cacheControl = {
     default: 'public, max-age=31536000, immutable',
     html: 'no-store, no-cache, must-revalidate, proxy-revalidate',
     api: 'no-cache, no-store, must-revalidate',
+    media: 'public, max-age=86400, immutable' // 24 hours for media files
   };
 
-  if (filePath.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|wasm|glb|hdr|webp|avif)$/i)) {
+  // Set appropriate cache headers based on file type
+  if (filePath.match(/\.(js|css|woff|woff2|ttf|eot|wasm)$/i)) {
+    // Long cache for versioned assets
     res.setHeader('Cache-Control', cacheControl.default);
+  } else if (filePath.match(/\.(png|jpg|jpeg|gif|ico|svg|webp|avif|glb|hdr|mp4|webm|mp3|wav|ogg)$/i)) {
+    // Media files with shorter cache
+    res.setHeader('Cache-Control', cacheControl.media);
   } else if (filePath.match(/\.(html|htm)$/i)) {
+    // No cache for HTML files
     res.setHeader('Cache-Control', cacheControl.html);
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
+  } else {
+    // Default cache for other files
+    res.setHeader('Cache-Control', 'public, max-age=600');
   }
+  
+  // Set X-Content-Type-Options to prevent MIME type sniffing
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  
+  // Set Content-Security-Policy for additional security
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "img-src 'self' data: blob: https: http:",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "connect-src 'self' https://api.openai.com wss://*",
+    "frame-src 'self' https://www.youtube.com",
+    "media-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'"
+  ].join('; ');
+  
+  res.setHeader('Content-Security-Policy', csp);
 };
 
 /**
@@ -47,11 +92,14 @@ export default function serveStaticAssets(app) {
   const staticOptions = {
     index: false,
     setHeaders: setStaticFileHeaders,
-    fallthrough: false,
     dotfiles: 'ignore',
     etag: true,
     lastModified: true,
     maxAge: '1y',
+    mimeTypes: {
+      'application/javascript': ['js', 'mjs'],
+      'text/css': ['css']
+    }
   };
 
   // ===== REPORT & RUN DIRECTORIES =====
@@ -69,7 +117,13 @@ export default function serveStaticAssets(app) {
       route: '/',
       options: {
         ...staticOptions,
-        setHeaders: (res) => {
+        setHeaders: (res, path) => {
+          // Set proper content type based on file extension
+          if (path.endsWith('.js')) {
+            res.setHeader('Content-Type', 'application/javascript');
+          } else if (path.endsWith('.css')) {
+            res.setHeader('Content-Type', 'text/css');
+          }
           // Allow CORS for all static assets
           res.setHeader('Access-Control-Allow-Origin', '*');
           res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');

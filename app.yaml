@@ -34,7 +34,7 @@ services:
     - key: WS_URL
       value: wss://${APP_DOMAIN}
     - key: OPERATOR_APP_WS_URL
-      value: wss://operator-344ej.ondigitalocean.app/ws
+      value: wss://operator-io236.ondigitalocean.app/ws
     
     # Development specific
     - key: HOST
@@ -54,7 +54,7 @@ services:
     - key: SAME_SITE_COOKIE
       value: 'lax'
     - key: CORS_ORIGIN
-      value: https://operator-344ej.ondigitalocean.app
+      value: https://operator-io236.ondigitalocean.app
     - key: TRUST_PROXY
       value: '1'
     
@@ -85,7 +85,7 @@ services:
     - key: GOOGLE_API_KEY_FILE
       value: config/google-key.json
     - key: WEBHOOK_URL
-      value: https://operator-344ej.ondigitalocean.app/api/webhook
+      value: https://operator-io236.ondigitalocean.app/api/webhook
     
     # Midscene Configuration
     - key: MIDSCENE_MODEL_NAME
@@ -122,7 +122,7 @@ services:
     - name: Permissions-Policy
       value: "camera=(), microphone=(), geolocation=()"
     - name: Set-Cookie
-      value: "__cf_bm=; Path=/; Domain=operator-344ej.ondigitalocean.app; Secure; HttpOnly; SameSite=None; Max-Age=14400"
+      value: "__cf_bm=; Path=/; Domain=operator-io236.ondigitalocean.app; Secure; HttpOnly; SameSite=None; Max-Age=14400"
 
   # Static file serving configuration
   static_assets:

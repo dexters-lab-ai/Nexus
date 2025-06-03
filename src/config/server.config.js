@@ -1,5 +1,5 @@
 // Production domain - update this if your domain changes
-const PRODUCTION_DOMAIN = 'operator-344ej.ondigitalocean.app';
+const PRODUCTION_DOMAIN = 'operator-io236.ondigitalocean.app';
 const PRODUCTION_URL = `https://${PRODUCTION_DOMAIN}`;
 
 // Development domains
@@ -11,6 +11,14 @@ const DEVELOPMENT_DOMAINS = [
 ];
 
 // Combine all allowed origins
+// src/config/server.config.js
+const CDN_DOMAINS = [
+  'https://cdnjs.cloudflare.com',
+  'https://fonts.googleapis.com',
+  'https://fonts.gstatic.com'
+  // Add other CDN domains as needed
+];
+
 const ALLOWED_ORIGINS = [
   ...(process.env.ALLOWED_CORS_ORIGINS 
     ? process.env.ALLOWED_CORS_ORIGINS.split(',').map(s => s.trim()) 
@@ -18,7 +26,7 @@ const ALLOWED_ORIGINS = [
   ),
   PRODUCTION_URL,
   ...DEVELOPMENT_DOMAINS,
-  // Allow all subdomains of the production domain
+  ...CDN_DOMAINS,
   `https://*.${PRODUCTION_DOMAIN}`,
   `http://*.${PRODUCTION_DOMAIN}`
 ].filter(Boolean);

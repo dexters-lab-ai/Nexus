@@ -769,14 +769,19 @@ console.log(`================================\n`);
 // ====================================
 // 10. ROUTES & MIDDLEWARE
 // ======================================
+
+// 1. First, serve static assets
+import serveStaticAssets from './src/middleware/staticAssets.js';
+app.use(serveStaticAssets(app));
+
+// 2. Then import API routes
 import authRoutes from './src/routes/auth.js';
-import taskRoutes from './src/routes/tasks.js';
-import billingRoutes from './src/routes/billing.js';
-import yamlMapsRoutes from './src/routes/yaml-maps.js';
 import userRoutes from './src/routes/user.js';
-import historyRouter from './src/routes/history.js';
-import customUrlsRouter from './src/routes/customUrls.js';
-import settingsRouter from './src/routes/settings.js';
+import taskRoutes from './src/routes/tasks.js';
+import reportRoutes from './src/routes/reports.js';
+import messageRoutes from './src/routes/messages.js';
+import messagesRouter from './src/routes/messages.js';
+import { setStaticFileHeaders } from './src/middleware/staticAssets.js';
 import { requireAuth } from './src/middleware/requireAuth.js';
 import messagesRouter from './src/routes/messages.js';
 import { setStaticFileHeaders } from './src/middleware/staticAssets.js';
@@ -1193,14 +1198,86 @@ if (NODE_ENV !== 'production') {
   const devModelsPath = path.join(__dirname, 'src', 'models');
   if (fs.existsSync(devModelsPath)) {
     app.use('/models', express.static(devModelsPath, {
-      setHeaders: setStaticFileHeaders,
+      setHeaders: (res, path) => {
+        setStaticFileHeaders(res, path);
+        // Ensure proper MIME types for development
+        if (path.endsWith('.js')) {
+          res.setHeader('Content-Type', 'application/javascript');
+        } else if (path.endsWith('.css')) {
+          res.setHeader('Content-Type', 'text/css');
+        } else if (path.endsWith('.json')) {
+          res.setHeader('Content-Type', 'application/json');
+        } else if (path.match(/\.(png|jpg|jpeg|gif|svg|webp)$/i)) {
+          res.setHeader('Content-Type', `image/${path.split('.').pop()}`);
+        }
+        // Set security headers
+        setStaticFileHeaders(res, path);
+      },
       index: false,
-      fallthrough: false,
-      dotfiles: 'ignore'
+      dotfiles: 'ignore',
+      fallthrough: true // Allow falling through to other handlers
     }));
     logger.info(`Serving development models from ${devModelsPath}`);
   }
 }
+
+// Serve static files from public directory with proper MIME types and security headers
+const staticDirs = [
+  { path: path.join(__dirname, 'public'), route: '/', options: { 
+    setHeaders: (res, filePath) => {
+      // Set proper content type based on file extension
+      if (filePath.endsWith('.js')) {
+        res.setHeader('Content-Type', 'application/javascript');
+      } else if (filePath.endsWith('.css')) {
+        res.setHeader('Content-Type', 'text/css');
+      } else if (filePath.endsWith('.json')) {
+        res.setHeader('Content-Type', 'application/json');
+      } else if (filePath.match(/\.(png|jpg|jpeg|gif|svg|webp)$/i)) {
+        res.setHeader('Content-Type', `image/${filePath.split('.').pop()}`);
+      } else if (filePath.endsWith('.html')) {
+        res.setHeader('Content-Type', 'text/html');
+      } else if (filePath.endsWith('.woff') || filePath.endsWith('.woff2') || filePath.endsWith('.ttf') || filePath.endsWith('.eot')) {
+        res.setHeader('Content-Type', `font/${filePath.split('.').pop()}`);
+      }
+      // Set security headers
+      setStaticFileHeaders(res, filePath);
+    },
+    index: false,
+    dotfiles: 'ignore',
+    fallthrough: true // Allow falling through to SPA handler
+  }}
+];
+
+// Register all static directories
+staticDirs.forEach(({ path: dirPath, route, options }) => {
+  if (fs.existsSync(dirPath)) {
+    app.use(route, express.static(dirPath, options));
+    logger.info(`Serving static files from ${dirPath} at ${route}`);
+  } else {
+    logger.warn(`Static directory not found: ${dirPath}`);
+  }
+});
+
+// Add a catch-all handler for static files to prevent 404 errors
+app.use((req, res, next) => {
+  // Skip API routes
+  if (req.path.startsWith('/api/')) {
+    return next();
+  }
+  
+  // Skip if the file exists
+  const filePath = path.join(__dirname, 'public', req.path);
+  if (fs.existsSync(filePath) && !fs.lstatSync(filePath).isDirectory()) {
+    return next();
+  }
+  
+  // For all other static files, return 404
+  if (req.path.match(/\.[a-z0-9]+$/i)) {
+    return res.status(404).send('File not found');
+  }
+  
+  next();
+});
 
 // ======================================
 // 4. APPLICATION ROUTES (HTML routes)
