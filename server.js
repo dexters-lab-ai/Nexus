@@ -783,9 +783,6 @@ import messageRoutes from './src/routes/messages.js';
 import messagesRouter from './src/routes/messages.js';
 import { setStaticFileHeaders } from './src/middleware/staticAssets.js';
 import { requireAuth } from './src/middleware/requireAuth.js';
-import messagesRouter from './src/routes/messages.js';
-import { setStaticFileHeaders } from './src/middleware/staticAssets.js';
-import serveStaticAssets from './src/middleware/staticAssets.js';
 
 // Authentication guard middleware
 const guard = (req, res, next) => {
