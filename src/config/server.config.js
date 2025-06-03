@@ -40,6 +40,7 @@ export const corsConfig = {
 // For backward compatibility
 const ALLOWED_ORIGINS = corsConfig.allowedOrigins;
 const UNIQUE_ORIGINS = corsConfig.allowedOrigins;
+const PRODUCTION_DOMAIN = process.env.APP_DOMAIN;
 
 export default {
   cors: {
@@ -101,7 +102,7 @@ export default {
   // Security headers
   security: {
     // Enable CORS for all routes
-    cors: true,
+    cors: false,
     // Enable CSRF protection
     csrf: {
       enable: true,
