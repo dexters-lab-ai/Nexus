@@ -1,4 +1,4 @@
-name: operator-agent
+name: nexus-dev
 services:
 - name: web
   github:
@@ -6,96 +6,105 @@ services:
     deploy_on_push: true
     repo: dexters-lab-ai/Nexus
   dockerfile_path: Dockerfile
-  http_port: 3420
+  http_port: 3000  # Vite default port
   instance_size_slug: professional-xs
-  instance_count: 2
-  run_command: node --max-old-space-size=4096 server.js
+  instance_count: 1
   
   # Environment variables
   envs:
     # Server Configuration
     - key: NODE_ENV
-      value: production
+      value: development
     - key: PORT
+      value: '3420'
+    - key: VITE_API_PORT
       value: '3420'
     - key: NODE_OPTIONS
       value: --max-old-space-size=4096
     
     # API Configuration
     - key: VITE_API_URL
-      value: https://operator-344ej.ondigitalocean.app
+      value: https://${APP_DOMAIN}
     - key: VITE_WS_URL
-      value: wss://operator-344ej.ondigitalocean.app
-    - key: VITE_FRONTEND_URL
-      value: https://operator-344ej.ondigitalocean.app
+      value: wss://${APP_DOMAIN}
     - key: API_URL
-      value: https://operator-344ej.ondigitalocean.app
+      value: https://${APP_DOMAIN}
     - key: FRONTEND_URL
-      value: https://operator-344ej.ondigitalocean.app
+      value: https://${APP_DOMAIN}
     - key: WS_URL
-      value: wss://operator-344ej.ondigitalocean.app
-    
-    # Database
-    - key: MONGO_URI
-      value: ${MONGO_URI}
-      scope: RUN_AND_BUILD_TIME
-    
-    # Session & Security
-    - key: SESSION_SECRET
-      value: ${SESSION_SECRET}
-      scope: RUN_AND_BUILD_TIME
-    - key: COOKIE_DOMAIN
-      value: operator-344ej.ondigitalocean.app
-    - key: SECURE_COOKIES
-      value: 'true'
-    - key: SAME_SITE_COOKIE
-      value: 'none'  # Required for cross-site cookies
-    
-    # API Keys
-    - key: OPENAI_API_KEY
-      value: ${OPENAI_API_KEY}
-      scope: RUN_AND_BUILD_TIME
-    - key: HF_API_KEY
-      value: ${HF_API_KEY}
-      scope: RUN_AND_BUILD_TIME
-    - key: GOOGLE_API_KEY_FILE
-      value: config/google-key.json
-    
-    # Webhook & WebSocket
-    - key: WEBHOOK_URL
-      value: https://operator-344ej.ondigitalocean.app/api/webhook
-    - key: WEBHOOK_SECRET
-      value: ${WEBHOOK_SECRET}
-      scope: RUN_AND_BUILD_TIME
+      value: wss://${APP_DOMAIN}
     - key: OPERATOR_APP_WS_URL
       value: wss://operator-344ej.ondigitalocean.app/ws
-    - key: WS_SECRET
-      value: ${WS_SECRET}
+    
+    # Development specific
+    - key: HOST
+      value: '0.0.0.0'
+    - key: VITE_DEV_SERVER_HOST
+      value: '0.0.0.0'
+    - key: VITE_DEV_SERVER_PORT
+      value: '3000'
+    - key: VITE_DEV_SERVER_HMR
+      value: 'true'
+    
+    # Security
+    - key: SECURE_COOKIES
+      value: 'false'
+    - key: COOKIE_DOMAIN
+      value: ${COOKIE_DOMAIN}
+    - key: SAME_SITE_COOKIE
+      value: 'lax'
+    - key: CORS_ORIGIN
+      value: https://operator-344ej.ondigitalocean.app
+    - key: TRUST_PROXY
+      value: '1'
+    
+    # Secrets - These should be set in DigitalOcean dashboard
+    - key: SESSION_SECRET
       scope: RUN_AND_BUILD_TIME
+      value: ${SESSION_SECRET}
+    - key: MONGO_URI
+      scope: RUN_AND_BUILD_TIME
+      value: ${MONGO_URI}
+    - key: WEBHOOK_SECRET
+      scope: RUN_AND_BUILD_TIME
+      value: ${WEBHOOK_SECRET}
+    - key: WS_SECRET
+      scope: RUN_AND_BUILD_TIME
+      value: ${WS_SECRET}
+    - key: OPENAI_API_KEY
+      scope: RUN_AND_BUILD_TIME
+      value: ${OPENAI_API_KEY}
+    - key: HF_API_KEY
+      scope: RUN_AND_BUILD_TIME
+      value: ${HF_API_KEY}
+    - key: JWT_SECRET
+      scope: RUN_AND_BUILD_TIME
+      value: ${JWT_SECRET}
+    
+    # API Keys and Config
+    - key: GOOGLE_API_KEY_FILE
+      value: config/google-key.json
+    - key: WEBHOOK_URL
+      value: https://operator-344ej.ondigitalocean.app/api/webhook
     
     # Midscene Configuration
     - key: MIDSCENE_MODEL_NAME
       value: gpt-4o-mini
     - key: MIDSCENE_RUN_DIR
       value: /app/nexus_run
-    
-    # Additional required environment variables
-    - key: JWT_SECRET
-      value: ${JWT_SECRET}
-      scope: RUN_AND_BUILD_TIME
-    - key: COOKIE_DOMAIN
-      value: operator-344ej.ondigitalocean.app
-    - key: CORS_ORIGIN
-      value: https://operator-344ej.ondigitalocean.app
-    - key: TRUST_PROXY
-      value: '1'  # Trust first proxy
-  
+
+  # No build command needed as we're using dev server
+  build_command: echo "Skipping build in development mode"
+
+  # Start command (runs the dev server)
+  run_command: npm run dev
+
   # Health Check Configuration
   health_check:
     http_path: /api/health
-    initial_delay_seconds: 30
-    period_seconds: 10
-    timeout_seconds: 5
+    initial_delay_seconds: 60
+    period_seconds: 60
+    timeout_seconds: 10
     success_threshold: 1
     failure_threshold: 3
     port: 3420

@@ -11,9 +11,13 @@ export default defineConfig(({ mode }) => {
   // Load environment variables
   const env = loadEnv(mode, process.cwd(), '');
   const isDev = mode === 'development';
+  const isDocker = process.env.DOCKER === 'true';
+  const host = isDocker ? '0.0.0.0' : 'localhost';
+  const hmrHost = isDev ? 'localhost' : process.env.APP_DOMAIN || 'localhost';
 
   console.log('Vite Env:', {
     mode,
+    isDocker,
     VITE_API_URL: env.VITE_API_URL,
     VITE_WS_URL: env.VITE_WS_URL,
     FRONTEND_URL: env.FRONTEND_URL
@@ -29,9 +33,10 @@ export default defineConfig(({ mode }) => {
 
     // Development server configuration
     server: {
+      host,
       port: 3000,
       strictPort: true,
-      open: true, // Auto-opens browser, a nice touch from the new config
+      open: !isDocker, // Don't open browser in Docker
       fs: {
         strict: true,
         allow: [
@@ -48,7 +53,7 @@ export default defineConfig(({ mode }) => {
         ]
       },
       cors: {
-        origin: '*',
+        origin: true,
         methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
         preflightContinue: false,
         optionsSuccessStatus: 204,
@@ -88,8 +93,10 @@ export default defineConfig(({ mode }) => {
         }
       },
       hmr: {
-        host: 'localhost',
-        port: 24678
+        protocol: isDev ? 'ws' : 'wss',
+        host: hmrHost,
+        port: isDev ? 24678 : 443,
+        clientPort: isDev ? 24678 : 443
       }
     },
 
@@ -99,6 +106,7 @@ export default defineConfig(({ mode }) => {
       assetsDir: 'assets',
       sourcemap: isDev,
       minify: !isDev ? 'terser' : false,
+      target: 'esnext',
       chunkSizeWarningLimit: 2000,
       rollupOptions: {
         input: path.resolve(__dirname, 'index.html'),
@@ -171,9 +179,11 @@ export default defineConfig(({ mode }) => {
 
     // Plugins
     plugins: [
-      react(),
+      react({
+        fastRefresh: true
+      }),
       visualizer({
-        open: true,
+        open: false, // Changed to false to prevent auto-opening in Docker
         gzipSize: true,
         brotliSize: true
       })
