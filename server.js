@@ -44,29 +44,15 @@ const unsentMessages = new Map(); // Maps userId -> Array of pending messages
 // Create WebSocket server and handle HTTP upgrade
 let wss;
 
-// Add this near the top of the file with other utility functions
+/**
+ * Check if an origin is allowed
+ * 
+ * This function allows all origins since we're using Cloudflare for security.
+ * Security is handled at the Cloudflare level using WAF, rate limiting, and other security features.
+ */
 function isOriginAllowed(origin) {
-  if (!origin) return false;
-  
-  // For development, allow all localhost origins
-  if (process.env.NODE_ENV === 'development' && origin.match(/^https?:\/\/localhost(:\d+)?$/)) {
-    return true;
-  }
-
-  // Allow all DigitalOcean app subdomains
-  if (origin.match(/^https?:\/\/[a-zA-Z0-9-]+\.ondigitalocean\.app(:\d+)?$/)) {
-    return true;
-  }
-
-  // Specific allowed origins
-  const allowedOrigins = [
-    'http://localhost:3000',
-    'http://localhost:8080',
-    process.env.APP_DOMAIN,
-    'operator-io236.ondigitalocean.app',
-  ].filter(Boolean); // Remove any falsy values
-
-  return allowedOrigins.includes(origin);
+  // Allow all origins - security is handled by Cloudflare
+  return true;
 }
 
 function setupWebSocketServer(server) {
@@ -653,20 +639,33 @@ app.use((req, res, next) => {
 import { corsMiddleware } from './src/middleware/cors.middleware.js';
 app.use(corsMiddleware);
 
-// 8.5 CSP Middleware - Session store configuration (moved to be right after Express app initialization)
-// Add this in your server.js or middleware
+// 8.5 CSP Middleware - Configured to work with CORS and Cloudflare
+// 8.5 CSP Middleware - Configured to work with CORS and Cloudflare
 app.use((req, res, next) => {
-  res.setHeader('Content-Security-Policy', 
-    `default-src 'self' https://*.ondigitalocean.app http://localhost:* blob: data:;
-     script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://*.ondigitalocean.app http://localhost:*;
-     style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://*.ondigitalocean.app;
-     img-src 'self' data: blob: https:;
-     connect-src 'self' ws: wss: http://localhost:* https://*.ondigitalocean.app blob: data:;
-     font-src 'self' https://cdnjs.cloudflare.com https://*.ondigitalocean.app data:;
-     media-src 'self' blob: data: https:;
-     worker-src 'self' blob: data:;
-     child-src 'self' blob: data:;`
-  );
+  // In production, we trust Cloudflare to handle security
+  // In development, we allow all sources for easier development
+  const cspDirectives = [
+    "default-src 'self' * data: blob:;",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' * data: blob:;",
+    "style-src 'self' 'unsafe-inline' * data: blob:;",
+    "img-src 'self' data: blob: *;",
+    "connect-src 'self' ws: wss: * data: blob:;",
+    "font-src 'self' data: *;",
+    "media-src 'self' data: blob: *;",
+    "worker-src 'self' blob: data: *;",
+    "child-src 'self' blob: data: *;",
+    "frame-src 'self' * data: blob:;",
+    "frame-ancestors 'self' *;"
+  ].join(' ');
+
+  // Set CSP headers
+  res.setHeader('Content-Security-Policy', cspDirectives);
+  
+  // Additional security headers - keeping these as they're good practice
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'ALLOWALL'); // More permissive for iframe embedding
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  
   next();
 });
 

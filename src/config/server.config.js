@@ -1,38 +1,45 @@
-// Production domain - update this if your domain changes
-const PRODUCTION_DOMAIN = 'operator-io236.ondigitalocean.app';
-const PRODUCTION_URL = `https://${PRODUCTION_DOMAIN}`;
+/**
+ * Server Configuration
+ * 
+ * This configuration allows all origins when using Cloudflare.
+ * Security is handled at the Cloudflare level using:
+ * - WAF Rules
+ * - Rate Limiting
+ * - Bot Fight Mode
+ * - Security Headers
+ */
 
-// Development domains
-const DEVELOPMENT_DOMAINS = [
-  'http://localhost:3000',
-  'http://localhost:3420',
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:3420'
-];
+// CORS Configuration
+export const corsConfig = {
+  // Allow all origins - security is handled by Cloudflare
+  allowedOrigins: ['*'],
+  
+  // Default CORS headers
+  defaultHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'X-CSRF-Token'
+  ],
+  
+  // Allowed HTTP methods
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  
+  // Exposed headers
+  exposedHeaders: ['Content-Length', 'Content-Type', 'Authorization'],
+  
+  // Max age for preflight requests (24 hours)
+  maxAge: 86400,
+  
+  // Allow credentials
+  credentials: true
+};
 
-// Combine all allowed origins
-// src/config/server.config.js
-const CDN_DOMAINS = [
-  'https://cdnjs.cloudflare.com',
-  'https://fonts.googleapis.com',
-  'https://fonts.gstatic.com'
-  // Add other CDN domains as needed
-];
-
-const ALLOWED_ORIGINS = [
-  ...(process.env.ALLOWED_CORS_ORIGINS 
-    ? process.env.ALLOWED_CORS_ORIGINS.split(',').map(s => s.trim()) 
-    : []
-  ),
-  PRODUCTION_URL,
-  ...DEVELOPMENT_DOMAINS,
-  ...CDN_DOMAINS,
-  `https://*.${PRODUCTION_DOMAIN}`,
-  `http://*.${PRODUCTION_DOMAIN}`
-].filter(Boolean);
-
-// Remove duplicates
-const UNIQUE_ORIGINS = [...new Set(ALLOWED_ORIGINS)];
+// For backward compatibility
+const ALLOWED_ORIGINS = corsConfig.allowedOrigins;
+const UNIQUE_ORIGINS = corsConfig.allowedOrigins;
 
 export default {
   cors: {
