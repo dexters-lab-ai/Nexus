@@ -8,6 +8,7 @@ services:
     container_name: nexus-app
     ports:
       - "3420:3420"
+      - "3000:3000"
     env_file:
       - .env.development
     environment:
@@ -22,7 +23,7 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "http://localhost:3420/api/health"]
-      interval: 60s
+      interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s

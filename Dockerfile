@@ -41,9 +41,6 @@ COPY . .
 # Set environment to use the correct Rollup binary
 ENV ROLLUP_INLINE_RUN=1
 
-# Build the application
-RUN npm run build
-
 # Production stage
 FROM node:18.20.3-bullseye-slim
 
@@ -56,7 +53,7 @@ RUN apt-get update && \
 
 # Copy package files and install production dependencies
 COPY package*.json ./
-RUN npm install --only=production --legacy-peer-deps
+RUN npm install --legacy-peer-deps
 
 # Copy built app from builder
 COPY --from=builder /usr/src/app/dist ./dist
@@ -86,10 +83,11 @@ ENV PORT=3420
 
 # Expose the app port
 EXPOSE 3420
+EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s \
   CMD curl -f http://localhost:3420/api/health || exit 1
 
 # Start the application
-CMD ["node", "--max-old-space-size=4096", "server.js"]
+CMD ["npm", "run", "dev", "--max-old-space-size=4096", "server.js"]
