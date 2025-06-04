@@ -22,14 +22,14 @@ RUN echo "Installing dependencies..." && \
     npm install @rollup/rollup-linux-x64-gnu rollup-plugin-visualizer@5.9.2 --save-dev && \
     echo "Dependency installation complete"
 
-# Copy environment files
-COPY .env* ./
-
 # Create necessary directories
 RUN mkdir -p nexus_run && \
     mkdir -p public/assets && \
     mkdir -p public/models && \
     mkdir -p public/textures
+
+# Copy environment files (after creating directories to avoid permission issues)
+COPY .env* ./
 
 # Copy app source
 COPY . .
@@ -65,7 +65,10 @@ COPY --from=builder /usr/src/app/public ./public
 COPY --from=builder /usr/src/app/config ./config
 COPY --from=builder /usr/src/app/scripts ./scripts
 COPY --from=builder /usr/src/app/patches ./patches
-COPY --from=builder /usr/src/app/.env* ./
+# Copy environment files - ensure .env.production is available as .env
+COPY --from=builder /usr/src/app/.env.production ./.env
+# Copy any other .env files if they exist
+RUN if [ -f /usr/src/app/.env.* ]; then cp /usr/src/app/.env.* .; fi
 
 # Copy package files for production dependencies
 COPY --from=builder /usr/src/app/package*.json ./
