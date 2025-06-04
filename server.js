@@ -670,9 +670,6 @@ app.use((req, res, next) => {
 });
 
 // 8.6 CDN and cookie fixer middleware
-import { cdnAndCookieFixer } from './src/middleware/cdnFixer.js';
-app.use(cdnAndCookieFixer);
-
 // 8.7 Request Logging - only log errors (4xx and 5xx) and skip health checks
 app.use((req, res, next) => {
   const start = Date.now();

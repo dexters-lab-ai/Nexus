@@ -1,16 +1,12 @@
 // Export CORS configuration for middleware
 export const corsConfig = {
-  allowedOrigins: ['*'],
-  credentials: true,
+  origin: true, // Enable CORS for all origins
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  defaultHeaders: ['Content-Type', 'Authorization', 'Accept'],
-  exposedHeaders: [],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  credentials: true,
+  exposedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   maxAge: 86400 // 24 hours
 };
-
-// For backward compatibility
-const ALLOWED_ORIGINS = corsConfig.allowedOrigins;
-const UNIQUE_ORIGINS = corsConfig.allowedOrigins;
 
 export default {
   cors: corsConfig,
@@ -29,9 +25,13 @@ export default {
       headerName: 'X-CSRF-Token'
     },
     headers: {
+      // Disable MIME type sniffing for DigitalOcean compatibility
+      noSniff: false,
       xssProtection: '1; mode=block',
-      noSniff: true,
-      xFrameOptions: 'SAMEORIGIN', // Changed from 'DENY' for better compatibility
+      xFrameOptions: 'SAMEORIGIN',
+      // Add custom headers for better compatibility
+      'Content-Type': 'application/javascript',
+      'Cache-Control': 'public, max-age=31536000', // Changed from 'DENY' for better compatibility
       hsts: {
         enable: process.env.NODE_ENV === 'production',
         maxAge: 31536000,

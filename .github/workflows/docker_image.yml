@@ -13,7 +13,6 @@ jobs:
     - name: Check out the repo with submodules
       uses: actions/checkout@v4
       with:
-        submodules: true  # This will initialize and fetch submodules
         fetch-depth: 0    # Fetch full history
 
     - name: Login to dockerhub
