@@ -4,6 +4,9 @@ FROM node:18.20.3-bullseye-slim
 # Create app directory
 WORKDIR /usr/src/app
 
+# Initialize and update submodules
+RUN git submodule update --init --recursive
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     python3 \
