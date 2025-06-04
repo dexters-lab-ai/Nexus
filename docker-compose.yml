@@ -8,18 +8,18 @@ services:
     container_name: nexus-app
     ports:
       - "3420:3420"
-      - "3000:3000"
     env_file:
-      - .env.development
+      - .env.production
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - PORT=3420
-      # MongoDB configuration is in .env.production
     volumes:
       # Persist data between container restarts
       - nexus_data:/usr/src/app/nexus_run
       # Mount config directory for API keys
       - ./config:/usr/src/app/config:ro
+      # Mount public assets
+      - ./public:/usr/src/app/public
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "http://localhost:3420/api/health"]

@@ -1,5 +1,5 @@
-# Use Node.js 18 LTS
-FROM node:18.20.3-bullseye-slim
+# Stage 1: Build the application
+FROM node:18.20.3-bullseye-slim AS builder
 
 # Create app directory
 WORKDIR /usr/src/app
@@ -15,40 +15,45 @@ RUN apt-get update && apt-get install -y \
 # Copy package files first for better layer caching
 COPY package*.json ./
 
-
-# Clean up any existing node_modules and lock files
-RUN rm -rf node_modules package-lock.json pnpm-lock.yaml
-
-# Install dependencies with the correct Rollup binary
-RUN echo "Installing dependencies..." && \
-    npm install --legacy-peer-deps && \
-    npm install @rollup/rollup-linux-x64-gnu rollup-plugin-visualizer@5.9.2 --save-dev && \
-    echo "Dependency installation complete"
-
-# Verify Rollup installation
-RUN ls -la node_modules/@rollup/
-
-# Copy environment files
-COPY .env.development .env
-
-# Create necessary directories
-RUN mkdir -p nexus_run public/{assets,models,textures}
+# Install dependencies
+RUN npm ci --legacy-peer-deps --production=false && \
+    npm install @rollup/rollup-linux-x64-gnu rollup-plugin-visualizer@5.9.2 --save-dev
 
 # Copy app source
 COPY . .
 
-# Ensure static directories exist
+# Build the application
+RUN npm run build
+
+# Stage 2: Production image
+FROM node:18.20.3-bullseye-slim
+
+# Create app directory
+WORKDIR /usr/src/app
+
+# Install production dependencies only
+COPY --from=builder /usr/src/app/package*.json ./
+RUN npm ci --only=production
+
+# Copy built assets and server files
+COPY --from=builder /usr/src/app/dist ./dist
+COPY --from=builder /usr/src/app/server.js .
+COPY --from=builder /usr/src/app/src ./src
+COPY --from=builder /usr/src/app/public ./public
+COPY --from=builder /usr/src/app/nexus_run ./nexus_run
+
+# Create necessary directories
 RUN mkdir -p public/{assets,models,textures} nexus_run
 
-# Set environment to use the correct Rollup binary
-ENV ROLLUP_INLINE_RUN=1
+# Copy production environment file
+COPY .env.production .env
 
-# Expose ports (Vite + API)
-EXPOSE 3000 3420
+# Expose the application port
+EXPOSE 3420
 
 # Health check
 HEALTHCHECK --interval=60s --timeout=3s \
   CMD curl -f http://localhost:3420/api/health || exit 1
 
-# Start the application in development mode
-CMD ["npm", "run", "dev"]
+# Start the application in production mode
+CMD ["node", "server.js"]
