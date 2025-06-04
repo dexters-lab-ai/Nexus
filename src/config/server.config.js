@@ -15,7 +15,7 @@ const UNIQUE_ORIGINS = corsConfig.allowedOrigins;
 export default {
   cors: corsConfig,
   security: {
-    cors: false, // Let Cloudflare handle CORS
+    cors: true, // Let Cloudflare handle CORS
     csrf: {
       enable: true,
       ignoreMethods: ['GET', 'HEAD', 'OPTIONS', 'TRACE'],
