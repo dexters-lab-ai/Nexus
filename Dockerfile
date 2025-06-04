@@ -19,11 +19,34 @@ COPY package*.json ./
 RUN npm ci --legacy-peer-deps --production=false && \
     npm install @rollup/rollup-linux-x64-gnu rollup-plugin-visualizer@5.9.2 --save-dev
 
+# Copy environment files (will be overridden by build args if provided)
+COPY .env* ./
+
 # Copy app source
 COPY . .
 
+# Set build arguments with defaults
+ARG VITE_API_URL=https://operator-io236.ondigitalocean.app
+ARG VITE_WS_URL=wss://operator-io236.ondigitalocean.app
+ARG FRONTEND_URL=https://operator-io236.ondigitalocean.app
+ARG APP_DOMAIN=operator-io236.ondigitalocean.app
+
+# Set environment variables for Vite build
+ENV NODE_ENV=production \
+    VITE_API_URL=${VITE_API_URL} \
+    VITE_WS_URL=${VITE_WS_URL} \
+    FRONTEND_URL=${FRONTEND_URL} \
+    APP_DOMAIN=${APP_DOMAIN} \
+    DOCKER=true \
+    DEBUG=true
+
 # Build the application
-RUN npm run build
+RUN echo "Building with environment:" && \
+    echo "VITE_API_URL=${VITE_API_URL}" && \
+    echo "VITE_WS_URL=${VITE_WS_URL}" && \
+    echo "FRONTEND_URL=${FRONTEND_URL}" && \
+    echo "APP_DOMAIN=${APP_DOMAIN}" && \
+    npm run build
 
 # Stage 2: Production image
 FROM node:18.20.3-bullseye-slim

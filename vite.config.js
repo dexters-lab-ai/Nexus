@@ -8,20 +8,33 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default defineConfig(({ mode }) => {
-  // Load environment variables
-  const env = loadEnv(mode, process.cwd(), '');
-  const isDev = mode === 'development';
-  const isDocker = process.env.DOCKER === 'true';
-  const host = isDocker ? '0.0.0.0' : 'localhost';
-  const hmrHost = isDev ? 'localhost' : process.env.APP_DOMAIN || 'localhost';
+  // Load environment variables with proper prefix filtering
+  const env = {
+    ...process.env, // Include system environment variables
+    ...loadEnv(mode, process.cwd(), '') // Load .env files with VITE_* prefix
+  };
 
-  console.log('Vite Env:', {
-    mode,
-    isDocker,
-    VITE_API_URL: env.VITE_API_URL,
-    VITE_WS_URL: env.VITE_WS_URL,
-    FRONTEND_URL: env.FRONTEND_URL
-  });
+  const isDev = mode === 'development';
+  const isDocker = env.DOCKER === 'true';
+  const host = isDocker ? '0.0.0.0' : 'localhost';
+  const hmrHost = isDev ? 'localhost' : env.APP_DOMAIN || 'localhost';
+  const apiUrl = env.VITE_API_URL || (isDev ? 'http://localhost:3420' : '');
+  const wsUrl = env.VITE_WS_URL || (isDev ? 'ws://localhost:3420' : `wss://${env.APP_DOMAIN}`);
+
+  // Log environment for debugging (only in development or when explicitly enabled)
+  if (isDev || env.DEBUG === 'true') {
+    console.log('Vite Environment:', {
+      mode,
+      isDocker,
+      isDev,
+      host,
+      hmrHost,
+      VITE_API_URL: apiUrl,
+      VITE_WS_URL: wsUrl,
+      FRONTEND_URL: env.FRONTEND_URL,
+      NODE_ENV: env.NODE_ENV
+    });
+  }
 
   process.env.NODE_ENV = mode;
 
@@ -66,29 +79,32 @@ export default defineConfig(({ mode }) => {
       },
       proxy: {
         '/api': {
-          target: env.VITE_API_URL || 'http://localhost:3420',
+          target: apiUrl,
           changeOrigin: true,
-          secure: false,
+          secure: !isDev,
           ws: true
         },
         '/ws': {
-          target: env.VITE_WS_URL || 'ws://localhost:3420',
+          target: wsUrl.replace('wss://', 'https://').replace('ws://', 'http://'),
           ws: true,
           changeOrigin: true,
-          secure: false
+          secure: !isDev
         },
         '/uploads': {
-          target: env.VITE_API_URL || 'http://localhost:3420',
-          changeOrigin: true
+          target: apiUrl,
+          changeOrigin: true,
+          secure: !isDev
         },
         '/nexus_run': {
-          target: env.VITE_API_URL || 'http://localhost:3420',
+          target: apiUrl,
           changeOrigin: true,
+          secure: !isDev,
           rewrite: (path) => path
         },
         '/external-report': {
-          target: env.VITE_API_URL || 'http://localhost:3420',
+          target: apiUrl,
           changeOrigin: true,
+          secure: !isDev,
           rewrite: (path) => path
         }
       },
@@ -173,8 +189,10 @@ export default defineConfig(({ mode }) => {
     // Global constants
     define: {
       'process.env.NODE_ENV': JSON.stringify(mode),
-      'process.env.VITE_API_URL': JSON.stringify(env.VITE_API_URL || 'http://localhost:3420'),
-      'process.env.VITE_WS_URL': JSON.stringify(env.VITE_WS_URL || 'ws://localhost:3420')
+      'process.env.VITE_API_URL': JSON.stringify(apiUrl),
+      'process.env.VITE_WS_URL': JSON.stringify(wsUrl),
+      'process.env.FRONTEND_URL': JSON.stringify(env.FRONTEND_URL || ''),
+      'process.env.APP_DOMAIN': JSON.stringify(env.APP_DOMAIN || '')
     },
 
     // Plugins

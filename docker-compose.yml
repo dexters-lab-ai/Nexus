@@ -5,6 +5,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=https://operator-io236.ondigitalocean.app
+        - VITE_WS_URL=wss://operator-io236.ondigitalocean.app
+        - FRONTEND_URL=https://operator-io236.ondigitalocean.app
+        - APP_DOMAIN=operator-io236.ondigitalocean.app
     container_name: nexus-app
     ports:
       - "3420:3420"
@@ -13,6 +18,11 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3420
+      - VITE_API_URL=https://operator-io236.ondigitalocean.app
+      - VITE_WS_URL=wss://operator-io236.ondigitalocean.app
+      - FRONTEND_URL=https://operator-io236.ondigitalocean.app
+      - APP_DOMAIN=operator-io236.ondigitalocean.app
+      - DOCKER=true
     volumes:
       # Persist data between container restarts
       - nexus_data:/usr/src/app/nexus_run
