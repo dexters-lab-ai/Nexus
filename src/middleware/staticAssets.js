@@ -260,6 +260,18 @@ export default function serveStaticAssets(app) {
     })
   );
 
+  // Special handling for JavaScript files with proper MIME type
+  app.use(
+    '/js',
+    express.static(path.join(process.cwd(), 'public/js'), {
+      ...staticOptions,
+      setHeaders: (res, path) => {
+        res.setHeader('Content-Type', 'application/javascript');
+        setStaticFileHeaders(res, path);
+      },
+    })
+  );
+
   // Redirect /midscene_run to /nexus_run for backward compatibility
   app.use('/midscene_run', (req, res) => {
     res.redirect(301, `/nexus_run${req.path}`);
