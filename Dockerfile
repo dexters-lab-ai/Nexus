@@ -46,6 +46,7 @@ FROM node:18.20.3-bullseye-slim
 WORKDIR /usr/src/app
 
 # Install system dependencies
+RUN npm install -g rollup @rollup/rollup-linux-x64-gnu rollup-plugin-visualizer@5.9.2
 RUN apt-get update && \
     apt-get install -y curl && \
     rm -rf /var/lib/apt/lists/*
@@ -57,13 +58,22 @@ RUN npm install --only=production --legacy-peer-deps
 # Copy built app from builder
 COPY --from=builder /usr/src/app/dist ./dist
 
-# Copy server files and public directory
-COPY server.js .
+# Copy all necessary files and directories
+COPY --from=builder /usr/src/app/server.js .
+COPY --from=builder /usr/src/app/src ./src
 COPY --from=builder /usr/src/app/public ./public
+COPY --from=builder /usr/src/app/config ./config
+COPY --from=builder /usr/src/app/scripts ./scripts
+COPY --from=builder /usr/src/app/patches ./patches
+COPY --from=builder /usr/src/app/.env* ./
 
-# Create nexus_run directory and set permissions
+# Copy package files for production dependencies
+COPY --from=builder /usr/src/app/package*.json ./
+
+# Create necessary directories and set permissions
 RUN mkdir -p /usr/src/app/nexus_run && \
-    chown -R node:node /usr/src/app/nexus_run
+    mkdir -p /usr/src/app/midscene_run && \
+    chown -R node:node /usr/src/app/nexus_run /usr/src/app/midscene_run /usr/src/app/src /usr/src/app/config /usr/src/app/scripts /usr/src/app/patches
 
 # Set environment variables
 ENV NODE_ENV=production
