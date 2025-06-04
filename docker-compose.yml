@@ -13,8 +13,7 @@ services:
     container_name: nexus-app
     ports:
       - "3420:3420"
-    env_file:
-      - .env.production
+    # Environment variables are now passed directly rather than through .env file
     environment:
       - NODE_ENV=production
       - PORT=3420
@@ -23,16 +22,23 @@ services:
       - FRONTEND_URL=https://operator-io236.ondigitalocean.app
       - APP_DOMAIN=operator-io236.ondigitalocean.app
       - DOCKER=true
+      - NEXUS_RUN_DIR=/usr/src/app/nexus_run
     volumes:
       # Persist data between container restarts
       - nexus_data:/usr/src/app/nexus_run
-      # Mount config directory for API keys
+      # Mount config directory for API keys (read-only)
       - ./config:/usr/src/app/config:ro
       # Mount public assets
-      - ./public:/usr/src/app/public
+      - ./public:/usr/src/app/public:ro
+    # Ensure the container has enough resources
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "http://localhost:3420/api/health"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3420/api/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -42,15 +48,10 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 4G
-        reservations:
-          memory: 1G
+        compress: "true"
 
-# Define volumes for persistent data
+# Volumes for persistent data
 volumes:
   nexus_data:
     name: nexus_app_data
+    driver: local

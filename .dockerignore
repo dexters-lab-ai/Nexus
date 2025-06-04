@@ -5,9 +5,11 @@ yarn-error.log
 
 # Environment variables
 .env
-.env.*
+.env.local
+.env.development
+.env.test
+!.env.production
 !.env.example
-!.env.development
 
 # Version control
 .git
