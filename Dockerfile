@@ -11,27 +11,48 @@ RUN apt-get update && apt-get install -y \
     make \
     g++ \
     curl \
+    git \
+    build-essential \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libjpeg-dev \
+    libgif-dev \
+    librsvg2-dev \
     libperl4-corelibs-perl \
     perl-modules-5.32 \
     && rm -rf /var/lib/apt/lists/*
 
+# Install global build tools
+RUN npm install -g --force \
+    rollup \
+    @rollup/rollup-linux-x64-gnu \
+    rollup-plugin-visualizer@5.9.2 \
+    typescript \
+    ts-node \
+    prisma \
+    @prisma/client
+
 # Copy package files first for better layer caching
 COPY package*.json ./
+COPY yarn.lock .
+COPY prisma ./prisma/
 
 # Install dependencies
-RUN npm ci --legacy-peer-deps --production=false && \
-    npm install @rollup/rollup-linux-x64-gnu rollup-plugin-visualizer@5.9.2 --save-dev
+RUN yarn install --frozen-lockfile --network-timeout 1000000
 
-# Copy app source (excluding node_modules and other unnecessary files)
+# Copy application code
 COPY . .
 
-# Set build arguments with defaults
+# Generate Prisma client
+RUN npx prisma generate
+
+# Build arguments with defaults
 ARG VITE_API_URL=https://operator-io236.ondigitalocean.app
 ARG VITE_WS_URL=wss://operator-io236.ondigitalocean.app
 ARG FRONTEND_URL=https://operator-io236.ondigitalocean.app
 ARG APP_DOMAIN=operator-io236.ondigitalocean.app
 
-# Set environment variables for Vite build
+# Set environment variables for build
 ENV NODE_ENV=production
 ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_WS_URL=${VITE_WS_URL}
@@ -47,18 +68,24 @@ RUN echo "Building with environment:" && \
     yarn build
 
 # Stage 2: Production image
-FROM node:18-alpine
+FROM node:18.20.3-bullseye-slim
 
 # Set working directory
 WORKDIR /usr/src/app
 
 # Install system dependencies
-RUN apk add --no-cache \
-    perl \
-    libperl4-corelibs-perl \
-    perl-modules-5.32 \
+RUN apt-get update && apt-get install -y \
+    git \
+    python3 \
+    make \
+    g++ \
     wget \
-    ca-certificates
+    ca-certificates \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rollup and other build tools
+RUN npm install -g rollup @rollup/rollup-linux-x64-gnu rollup-plugin-visualizer@5.9.2
 
 # Copy package files
 COPY package*.json ./
@@ -69,10 +96,10 @@ COPY prisma ./prisma/
 RUN yarn install --production --frozen-lockfile --network-timeout 1000000
 
 # Copy built application from build stage
-COPY --from=build /usr/src/app/dist ./dist
-COPY --from=build /usr/src/app/.next ./.next
-COPY --from=build /usr/src/app/public ./public
-COPY --from=build /usr/src/app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /usr/src/app/dist ./dist
+COPY --from=builder /usr/src/app/.next ./.next
+COPY --from=builder /usr/src/app/public ./public
+COPY --from=builder /usr/src/app/node_modules/.prisma ./node_modules/.prisma
 
 # Copy only necessary files for production
 COPY --chown=node:node server.js .
@@ -88,6 +115,11 @@ USER node
 
 # Expose the application port
 EXPOSE 3420
+
+# Set environment variables for runtime
+ENV NODE_ENV=production
+ENV PORT=3420
+ENV NEXUS_RUN_DIR=/usr/src/app/nexus_run
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
