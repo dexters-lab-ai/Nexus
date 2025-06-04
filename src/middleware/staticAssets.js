@@ -157,7 +157,17 @@ export default function serveStaticAssets(app) {
       : [{
           path: path.join(process.cwd(), 'bruno_demo_temp', 'static'),
           route: '/bruno_demo_temp/static',
-          options: staticOptions
+          options: {
+            ...staticOptions,
+            setHeaders: (res) => {
+              // Log warning if directory doesn't exist
+              const staticPath = path.join(process.cwd(), 'bruno_demo_temp', 'static');
+              if (!fs.existsSync(staticPath)) {
+                console.warn('[Static Assets] Bruno demo static directory not found:', staticPath);
+              }
+              setStaticFileHeaders(res, staticPath);
+            }
+          }
         }]
     ),
     { path: path.join(process.cwd(), 'node_modules'), route: '/node_modules' },

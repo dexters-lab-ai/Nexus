@@ -37,6 +37,9 @@ RUN mkdir -p nexus_run public/{assets,models,textures}
 # Copy app source
 COPY . .
 
+# Ensure static directories exist
+RUN mkdir -p public/{assets,models,textures} nexus_run
+
 # Set environment to use the correct Rollup binary
 ENV ROLLUP_INLINE_RUN=1
 
