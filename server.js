@@ -91,26 +91,81 @@ function setupWebSocketServer(server) {
   // Handle new WebSocket connections
   wss.on('connection', (ws, req) => {
     const clientIp = req.socket.remoteAddress;
-    const connectionId = ws.connectionId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const connectionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // Initialize connection properties if not already set
-    ws.connectionId = ws.connectionId || connectionId;
-    ws.connectedAt = ws.connectedAt || Date.now();
-    ws.clientIp = ws.clientIp || clientIp;
-    ws.isAlive = true;
-    ws.lastPong = Date.now();
+    // Parse URL to get query parameters
+    let userId = 'guest';
+    let isAuthenticated = false;
     
-    // Add to global connections set if not already added
-    if (!allConnections.has(ws)) {
-      allConnections.add(ws);
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const params = new URLSearchParams(url.search);
+      userId = params.get('userId') || userId;
+      isAuthenticated = params.get('authenticated') === 'true';
+    } catch (error) {
+      console.error('[WebSocket] Error parsing URL:', error);
     }
     
-    console.log(`[WebSocket] New connection established`, {
+    // Initialize connection properties
+    ws.connectionId = connectionId;
+    ws.connectedAt = Date.now();
+    ws.clientIp = clientIp;
+    ws.isAlive = true;
+    ws.lastPong = Date.now();
+    ws.userId = userId;
+    ws.isAuthenticated = isAuthenticated;
+    
+    // Add to global connections set
+    allConnections.add(ws);
+    
+    // Initialize user connections map if needed
+    if (!userConnections.has(userId)) {
+      userConnections.set(userId, new Set());
+    }
+    
+    // Add connection to user's connection set
+    const userWsSet = userConnections.get(userId);
+    userWsSet.add(ws);
+    
+    console.log(`[WebSocket] New ${isAuthenticated ? 'authenticated' : 'guest'} connection established`, {
       connectionId: ws.connectionId,
       clientIp: ws.clientIp,
-      url: req.url,
-      totalConnections: allConnections.size
+      userId: ws.userId,
+      isAuthenticated: ws.isAuthenticated,
+      totalConnections: allConnections.size,
+      userConnections: userWsSet.size
     });
+    
+    // Send connection established message
+    ws.send(JSON.stringify({
+      type: 'connection_established',
+      connectionId: ws.connectionId,
+      isAuthenticated: ws.isAuthenticated,
+      userId: ws.userId,
+      timestamp: Date.now()
+    }));
+    
+    // Send connection ack with user info (required by frontend)
+    ws.send(JSON.stringify({
+      event: 'connection_ack',
+      timestamp: new Date().toISOString(),
+      userId: ws.userId,
+      connectionCount: userWsSet.size
+    }));
+    
+    // Send any queued messages for this user
+    if (unsentMessages.has(ws.userId)) {
+      const queued = unsentMessages.get(ws.userId);
+      console.log(`[WebSocket] Sending ${queued.length} queued messages to user ${ws.userId}`);
+      queued.forEach(msg => {
+        try {
+          ws.send(JSON.stringify(msg));
+        } catch (error) {
+          console.error(`[WebSocket] Error sending queued message to user ${ws.userId}:`, error);
+        }
+      });
+      unsentMessages.delete(ws.userId);
+    }
     
     // Handle pong messages for keep-alive
     ws.on('pong', () => {
@@ -122,13 +177,63 @@ function setupWebSocketServer(server) {
     ws.on('message', (message) => {
       try {
         const data = JSON.parse(message);
-        console.log(`[WebSocket] Message from ${ws.connectionId}:`, data);
+        
+        // Log message with connection details
+        console.log(`[WebSocket] Message from ${ws.connectionId} (${ws.userId}):`, data);
         
         // Handle ping/pong for keep-alive
         if (data.type === 'ping') {
-          console.log(`[WebSocket] Received app-level ping from ${ws.connectionId}`);
-          ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+          ws.send(JSON.stringify({ 
+            type: 'pong', 
+            timestamp: Date.now(),
+            connectionId: ws.connectionId
+          }));
           ws.isAlive = true;
+          return;
+        }
+        
+        // Handle authentication state updates
+        if (data.type === 'update_auth_state') {
+          const wasAuthenticated = ws.isAuthenticated;
+          const oldUserId = ws.userId;
+          
+          // Update connection state
+          ws.isAuthenticated = data.isAuthenticated;
+          ws.userId = data.userId || ws.userId;
+          
+          // Update user connections map if userId changed
+          if (oldUserId !== ws.userId) {
+            // Remove from old user's connections
+            if (userConnections.has(oldUserId)) {
+              const oldUserWsSet = userConnections.get(oldUserId);
+              oldUserWsSet.delete(ws);
+              if (oldUserWsSet.size === 0) {
+                userConnections.delete(oldUserId);
+              }
+            }
+            
+            // Add to new user's connections
+            if (!userConnections.has(ws.userId)) {
+              userConnections.set(ws.userId, new Set());
+            }
+            userConnections.get(ws.userId).add(ws);
+          }
+          
+          console.log(`[WebSocket] Updated auth state for ${ws.connectionId}:`, {
+            wasAuthenticated,
+            isNowAuthenticated: ws.isAuthenticated,
+            oldUserId,
+            newUserId: ws.userId
+          });
+          
+          // Notify client of successful auth state update
+          ws.send(JSON.stringify({
+            type: 'auth_state_updated',
+            isAuthenticated: ws.isAuthenticated,
+            userId: ws.userId,
+            timestamp: Date.now()
+          }));
+          
           return;
         }
         
@@ -139,136 +244,37 @@ function setupWebSocketServer(server) {
       }
     });
     
-    // Send initial welcome message
-    ws.send(JSON.stringify({
-      type: 'connection_established',
-      connectionId: ws.connectionId,
-      timestamp: Date.now()
-    }));
-    
-    // Parse userId from URL or token
-    let userId;
-    let userIdSource = 'unknown';
-    
-    try {
-      // Try to get from URL params first
-      const url = new URL(req.url, `ws://${req.headers.host}`);
-      userId = url.searchParams.get('userId');
-      userIdSource = 'url-param';
+    // Clean up connection resources
+    const cleanupConnection = () => {
+      console.log(`[WebSocket] Cleaning up connection: ${ws.connectionId} (${ws.userId || 'unknown'})`);
       
-      // If not in URL, check auth header
-      if (!userId && req.headers.authorization) {
-        try {
-          const token = req.headers.authorization.split(' ')[1];
-          const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-          userId = decoded.userId;
-          userIdSource = 'jwt-token';
-        } catch (e) {
-          console.warn('[WebSocket] Failed to get userId from auth header:', e.message);
+      // Remove from global connections
+      allConnections.delete(ws);
+      
+      // Remove from user connections
+      if (ws.userId && userConnections.has(ws.userId)) {
+        const userWsSet = userConnections.get(ws.userId);
+        userWsSet.delete(ws);
+        
+        if (userWsSet.size === 0) {
+          userConnections.delete(ws.userId);
         }
       }
       
-      // If still no userId, check cookies
-      if (!userId && req.headers.cookie) {
-        const cookies = cookie.parse(req.headers.cookie);
-        if (cookies.token) {
-          try {
-            const decoded = jwt.verify(cookies.token, process.env.JWT_SECRET || 'your-secret-key');
-            userId = decoded.userId;
-            userIdSource = 'cookie-token';
-          } catch (e) {
-            console.warn('[WebSocket] Failed to get userId from cookie:', e.message);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('[WebSocket] Error parsing connection info:', {
-        error: error.message,
-        stack: error.stack,
-        url: req.url,
-        headers: Object.keys(req.headers)
-      });
-    }
-    
-    if (userId) {
-      // Track connection in userConnections map
-      ws.userId = userId;
-      
-      if (!userConnections.has(userId)) {
-        userConnections.set(userId, new Set());
-      }
-      
-      const userWsSet = userConnections.get(userId);
-      userWsSet.add(ws);
-      
-      console.log(`[WebSocket] User connected:`, {
-        userId,
-        connectionId: ws.connectionId,
-        connectionCount: userWsSet.size,
-        totalUsers: userConnections.size,
-        userIdSource
-      });
-      
-      // Send connection ack with user info
-      ws.send(JSON.stringify({
-        event: 'connection_ack',
-        timestamp: new Date().toISOString(),
-        userId,
-        connectionCount: userWsSet.size
-      }));
-      
-      // Send any queued messages for this user
-      if (unsentMessages.has(userId)) {
-        const queued = unsentMessages.get(userId);
-        console.log(`[WebSocket] Sending ${queued.length} queued messages to user ${userId}`);
-        queued.forEach(msg => {
-          try {
-            ws.send(JSON.stringify(msg));
-          } catch (error) {
-            console.error(`[WebSocket] Error sending queued message to user ${userId}:`, error);
-          }
-        });
-        unsentMessages.delete(userId);
-      }
-    } else {
-      console.warn('[WebSocket] Connection established without userId');
-      ws.send(JSON.stringify({
-        event: 'auth_required',
-        message: 'Authentication required. Please provide a valid userId or token.'
-      }));
-    }
+      console.log(`[WebSocket] Connection cleanup complete for ${ws.connectionId}`);
+    };
     
     // Handle connection close
     ws.on('close', () => {
-      console.log(`[WebSocket] Connection closed: ${ws.connectionId}`);
-      allConnections.delete(ws);
-      
-      // Remove from user connections map if present
-      if (ws.userId) {
-        const userWsSet = userConnections.get(ws.userId);
-        if (userWsSet) {
-          const beforeSize = userWsSet.size;
-          userWsSet.delete(ws);
-          
-          if (userWsSet.size === 0) {
-            userConnections.delete(ws.userId);
-            console.log(`[WebSocket] Removed last connection for userId=${ws.userId}`);
-          }
-          
-          console.log(`[WebSocket] User connection closed:`, {
-            userId: ws.userId,
-            connectionId: ws.connectionId,
-            connectionsBefore: beforeSize,
-            connectionsAfter: userWsSet.size,
-            totalUsers: userConnections.size
-          });
-        }
-      }
+      console.log(`[WebSocket] Connection closed: ${ws.connectionId} (${ws.userId || 'unknown'})`);
+      cleanupConnection();
     });
     
     // Handle errors
     ws.on('error', (error) => {
       console.error(`[WebSocket] Error on connection ${ws.connectionId}:`, error);
+      cleanupConnection();
+      ws.terminate();
     });
   });
   
@@ -734,9 +740,12 @@ async function startApp() {
       console.log(`[WebSocket] New connection established: ${ws.connectionId}`);
     });
     
+    // Get port from environment or use default 3420 for development
+    const PORT = process.env.PORT || 3420;
+    
     // Start the HTTP server which will handle both HTTP and WebSocket connections
     return new Promise((resolve) => {
-      httpServer.listen(PORT, () => {
+      httpServer.listen(PORT, '0.0.0.0', () => {
         // Cool colored robot and lab icons for logs
 const ROBOT_ICON = '\u001b[38;5;39m🤖\u001b[0m'; // Bright blue robot
 const LAB_ICON = '\u001b[38;5;208m🧪\u001b[0m';   // Orange lab flask

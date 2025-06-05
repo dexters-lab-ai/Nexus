@@ -20,16 +20,37 @@ document.addEventListener('DOMContentLoaded', () => {
 async function initializeApp() {
   console.log('Initializing modern OPERATOR application...');
 
-  // Initialize WebSocket connection
-  const userId = localStorage.getItem('userId');
-  if (userId) {
-    WebSocketManager.init(userId);
-  }
+  // Initialize WebSocket connection with guest state
+  const userId = localStorage.getItem('userId') || `guest-${Math.random().toString(36).substr(2, 9)}`;
+  const isAuthenticated = !!localStorage.getItem('authToken');
   
-  // Listen for authentication events to reinitialize WebSocket
-  eventBus.on('user-authenticated', (userData) => {
+  // Initialize WebSocket with current auth state
+  WebSocketManager.init(userId, isAuthenticated).catch(error => {
+    console.error('Failed to initialize WebSocket:', error);
+  });
+  
+  // Listen for authentication events to update WebSocket connection
+  eventBus.on('user-authenticated', async (userData) => {
     if (userData?.id) {
-      WebSocketManager.init(userData.id);
+      try {
+        // Update WebSocket with authenticated state
+        await WebSocketManager.updateAuthState(userData.id, true);
+        console.log('WebSocket updated for authenticated user:', userData.id);
+      } catch (error) {
+        console.error('Failed to update WebSocket after authentication:', error);
+      }
+    }
+  });
+  
+  // Listen for logout events
+  eventBus.on('user-logged-out', async () => {
+    try {
+      // Update WebSocket with guest state
+      const guestId = `guest-${Math.random().toString(36).substr(2, 9)}`;
+      await WebSocketManager.updateAuthState(guestId, false);
+      console.log('WebSocket updated for guest user');
+    } catch (error) {
+      console.error('Failed to update WebSocket after logout:', error);
     }
   });
   

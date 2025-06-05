@@ -76,8 +76,17 @@ eventBus.once('initialize-application', async () => {
 
     // If still no userId, create a guest ID
     if (!userId) {
-      userId = 'guest_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
-      console.debug('Created guest userId:', userId);
+      try {
+        // Create a more robust guest ID that's URL-safe
+        const timestamp = Date.now();
+        const random = Math.floor(Math.random() * 10000);
+        userId = `guest_${timestamp}_${random}`.replace(/[^a-z0-9_-]/gi, '');
+        console.debug('Created guest userId:', userId);
+      } catch (error) {
+        console.error('Error generating guest ID:', error);
+        // Fallback to simple ID if generation fails
+        userId = `guest_${Date.now()}`.replace(/[^a-z0-9_-]/gi, '');
+      }
     }
 
     // Store the ID in all relevant places

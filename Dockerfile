@@ -146,4 +146,5 @@ USER node
 # Start the application with increased memory limit
 CMD ["node", "--max-old-space-size=4096", "server.js"]
 
-# Production stage - using the one defined above
+# Production stage is the default target (last stage in the file) did this for DigitalOcean deployment
+# To build a specific stage, use: docker build --target <stage> -t <image> .
