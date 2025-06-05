@@ -49,4 +49,6 @@ jobs:
         push: true
         tags: v01dail/nexus-dockerhub:latest
         file: ./Dockerfile
-        build-args: NODE_ENV=production
+        target: production
+        build-args: |
+          NODE_ENV=production
