@@ -105,20 +105,20 @@ RUN npm install --only=production --legacy-peer-deps
 # Copy built app from builder
 COPY --from=builder /usr/src/app/dist ./dist
 
-# Copy all necessary files and directories
+# Copy built files and config
+COPY --from=builder /usr/src/app/dist ./dist
 COPY --from=builder /usr/src/app/server.js .
 COPY --from=builder /usr/src/app/src ./src
 COPY --from=builder /usr/src/app/public ./public
 COPY --from=builder /usr/src/app/config ./config
 COPY --from=builder /usr/src/app/scripts ./scripts
 COPY --from=builder /usr/src/app/patches ./patches
-# Copy environment files - ensure .env.production is available as .env
-COPY --from=builder /usr/src/app/.env.production ./.env
-# Copy any other .env files if they exist
-RUN if [ -f /usr/src/app/.env.* ]; then cp /usr/src/app/.env.* .; fi
 
-# Copy package files for production dependencies
-COPY --from=builder /usr/src/app/package*.json ./
+# Copy and set up environment files
+COPY --from=builder /usr/src/app/.env* ./
+RUN if [ ! -f ".env" ] && [ -f ".env.production" ]; then \
+      cp .env.production .env; \
+    fi
 
 # Create necessary directories and set permissions
 RUN mkdir -p /usr/src/app/nexus_run && \

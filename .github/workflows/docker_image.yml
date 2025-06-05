@@ -3,9 +3,8 @@ name: Build and push Docker image to dockerhub
 on:
   push:
     branches: [ "main" ]
-    
-jobs:
 
+jobs:
   build:
     runs-on: ubuntu-latest
 
@@ -13,8 +12,8 @@ jobs:
     - name: Check out the repo
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0    # Fetch full history
-        submodules: none  # Explicitly disable submodule fetching
+        fetch-depth: 0
+        submodules: none
 
     - name: Login to dockerhub
       uses: docker/login-action@v3
@@ -22,9 +21,32 @@ jobs:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+    - name: Set up environment files
+      run: |
+        # List all files in the workspace for debugging
+        echo "Files in workspace before build:"
+        ls -la || true
+        
+        # Ensure .env.production exists
+        if [ ! -f ".env.production" ]; then
+          if [ -f ".env.example" ]; then
+            cp .env.example .env.production
+            echo "Created .env.production from .env.example"
+          else
+            echo "Error: .env.example not found!"
+            exit 1
+          fi
+        fi
+        
+        # List all environment files for debugging
+        echo "Environment files in workspace:"
+        ls -la .env* || true
+
     - name: Build and push to dockerhub
       uses: docker/build-push-action@v5
       with:
-        context: .  # Add dot to specify current directory as context
+        context: .
         push: true
         tags: v01dail/nexus-dockerhub:latest
+        file: ./Dockerfile
+        build-args: NODE_ENV=production

@@ -12,9 +12,9 @@ coverage/
 .env.*
 !.env.example
 !.env.development
+!.env.production
 *.env.local
 *.env.test
-*.env.production
 
 # Logs
 logs
