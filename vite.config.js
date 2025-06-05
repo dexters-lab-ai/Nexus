@@ -50,12 +50,14 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       strictPort: true,
       open: !isDocker, // Don't open browser in Docker
+      // File system configuration
       fs: {
-        strict: true,
+        strict: false,
         allow: [
           __dirname,
           path.join(__dirname, 'src'),
           path.join(__dirname, 'public'),
+          path.join(__dirname, 'node_modules'),
           path.join(__dirname, 'bruno_demo_temp')
         ],
         deny: [
@@ -122,6 +124,8 @@ export default defineConfig(({ mode }) => {
       assetsDir: 'assets',
       sourcemap: isDev,
       minify: !isDev ? 'terser' : false,
+      // Don't write files to disk in development
+      write: !isDev,
       target: 'esnext',
       chunkSizeWarningLimit: 2000,
       rollupOptions: {

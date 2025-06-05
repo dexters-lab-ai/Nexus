@@ -793,6 +793,15 @@ const guard = (req, res, next) => {
 // 1. API ROUTES (must come before static files)
 // =================================================
 
+// In development, we don't serve static files from the backend
+// as they are handled by Vite dev server on port 3000
+if (process.env.NODE_ENV !== 'development') {
+  // Serve static files from dist in production
+  app.use(express.static(path.join(__dirname, 'dist')));
+  app.use(express.static(path.join(__dirname, 'public')));
+  console.log('Serving static files from:', path.join(__dirname, 'dist'));
+}
+
 // Public API routes (no auth required)
 app.use('/api/auth', authRoutes);
 
@@ -1189,6 +1198,7 @@ app.post('/api/nli', requireAuth, async (req, res) => {
 
 // Special handling for model files in development
 if (NODE_ENV !== 'production') {
+  // In development, only serve backend assets
   const devModelsPath = path.join(__dirname, 'src', 'models');
   if (fs.existsSync(devModelsPath)) {
     app.use('/models', express.static(devModelsPath, {
@@ -1199,6 +1209,20 @@ if (NODE_ENV !== 'production') {
     }));
     logger.info(`Serving development models from ${devModelsPath}`);
   }
+  
+  // In development, don't serve static frontend files - let Vite handle them
+  console.log('[Dev] Running in development mode - Vite will serve frontend assets');
+} else {
+  // In production, serve static files from dist and public
+  app.use(express.static(path.join(__dirname, 'dist'), {
+    index: false,
+    setHeaders: setStaticFileHeaders
+  }));
+  
+  app.use(express.static(path.join(__dirname, 'public'), {
+    index: false,
+    setHeaders: setStaticFileHeaders
+  }));
 }
 
 // ======================================
@@ -1207,12 +1231,15 @@ if (NODE_ENV !== 'production') {
 
 // Serve index.html for root route with authentication check
 app.get('/', guard, (req, res) => {
-  const isDev = process.env.NODE_ENV === 'development';
-  const indexPath = isDev 
-    ? path.join(__dirname, 'src', 'index.html')
-    : path.join(__dirname, 'dist', 'index.html');
-    
-  res.sendFile(indexPath, {
+  // In development, if we're in a container with Vite running on port 3000
+  if (process.env.NODE_ENV === 'development' && process.env.DOCKER === 'true') {
+    // In container, Vite is on the same host but different port
+    console.log('[Docker Dev] Redirecting to Vite dev server for root route');
+    return res.redirect('http://localhost:3000');
+  }
+  
+  // In production, serve index.html from dist
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'), {
     headers: {
       'Content-Type': 'text/html',
       'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
@@ -1271,7 +1298,14 @@ const spaCatchAll = (req, res, next) => {
     return next();
   }
   
-  // For HTML5 client-side routing - serve index.html
+  // In containerized development, redirect to Vite dev server for frontend routes
+  if (process.env.NODE_ENV === 'development' && process.env.DOCKER === 'true') {
+    const viteUrl = `http://localhost:3000${req.path}`;
+    console.log(`[Docker Dev] Redirecting to Vite dev server: ${viteUrl}`);
+    return res.redirect(viteUrl);
+  }
+  
+  // In production, serve index.html from dist
   res.sendFile(path.join(__dirname, 'dist', 'index.html'), {
     headers: {
       'Content-Type': 'text/html',
@@ -1285,12 +1319,21 @@ const spaCatchAll = (req, res, next) => {
 
 // 404 handler - will be moved to the end of the file
 const html404Handler = (req, res) => {
+  // In development, let the frontend handle 404s
+  if (process.env.NODE_ENV === 'development' && process.env.DOCKER === 'true') {
+    return res.redirect(`http://localhost:3000${req.path}`);
+  }
+  
   if (req.accepts('html')) {
-    res.status(404).sendFile(path.join(__dirname, 'dist', '404.html'));
+    const errorPage = path.join(__dirname, 'dist', '404.html');
+    if (fs.existsSync(errorPage)) {
+      return res.status(404).sendFile(errorPage);
+    }
+    return res.status(404).send('Page not found');
   } else if (req.accepts('json')) {
-    res.status(404).json({ error: 'Not Found' });
+    return res.status(404).json({ error: 'Not Found' });
   } else {
-    res.status(404).type('txt').send('Not Found');
+    return res.status(404).type('txt').send('Not Found');
   }
 };
 

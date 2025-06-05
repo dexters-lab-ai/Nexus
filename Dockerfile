@@ -1,4 +1,4 @@
-# Stage 1: Builder stage
+# Stage 1: Builder
 FROM node:18.20.3-bullseye-slim AS builder
 
 WORKDIR /usr/src/app
@@ -39,6 +39,53 @@ ENV ROLLUP_INLINE_RUN=1
 
 # Build the application
 RUN npm run build
+
+# Development stage
+FROM node:18.20.3-bullseye-slim
+
+# Set working directory
+WORKDIR /usr/src/app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set environment to development
+ENV NODE_ENV=development
+
+# Copy package files first for better layer caching
+COPY package*.json ./
+COPY yarn.lock* ./
+
+# Install all dependencies (including devDependencies)
+RUN if [ -f "yarn.lock" ]; then yarn --frozen-lockfile; \
+    else npm ci; \
+    fi
+
+# Copy the rest of the application
+COPY . .
+
+# Create necessary directories
+RUN mkdir -p nexus_run && \
+    mkdir -p public/assets && \
+    mkdir -p public/models && \
+    mkdir -p public/textures
+
+# Set ownership and permissions
+RUN chown -R node:node /usr/src/app
+
+# Switch to non-root user
+USER node
+
+# Expose ports
+EXPOSE 3420 3000
+
+# Start the development server
+CMD ["npm", "run", "dev"]
 
 # Production stage
 FROM node:18.20.3-bullseye-slim

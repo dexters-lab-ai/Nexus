@@ -1,41 +1,42 @@
-version: '3.8'
-
 services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile
-      args:
-        - VITE_API_URL=https://operator-io236.ondigitalocean.app
-        - VITE_WS_URL=wss://operator-io236.ondigitalocean.app
-        - FRONTEND_URL=https://operator-io236.ondigitalocean.app
-        - APP_DOMAIN=operator-io236.ondigitalocean.app
+      dockerfile: Dockerfile.dev
     container_name: nexus-app
     ports:
       - "3420:3420"
-    # Environment variables are now passed directly rather than through .env file
+      - "3000:3000"  # For Vite dev server
     environment:
-      - NODE_ENV=production
-      - PORT=3420
-      - VITE_API_URL=https://operator-io236.ondigitalocean.app
-      - VITE_WS_URL=wss://operator-io236.ondigitalocean.app
-      - FRONTEND_URL=https://operator-io236.ondigitalocean.app
-      - APP_DOMAIN=operator-io236.ondigitalocean.app
+      - NODE_ENV=development
       - DOCKER=true
+      - PORT=3420
+      - VITE_API_URL=http://localhost:3420
+      - VITE_WS_URL=ws://localhost:3420
+      - FRONTEND_URL=http://localhost:3000
+      - APP_DOMAIN=localhost
       - NEXUS_RUN_DIR=/usr/src/app/nexus_run
+      # Enable Vite debug logging
+      - DEBUG=vite:*
     volumes:
-      # Persist data between container restarts
+      # Mount source code for hot reloading
+      - .:/usr/src/app
+      # Keep node_modules in container to avoid permission issues
+      - /usr/src/app/node_modules
+      # Persistent data
       - nexus_data:/usr/src/app/nexus_run
       # Mount config directory for API keys (read-only)
       - ./config:/usr/src/app/config:ro
-      # Mount public assets
-      - ./public:/usr/src/app/public:ro
-    # Ensure the container has enough resources
+    working_dir: /usr/src/app
+    # Use tini as init process to handle signals properly
+    init: true
+    # Container resource limits
     deploy:
       resources:
         limits:
           cpus: '2'
-          memory: 2G
+          memory: 4G
+    # Enable auto-restart unless stopped
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3420/api/health || exit 1"]
