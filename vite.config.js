@@ -16,8 +16,8 @@ export default defineConfig(({ mode }) => {
 
   const isDev = mode === 'development';
   const isDocker = env.DOCKER === 'true';
-  const host = isDocker ? '0.0.0.0' : 'localhost';
-  const hmrHost = isDev ? 'localhost' : env.APP_DOMAIN || 'localhost';
+  const host = '0.0.0.0';
+  const hmrHost = isDocker ? '0.0.0.0' : 'localhost';
   const apiUrl = env.VITE_API_URL || (isDev ? 'http://localhost:3420' : '');
   const wsUrl = env.VITE_WS_URL || (isDev ? 'ws://localhost:3420' : `wss://${env.APP_DOMAIN}`);
 
@@ -113,8 +113,9 @@ export default defineConfig(({ mode }) => {
       hmr: {
         protocol: isDev ? 'ws' : 'wss',
         host: hmrHost,
-        port: isDev ? 24678 : 443,
-        clientPort: isDev ? 24678 : 443
+        port: 24678,
+        clientPort: 24678,
+        overlay: !isDocker // Disable overlay in Docker to prevent connection issues
       }
     },
 

@@ -6,7 +6,8 @@ services:
     container_name: nexus-app
     ports:
       - "3420:3420"
-      - "3000:3000"  # For Vite dev server
+      - "3000:3000"  # Vite dev server
+      - "24678:24678"  # Vite HMR port
     environment:
       - NODE_ENV=development
       - DOCKER=true
@@ -16,17 +17,20 @@ services:
       - FRONTEND_URL=http://localhost:3000
       - APP_DOMAIN=localhost
       - NEXUS_RUN_DIR=/usr/src/app/nexus_run
-      # Enable Vite debug logging
-      - DEBUG=vite:*
     volumes:
       # Mount source code for hot reloading
       - .:/usr/src/app
-      # Keep node_modules in container to avoid permission issues
+      # Keep node_modules and .vite in container to avoid permission issues
       - /usr/src/app/node_modules
+      - /usr/src/app/.vite
       # Persistent data
       - nexus_data:/usr/src/app/nexus_run
       # Mount config directory for API keys (read-only)
       - ./config:/usr/src/app/config:ro
+      # Enable polling for file changes in development
+      - /usr/src/app/public
+      - /usr/src/app/src
+      - /usr/src/app/index.html
     working_dir: /usr/src/app
     # Use tini as init process to handle signals properly
     init: true

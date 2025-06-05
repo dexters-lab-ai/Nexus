@@ -13,7 +13,7 @@
     "scripts": {
         "prepare": "npx puppeteer browsers install chrome",
         "start": "cross-env NODE_ENV=production pm2 start ecosystem.config.yaml --no-daemon",
-        "dev": "cross-env NODE_ENV=development concurrently --names \"VITE,SERVER\" --prefix-colors \"green,blue\" --raw \"vite\" \"node --max-old-space-size=4096 server.js\"",
+        "dev": "cross-env NODE_ENV=development HOST=0.0.0.0 concurrently --names \"VITE,SERVER\" --prefix-colors \"green,blue\" --raw \"vite --host 0.0.0.0\" \"node --max-old-space-size=4096 server.js\"",
         "build": "cross-env NODE_ENV=production vite build && npm run copy-assets",
         "preview": "cross-env NODE_ENV=production vite preview --port 3000",
         "serve": "cross-env NODE_ENV=production node --max-old-space-size=4096 server.js",
