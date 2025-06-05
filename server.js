@@ -619,7 +619,6 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // 8.2 Session ,iddleware
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1); // Trust first proxy
-  sessionConfig.cookie.secure = true; // Serve secure cookies
 }
 app.use(sessionMiddleware);
 
