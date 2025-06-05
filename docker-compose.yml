@@ -28,9 +28,9 @@ services:
       # Mount config directory for API keys (read-only)
       - ./config:/usr/src/app/config:ro
       # Enable polling for file changes in development
-      - /usr/src/app/public
-      - /usr/src/app/src
-      - /usr/src/app/index.html
+      - ./public:/usr/src/app/public
+      - ./src:/usr/src/app/src
+      - ./index.html:/usr/src/app/index.html
     working_dir: /usr/src/app
     # Use tini as init process to handle signals properly
     init: true

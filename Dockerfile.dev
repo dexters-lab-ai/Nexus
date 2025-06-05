@@ -16,11 +16,12 @@ RUN apt-get update && apt-get install -y \
 # Set environment to development
 ENV NODE_ENV=development
 ENV DOCKER=true
+ENV HOST=0.0.0.0
+ENV VITE_DEV_SERVER_HOST=0.0.0.0
 
 # Copy package files first for better layer caching
 COPY package*.json ./
 COPY yarn.lock* ./
-
 
 # Install all dependencies (including devDependencies)
 RUN npm install --legacy-peer-deps && \
@@ -29,7 +30,7 @@ RUN npm install --legacy-peer-deps && \
 # Copy environment files
 COPY .env* ./
 
-# Create necessary directories
+# Create necessary directories with correct permissions
 RUN mkdir -p nexus_run && \
     mkdir -p public/assets && \
     mkdir -p public/models && \
@@ -37,7 +38,7 @@ RUN mkdir -p nexus_run && \
     chown -R node:node /usr/src/app && \
     chmod -R 755 /usr/src/app/nexus_run
 
-# Copy the rest of the application
+# Copy the rest of the application with correct permissions
 COPY --chown=node:node . .
 
 # Set environment to use the correct Rollup binary
@@ -47,7 +48,11 @@ ENV ROLLUP_INLINE_RUN=1
 USER node
 
 # Expose ports
-EXPOSE 3000 3420
+EXPOSE 3000 3420 24678
+
+# Set healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000 || exit 1
 
 # Start both frontend and backend in development mode
 CMD ["npm", "run", "dev"]
