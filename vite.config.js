@@ -18,8 +18,11 @@ export default defineConfig(({ mode }) => {
   const isDocker = env.DOCKER === 'true';
   const host = '0.0.0.0';
   const hmrHost = isDocker ? '0.0.0.0' : 'localhost';
-  const apiUrl = env.VITE_API_URL || (isDev ? 'http://localhost:3420' : '');
-  const wsUrl = env.VITE_WS_URL || (isDev ? 'ws://localhost:3420' : `wss://${env.APP_DOMAIN}`);
+  
+  // In Docker, the backend is on the same container, so use localhost
+  // For development outside Docker, use localhost
+  const apiUrl = isDocker ? 'http://localhost:3420' : (env.VITE_API_URL || (isDev ? 'http://localhost:3420' : ''));
+  const wsUrl = isDocker ? 'ws://localhost:3420' : (env.VITE_WS_URL || (isDev ? 'ws://localhost:3420' : `wss://${env.APP_DOMAIN}`));
 
   // Log environment for debugging (only in development or when explicitly enabled)
   if (isDev || env.DEBUG === 'true') {
@@ -38,18 +41,71 @@ export default defineConfig(({ mode }) => {
 
   process.env.NODE_ENV = mode;
 
+  // Custom logger to filter out noisy logs
+  const customLogger = {
+    ...console,
+    info: (msg, ...args) => {
+      // Filter out specific noisy logs
+      if (typeof msg === 'string' && (
+        // Vite internal logs
+        msg.includes('vite:') ||
+        // WebSocket connection logs
+        msg.includes('ws:') ||
+        msg.includes('WebSocket connection') ||
+        // File watching logs
+        msg.includes('files in') ||
+        // HMR logs
+        msg.includes('hmr:') ||
+        // Cache logs
+        msg.includes('cache:') ||
+        // Build logs
+        msg.includes('built in')
+      )) {
+        return;
+      }
+      console.info(msg, ...args);
+    },
+    // Also filter debug logs
+    debug: () => {}, // Completely disable debug logs
+    // Keep error and warn logs
+    error: console.error,
+    warn: console.warn,
+  };
+
   return {
     root: __dirname,
     publicDir: 'public',
     base: '/',
-    logLevel: 'info',
+    logLevel: 'warn', // Reduce default log level
+    customLogger,
 
     // Development server configuration
     server: {
       host,
       port: 3000,
       strictPort: true,
-      open: !isDocker, // Don't open browser in Docker
+      // Disable server info output
+      open: false,
+      // File system watcher configuration
+      watch: {
+        usePolling: true,
+        // Ignore common directories
+        ignored: [
+          '**/node_modules/**',
+          '**/.git/**',
+          '**/.next/**',
+          '**/dist/**',
+          '**/build/**'
+        ]
+      },
+      // Don't open browser in Docker
+      open: !isDocker,
+      // Enable CORS for development
+      cors: true,
+      // Disable pre-bundling logs
+      force: true,
+      // Disable sourcemap warnings
+      sourcemapIgnoreList: () => true,
       // File system configuration
       fs: {
         strict: false,

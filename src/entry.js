@@ -109,9 +109,9 @@ eventBus.once('initialize-application', async () => {
         sessionStorage.setItem('userId', newUserId);
         // Update message store
         updateMessageStoreUserId(newUserId);
-        // Reinitialize WebSocket if needed
+        // Reinitialize WebSocket with authentication
         if (window.WebSocketManager) {
-          window.WebSocketManager.init(newUserId);
+          window.WebSocketManager.init(newUserId, true); // true = isAuthenticated
         }
       }
     });
