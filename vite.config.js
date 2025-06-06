@@ -41,53 +41,32 @@ export default defineConfig(({ mode }) => {
 
   process.env.NODE_ENV = mode;
 
-  // Custom logger to filter out noisy logs
-  const customLogger = {
-    ...console,
-    info: (msg, ...args) => {
-      // Filter out specific noisy logs
-      if (typeof msg === 'string' && (
-        // Vite internal logs
-        msg.includes('vite:') ||
-        // WebSocket connection logs
-        msg.includes('ws:') ||
-        msg.includes('WebSocket connection') ||
-        // File watching logs
-        msg.includes('files in') ||
-        // HMR logs
-        msg.includes('hmr:') ||
-        // Cache logs
-        msg.includes('cache:') ||
-        // Build logs
-        msg.includes('built in')
-      )) {
-        return;
-      }
-      console.info(msg, ...args);
-    },
-    // Also filter debug logs
-    debug: () => {}, // Completely disable debug logs
-    // Keep error and warn logs
-    error: console.error,
-    warn: console.warn,
-  };
-
   return {
     root: __dirname,
     publicDir: 'public',
     base: '/',
-    logLevel: 'warn', // Reduce default log level
-    customLogger,
+    logLevel: 'warn', // Only show warnings and errors
 
     // Development server configuration
     server: {
-      host,
+      // Always bind to all network interfaces in Docker
+      host: '0.0.0.0',
       port: 3000,
       strictPort: true,
-      // Disable server info output
-      open: false,
+      // Disable auto-opening browser in Docker
+      open: !isDocker,
+      // Enable CORS for development
+      // CORS configuration
+      cors: {
+        origin: true,
+        methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+        preflightContinue: false,
+        optionsSuccessStatus: 204,
+        credentials: true
+      },
       // File system watcher configuration
       watch: {
+        // Required for Docker on Windows
         usePolling: true,
         // Ignore common directories
         ignored: [
@@ -95,23 +74,22 @@ export default defineConfig(({ mode }) => {
           '**/.git/**',
           '**/.next/**',
           '**/dist/**',
-          '**/build/**'
+          '**/build/**',
+          '**/nexus_run/**',
+          '**/midscene_run/**'
         ]
       },
-      // Don't open browser in Docker
-      open: !isDocker,
-      // Enable CORS for development
-      cors: true,
-      // Disable pre-bundling logs
-      force: true,
-      // Disable sourcemap warnings
+      // Configure sourcemap ignore list
       sourcemapIgnoreList: () => true,
-      // File system configuration
+      // File system access configuration
       fs: {
         strict: false,
         allow: [
-          __dirname,
-          path.join(__dirname, 'src'),
+          // Allow serving files from these directories
+          process.cwd(),
+          path.join(process.cwd(), 'src'),
+          path.join(process.cwd(), 'public'),
+          path.join(process.cwd(), 'node_modules'),
           path.join(__dirname, 'public'),
           path.join(__dirname, 'node_modules'),
           path.join(__dirname, 'bruno_demo_temp')
@@ -123,55 +101,67 @@ export default defineConfig(({ mode }) => {
           '**/midscene_run/report/**'
         ]
       },
-      cors: {
-        origin: true,
-        methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-        preflightContinue: false,
-        optionsSuccessStatus: 204,
-        credentials: true
-      },
       headers: {
         'Cross-Origin-Opener-Policy': 'same-origin',
         'Cross-Origin-Embedder-Policy': 'require-corp',
         'Cross-Origin-Resource-Policy': 'cross-origin'
       },
-      proxy: {
-        '/api': {
-          target: apiUrl,
-          changeOrigin: true,
-          secure: !isDev,
-          ws: true
-        },
-        '/ws': {
-          target: wsUrl.replace('wss://', 'https://').replace('ws://', 'http://'),
+      proxy: [
+        // WebSocket proxy - must come first
+        {
+          target: isDocker ? 'http://localhost:3420' : apiUrl,
           ws: true,
           changeOrigin: true,
-          secure: !isDev
+          secure: false,
+          logLevel: 'warn',
+          pathRewrite: { '^/ws': '' },
+          router: () => isDocker ? 'ws://localhost:3420' : wsUrl
         },
-        '/uploads': {
-          target: apiUrl,
+        // API proxy
+        {
+          target: isDocker ? 'http://localhost:3420' : apiUrl,
           changeOrigin: true,
-          secure: !isDev
+          secure: false,
+          logLevel: 'warn',
+          pathRewrite: { '^/api': '' },
         },
-        '/nexus_run': {
-          target: apiUrl,
+        // Static files and uploads
+        {
+          target: isDocker ? 'http://localhost:3420' : apiUrl,
           changeOrigin: true,
-          secure: !isDev,
-          rewrite: (path) => path
+          secure: false,
+          logLevel: 'warn',
+          pathRewrite: { '^/uploads': '/uploads' },
         },
-        '/external-report': {
-          target: apiUrl,
+        // Nexus run files
+        {
+          target: isDocker ? 'http://localhost:3420' : apiUrl,
           changeOrigin: true,
-          secure: !isDev,
-          rewrite: (path) => path
+          secure: false,
+          logLevel: 'warn',
+          pathRewrite: { '^/nexus_run': '/nexus_run' },
+        },
+        // External reports
+        {
+          target: isDocker ? 'http://localhost:3420' : apiUrl,
+          changeOrigin: true,
+          secure: false,
+          logLevel: 'warn',
+          pathRewrite: { '^/external-report': '/external-report' },
         }
-      },
+      ],
       hmr: {
         protocol: isDev ? 'ws' : 'wss',
-        host: hmrHost,
+        host: '0.0.0.0',
         port: 24678,
-        clientPort: 24678,
-        overlay: !isDocker // Disable overlay in Docker to prevent connection issues
+        // For Docker, we need to tell the client to connect to the host machine
+        clientPort: isDocker ? 24678 : 24678,
+        // Disable overlay in Docker to prevent connection issues
+        overlay: !isDocker,
+        // This is important for Docker networking
+        path: '/ws',
+        // Disable host check for Docker
+        disableHostCheck: true
       }
     },
 

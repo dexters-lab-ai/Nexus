@@ -9,8 +9,14 @@ RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
+    gcc \
+    gcc-8 \
+    g++-8 \
     git \
     curl \
+    python-is-python3 \
+    && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 80 \
+    --slave /usr/bin/g++ g++ /usr/bin/g++-8 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment to development
@@ -24,7 +30,11 @@ COPY package*.json ./
 COPY yarn.lock* ./
 
 # Install all dependencies (including devDependencies)
-RUN npm install --legacy-peer-deps && \
+# Clean npm cache and reinstall node-gyp
+RUN npm cache clean --force && \
+    npm install -g node-gyp && \
+    npm install --legacy-peer-deps --build-from-source && \
+    npm rebuild bcrypt --build-from-source && \
     npm install @rollup/rollup-linux-x64-gnu --save-dev
 
 # Copy environment files
