@@ -155,6 +155,17 @@ export default function serveStaticAssets(app) {
             setStaticFileHeaders(res, filePath);
           }
         }
+      },
+      // CSS files from dist/css
+      {
+        path: path.join(rootDir, 'dist', 'css'),
+        route: '/css',
+        options: {
+          ...staticOptions,
+          setHeaders: (res) => {
+            res.setHeader('Content-Type', 'text/css');
+          }
+        }
       }
     ]),
     

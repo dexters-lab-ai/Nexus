@@ -169,12 +169,11 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       assetsDir: 'assets',
+      emptyOutDir: true,
       sourcemap: isDev,
-      minify: !isDev ? 'terser' : false,
-      // Don't write files to disk in development
-      write: !isDev,
-      target: 'esnext',
-      chunkSizeWarningLimit: 2000,
+      minify: isDev ? false : 'terser',
+      cssCodeSplit: true,
+      cssTarget: 'es2015',
       rollupOptions: {
         input: path.resolve(__dirname, 'index.html'),
         output: {
@@ -182,7 +181,16 @@ export default defineConfig(({ mode }) => {
           chunkFileNames: 'assets/js/[name]-[hash].js',
           assetFileNames: (assetInfo) => {
             const ext = assetInfo.name.split('.').pop().toLowerCase();
-            if (ext === 'css') return 'assets/css/[name]-[hash][extname]';
+            const name = assetInfo.name.split('/').pop();
+            
+            // Handle CSS files from src/styles/components
+            if (ext === 'css') {
+              if (assetInfo.name.includes('src/styles/components/')) {
+                return `css/${name}`;
+              }
+              return 'assets/css/[name]-[hash][extname]';
+            }
+            
             if (['woff', 'woff2', 'ttf', 'eot'].includes(ext)) return 'assets/fonts/[name]-[hash][extname]';
             if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'assets/images/[name]-[hash][extname]';
             if (['glb', 'gltf', 'hdr', 'bin', 'wasm'].includes(ext)) return 'assets/models/[name]-[hash][extname]';
