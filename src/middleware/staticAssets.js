@@ -111,28 +111,70 @@ export default function serveStaticAssets(app) {
   // ===== CORE ASSETS =====
   // Main static directories
   const isDev = process.env.NODE_ENV === 'development';
-  // Common static directories for both dev and prod
+  const rootDir = process.cwd();
+  
+  // Static directories configuration
   const staticDirs = [
-    // Serve from dist in production, src in development
-    {
-      path: isDev ? path.join(process.cwd(), 'src') : path.join(process.cwd(), 'dist'),
-      route: '/',
-      options: {
-        ...staticOptions,
-        setHeaders: (res, path) => {
-          // Set proper content type based on file extension
-          if (path.endsWith('.js')) {
-            res.setHeader('Content-Type', 'application/javascript');
-          } else if (path.endsWith('.css')) {
-            res.setHeader('Content-Type', 'text/css');
+    // Production assets from dist directory
+    ...(isDev ? [] : [
+      {
+        path: path.join(rootDir, 'dist'),
+        route: '/',
+        options: {
+          ...staticOptions,
+          setHeaders: (res, filePath) => {
+            const ext = path.extname(filePath).toLowerCase();
+            // Set proper MIME type based on file extension
+            if (ext === '.js') {
+              res.setHeader('Content-Type', 'application/javascript');
+            } else if (ext === '.css') {
+              res.setHeader('Content-Type', 'text/css');
+            } else if (ext === '.json') {
+              res.setHeader('Content-Type', 'application/json');
+            } else if (['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(ext)) {
+              res.setHeader('Content-Type', `image/${ext.slice(1)}`.replace('jpg', 'jpeg'));
+            } else if (ext === '.ico') {
+              res.setHeader('Content-Type', 'image/x-icon');
+            } else if (ext === '.woff') {
+              res.setHeader('Content-Type', 'font/woff');
+            } else if (ext === '.woff2') {
+              res.setHeader('Content-Type', 'font/woff2');
+            } else if (ext === '.ttf') {
+              res.setHeader('Content-Type', 'font/ttf');
+            } else if (ext === '.eot') {
+              res.setHeader('Content-Type', 'application/vnd.ms-fontobject');
+            } else if (ext === '.wasm') {
+              res.setHeader('Content-Type', 'application/wasm');
+            } else if (ext === '.glb') {
+              res.setHeader('Content-Type', 'model/gltf-binary');
+            } else if (ext === '.gltf') {
+              res.setHeader('Content-Type', 'model/gltf+json');
+            } else if (ext === '.hdr') {
+              res.setHeader('Content-Type', 'application/octet-stream');
+            }
+            setStaticFileHeaders(res, filePath);
           }
-          // Allow CORS for all static assets
-          res.setHeader('Access-Control-Allow-Origin', '*');
-          res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
         }
       }
-    },
+    ]),
+    
+    // Development assets from src directory
+    ...(isDev ? [
+      {
+        path: path.join(rootDir, 'src'),
+        route: '/src',
+        options: {
+          ...staticOptions,
+          setHeaders: (res, filePath) => {
+            const ext = path.extname(filePath).toLowerCase();
+            if (ext === '.css') {
+              res.setHeader('Content-Type', 'text/css');
+            }
+            setStaticFileHeaders(res, filePath);
+          }
+        }
+      }
+    ] : []),
     // Public directory
     { 
       path: path.join(process.cwd(), 'public'), 
