@@ -97,7 +97,8 @@ eventBus.once('initialize-application', async () => {
     updateMessageStoreUserId(userId);
     
     // Initialize WebSocket with the user ID
-    const { WebSocketManager } = await import('../public/js/utils/WebSocketManager.js');
+    // Import WebSocketManager from utils directory
+    const { WebSocketManager } = await import('./utils/WebSocketManager.js');
     WebSocketManager.init(userId);
     
     // Listen for authentication events
