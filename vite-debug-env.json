@@ -1,0 +1,9 @@
+{
+  "mode": "development",
+  "isDev": true,
+  "isDocker": false,
+  "host": "0.0.0.0",
+  "hmrHost": "localhost",
+  "apiUrl": "http://localhost:3420",
+  "wsUrl": "ws://localhost:3420"
+}
