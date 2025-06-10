@@ -789,8 +789,70 @@ import messagesRouter from './src/routes/messages.js';
 import { setStaticFileHeaders } from './src/middleware/staticAssets.js';
 import serveStaticAssets from './src/middleware/staticAssets.js';
 
+// ======================================
+// 1. STATIC FILES (must come before authentication)
+// =================================================
+
+// In development, we don't serve static files from the backend
+// as they are handled by Vite dev server on port 3000
+if (process.env.NODE_ENV !== 'development') {
+  // Serve static files from dist in production
+  app.use(express.static(path.join(__dirname, 'dist'), {
+    setHeaders: (res, path) => {
+      // Set CORS headers for all static files
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      
+      // Set proper content type based on file extension
+      const ext = path.split('.').pop().toLowerCase();
+      if (ext === 'css') {
+        res.setHeader('Content-Type', 'text/css');
+      } else if (ext === 'js') {
+        res.setHeader('Content-Type', 'application/javascript');
+      } else if (['png', 'jpg', 'jpeg', 'gif', 'svg'].includes(ext)) {
+        res.setHeader('Content-Type', `image/${ext === 'jpg' ? 'jpeg' : ext}`);
+      }
+    }
+  }));
+  
+  // Serve public directory for other static assets
+  app.use(express.static(path.join(__dirname, 'public')));
+  
+  // Serve CSS files from dist/css
+  app.use('/css', express.static(path.join(__dirname, 'dist', 'css'), {
+    setHeaders: (res) => {
+      res.setHeader('Content-Type', 'text/css');
+    }
+  }));
+  
+  console.log('Serving static files from:', path.join(__dirname, 'dist'));
+}
+
 // Authentication guard middleware
 const guard = (req, res, next) => {
+  // Skip authentication for static files and login page
+  if (
+    req.path.startsWith('/css/') || 
+    req.path.startsWith('/assets/') ||
+    req.path.startsWith('/js/') ||
+    req.path.startsWith('/images/') ||
+    req.path.endsWith('.css') ||
+    req.path.endsWith('.js') ||
+    req.path.endsWith('.png') ||
+    req.path.endsWith('.jpg') ||
+    req.path.endsWith('.jpeg') ||
+    req.path.endsWith('.gif') ||
+    req.path.endsWith('.svg') ||
+    req.path.endsWith('.woff') ||
+    req.path.endsWith('.woff2') ||
+    req.path.endsWith('.ttf') ||
+    req.path.endsWith('.eot') ||
+    req.path === '/login.html' ||
+    req.path === '/'
+  ) {
+    return next();
+  }
+  
+  // Require authentication for all other routes
   if (!req.session.user) {
     return res.redirect('/login.html');
   }
@@ -798,17 +860,8 @@ const guard = (req, res, next) => {
 };
 
 // ======================================
-// 1. API ROUTES (must come before static files)
+// 2. API ROUTES
 // =================================================
-
-// In development, we don't serve static files from the backend
-// as they are handled by Vite dev server on port 3000
-if (process.env.NODE_ENV !== 'development') {
-  // Serve static files from dist in production
-  app.use(express.static(path.join(__dirname, 'dist')));
-  app.use(express.static(path.join(__dirname, 'public')));
-  console.log('Serving static files from:', path.join(__dirname, 'dist'));
-}
 
 // Public API routes (no auth required)
 app.use('/api/auth', authRoutes);

@@ -117,6 +117,7 @@ export default function serveStaticAssets(app) {
   const staticDirs = [
     // Production assets from dist directory
     ...(isDev ? [] : [
+      // Main dist directory for all assets
       {
         path: path.join(rootDir, 'dist'),
         route: '/',
@@ -125,38 +126,57 @@ export default function serveStaticAssets(app) {
           setHeaders: (res, filePath) => {
             const ext = path.extname(filePath).toLowerCase();
             // Set proper MIME type based on file extension
-            if (ext === '.js') {
-              res.setHeader('Content-Type', 'application/javascript');
-            } else if (ext === '.css') {
-              res.setHeader('Content-Type', 'text/css');
-            } else if (ext === '.json') {
-              res.setHeader('Content-Type', 'application/json');
-            } else if (['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(ext)) {
-              res.setHeader('Content-Type', `image/${ext.slice(1)}`.replace('jpg', 'jpeg'));
-            } else if (ext === '.ico') {
-              res.setHeader('Content-Type', 'image/x-icon');
-            } else if (ext === '.woff') {
-              res.setHeader('Content-Type', 'font/woff');
-            } else if (ext === '.woff2') {
-              res.setHeader('Content-Type', 'font/woff2');
-            } else if (ext === '.ttf') {
-              res.setHeader('Content-Type', 'font/ttf');
-            } else if (ext === '.eot') {
-              res.setHeader('Content-Type', 'application/vnd.ms-fontobject');
-            } else if (ext === '.wasm') {
-              res.setHeader('Content-Type', 'application/wasm');
-            } else if (ext === '.glb') {
-              res.setHeader('Content-Type', 'model/gltf-binary');
-            } else if (ext === '.gltf') {
-              res.setHeader('Content-Type', 'model/gltf+json');
-            } else if (ext === '.hdr') {
-              res.setHeader('Content-Type', 'application/octet-stream');
+            switch (ext) {
+              case '.js':
+                res.setHeader('Content-Type', 'application/javascript');
+                break;
+              case '.css':
+                res.setHeader('Content-Type', 'text/css');
+                break;
+              case '.json':
+                res.setHeader('Content-Type', 'application/json');
+                break;
+              case '.png':
+              case '.jpg':
+              case '.jpeg':
+              case '.gif':
+              case '.webp':
+              case '.svg':
+                res.setHeader('Content-Type', `image/${ext.slice(1)}`.replace('jpg', 'jpeg'));
+                break;
+              case '.ico':
+                res.setHeader('Content-Type', 'image/x-icon');
+                break;
+              case '.woff':
+                res.setHeader('Content-Type', 'font/woff');
+                break;
+              case '.woff2':
+                res.setHeader('Content-Type', 'font/woff2');
+                break;
+              case '.ttf':
+                res.setHeader('Content-Type', 'font/ttf');
+                break;
+              case '.eot':
+                res.setHeader('Content-Type', 'application/vnd.ms-fontobject');
+                break;
+              case '.wasm':
+                res.setHeader('Content-Type', 'application/wasm');
+                break;
+              case '.glb':
+                res.setHeader('Content-Type', 'model/gltf-binary');
+                break;
+              case '.gltf':
+                res.setHeader('Content-Type', 'model/gltf+json');
+                break;
+              case '.hdr':
+                res.setHeader('Content-Type', 'application/octet-stream');
+                break;
             }
             setStaticFileHeaders(res, filePath);
           }
         }
       },
-      // CSS files from dist/css
+      // Explicit CSS directory for component styles
       {
         path: path.join(rootDir, 'dist', 'css'),
         route: '/css',
@@ -164,6 +184,24 @@ export default function serveStaticAssets(app) {
           ...staticOptions,
           setHeaders: (res) => {
             res.setHeader('Content-Type', 'text/css');
+            setStaticFileHeaders(res, 'component.css');
+          }
+        }
+      },
+      // Assets directory for hashed assets
+      {
+        path: path.join(rootDir, 'dist', 'assets'),
+        route: '/assets',
+        options: {
+          ...staticOptions,
+          setHeaders: (res, filePath) => {
+            const ext = path.extname(filePath).toLowerCase();
+            if (ext === '.css') {
+              res.setHeader('Content-Type', 'text/css');
+            } else if (ext === '.js') {
+              res.setHeader('Content-Type', 'application/javascript');
+            }
+            setStaticFileHeaders(res, filePath);
           }
         }
       }
@@ -171,6 +209,7 @@ export default function serveStaticAssets(app) {
     
     // Development assets from src directory
     ...(isDev ? [
+      // Main src directory for development
       {
         path: path.join(rootDir, 'src'),
         route: '/src',
@@ -180,8 +219,24 @@ export default function serveStaticAssets(app) {
             const ext = path.extname(filePath).toLowerCase();
             if (ext === '.css') {
               res.setHeader('Content-Type', 'text/css');
+            } else if (ext === '.js') {
+              res.setHeader('Content-Type', 'application/javascript');
+            } else if (ext === '.jsx') {
+              res.setHeader('Content-Type', 'text/jsx');
             }
             setStaticFileHeaders(res, filePath);
+          }
+        }
+      },
+      // Development CSS from styles directory
+      {
+        path: path.join(rootDir, 'src', 'styles'),
+        route: '/styles',
+        options: {
+          ...staticOptions,
+          setHeaders: (res) => {
+            res.setHeader('Content-Type', 'text/css');
+            setStaticFileHeaders(res, 'style.css');
           }
         }
       }
@@ -301,29 +356,81 @@ export default function serveStaticAssets(app) {
     }
   });
 
-  // Special handling for CSS files with proper MIME type
-  app.use(
-    '/css',
-    express.static(path.join(process.cwd(), 'public/css'), {
-      ...staticOptions,
-      setHeaders: (res) => {
-        res.setHeader('Content-Type', 'text/css');
-        setStaticFileHeaders(res, 'style.css');
-      },
-    })
-  );
+  // Special handling for public assets with proper MIME types
+  const publicDirs = [
+    { 
+      path: 'css', 
+      route: '/css',
+      options: {
+        ...staticOptions,
+        setHeaders: (res) => {
+          res.setHeader('Content-Type', 'text/css');
+          setStaticFileHeaders(res, 'style.css');
+        }
+      }
+    },
+    { 
+      path: 'js', 
+      route: '/js',
+      options: {
+        ...staticOptions,
+        setHeaders: (res, filePath) => {
+          res.setHeader('Content-Type', 'application/javascript');
+          setStaticFileHeaders(res, filePath);
+        }
+      }
+    },
+    { 
+      path: 'assets', 
+      route: '/assets',
+      options: {
+        ...staticOptions,
+        setHeaders: (res, filePath) => {
+          const ext = path.extname(filePath).toLowerCase();
+          if (ext === '.css') {
+            res.setHeader('Content-Type', 'text/css');
+          } else if (ext === '.js') {
+            res.setHeader('Content-Type', 'application/javascript');
+          } else if (['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(ext)) {
+            res.setHeader('Content-Type', `image/${ext.slice(1)}`.replace('jpg', 'jpeg'));
+          }
+          setStaticFileHeaders(res, filePath);
+        }
+      }
+    },
+    { 
+      path: 'webfonts', 
+      route: '/webfonts',
+      options: {
+        ...staticOptions,
+        setHeaders: (res, filePath) => {
+          const ext = path.extname(filePath).toLowerCase();
+          if (ext === '.ttf') {
+            res.setHeader('Content-Type', 'font/ttf');
+          } else if (ext === '.woff') {
+            res.setHeader('Content-Type', 'font/woff');
+          } else if (ext === '.woff2') {
+            res.setHeader('Content-Type', 'font/woff2');
+          } else if (ext === '.eot') {
+            res.setHeader('Content-Type', 'application/vnd.ms-fontobject');
+          } else if (ext === '.svg') {
+            res.setHeader('Content-Type', 'image/svg+xml');
+          }
+          setStaticFileHeaders(res, filePath);
+        }
+      }
+    }
+  ];
 
-  // Special handling for JavaScript files with proper MIME type
-  app.use(
-    '/js',
-    express.static(path.join(process.cwd(), 'public/js'), {
-      ...staticOptions,
-      setHeaders: (res, path) => {
-        res.setHeader('Content-Type', 'application/javascript');
-        setStaticFileHeaders(res, path);
-      },
-    })
-  );
+  // Apply public directory handlers
+  publicDirs.forEach(({ path: dir, route, options }) => {
+    const dirPath = path.join(process.cwd(), 'public', dir);
+    if (fs.existsSync(dirPath)) {
+      app.use(route, express.static(dirPath, options));
+    } else if (isDev) {
+      console.warn(`[Static Assets] Public directory not found: ${dirPath}`);
+    }
+  });
 
   // Redirect /midscene_run to /nexus_run for backward compatibility
   app.use('/midscene_run', (req, res) => {
