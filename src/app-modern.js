@@ -193,17 +193,46 @@ async function loadAssets() {
   const assetLoadStartEvent = new Event('loading-assets-start');
   document.dispatchEvent(assetLoadStartEvent);
   
-  // CSS with fallback - low priority asset loading
+  // CSS with fallback - handles both development and production paths
   const loadCSS = (path) => {
     return new Promise((resolve) => {
+      const isProduction = process.env.NODE_ENV === 'production';
+      const cssFile = path.split('/').pop();
+      
+      // Convert development path to production path if needed
+      const href = isProduction && path.startsWith('/src/styles/') 
+        ? `/css/${cssFile}` 
+        : path;
+      
+      // Skip if already loaded
+      if (document.querySelector(`link[href="${href}"]`)) {
+        if (!isProduction) {
+          console.log(`[loadCSS] Stylesheet already loaded: ${cssFile}`);
+        }
+        return resolve();
+      }
+      
       const link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = path;
+      link.href = href;
+      
+      // Add debug logging in development
+      if (!isProduction) {
+        console.log(`[loadCSS] Loading stylesheet: ${cssFile} from ${href}`);
+        link.onload = () => console.log(`[loadCSS] Loaded: ${cssFile}`);
+      }
+      
       link.onerror = () => {
-        console.warn(`Fallback: ${path} not found`);
+        console.warn(`[loadCSS] Failed to load: ${cssFile} from ${href}`);
         resolve(); // Don't block loading if CSS fails
       };
-      link.onload = () => resolve();
+      
+      if (!isProduction && link.onload) {
+        link.onload();
+      } else {
+        link.onload = () => resolve();
+      }
+      
       document.head.appendChild(link);
     });
   };

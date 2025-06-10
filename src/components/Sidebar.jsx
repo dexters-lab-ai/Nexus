@@ -14,33 +14,52 @@ if (typeof window !== 'undefined') {
 // Load our new CSS - modern sidebar and intermediate results integration
 // This is done via JS to keep encapsulation and avoid modifying main HTML files
 const loadModernSidebar = () => {
-  if (!document.getElementById('modern-sidebar-css')) {
-    const linkEl = document.createElement('link');
-    linkEl.rel = 'stylesheet';
-    linkEl.href = '/src/styles/components/sidebar-modern.css';
-    linkEl.id = 'modern-sidebar-css';
-    document.head.appendChild(linkEl);
-  }
+  const isProduction = process.env.NODE_ENV === 'production';
   
-  // Ensure YAML maps CSS is loaded
-  if (!document.getElementById('yaml-maps-css')) {
-    const yamlCssEl = document.createElement('link');
-    yamlCssEl.rel = 'stylesheet';
-    yamlCssEl.href = '/src/styles/components/yaml-maps.css';
-    yamlCssEl.id = 'yaml-maps-css';
-    document.head.appendChild(yamlCssEl);
-  }
+  // Define all stylesheets with their production and development paths
+  const stylesheets = [
+    {
+      id: 'modern-sidebar-css',
+      dev: '/src/styles/components/sidebar-modern.css',
+      prod: '/css/sidebar-modern.css',
+      name: 'sidebar-modern'
+    },
+    {
+      id: 'yaml-maps-css',
+      dev: '/src/styles/components/yaml-maps.css',
+      prod: '/css/yaml-maps.css',
+      name: 'yaml-maps'
+    },
+    {
+      id: 'yaml-maps-fixes-css',
+      dev: '/src/styles/components/yaml-maps-fixes.css',
+      prod: '/css/yaml-maps-fixes.css',
+      name: 'yaml-maps-fixes'
+    }
+  ];
   
-  // Add our YAML maps fixes CSS
-  if (!document.getElementById('yaml-maps-fixes-css')) {
-    const fixesCssEl = document.createElement('link');
-    fixesCssEl.rel = 'stylesheet';
-    fixesCssEl.href = '/src/styles/components/yaml-maps-fixes.css';
-    fixesCssEl.id = 'yaml-maps-fixes-css';
-    document.head.appendChild(fixesCssEl);
-  }
+  // Load each stylesheet if not already loaded
+  stylesheets.forEach(({ id, dev, prod, name }) => {
+    if (!document.getElementById(id)) {
+      const href = isProduction ? prod : dev;
+      const linkEl = document.createElement('link');
+      linkEl.rel = 'stylesheet';
+      linkEl.href = href;
+      linkEl.id = id;
+      
+      // Add debug logging in development
+      if (!isProduction) {
+        linkEl.onload = () => console.log(`[Sidebar] Loaded stylesheet: ${name}`);
+        linkEl.onerror = () => console.error(`[Sidebar] Failed to load stylesheet: ${name}`);
+      }
+      
+      document.head.appendChild(linkEl);
+    }
+  });
   
-  console.log('CSS files loaded for modern sidebar and YAML maps');
+  if (!isProduction) {
+    console.log('CSS files loaded for modern sidebar and YAML maps');
+  }
 };
 
 // Load modern styles

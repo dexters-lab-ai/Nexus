@@ -1,5 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import '../styles/components/yaml-maps.css';
+
+// Load YAML maps CSS with environment detection
+const loadYamlMapsCSS = () => {
+  if (process.env.NODE_ENV === 'production') {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/css/yaml-maps.css';
+    link.id = 'yaml-maps-styles';
+    document.head.appendChild(link);
+  } else {
+    // In development, use dynamic import with cache busting
+    import('../styles/components/yaml-maps.css');
+  }
+};
+
+// Load the CSS when this module is imported
+loadYamlMapsCSS();
 
 /**
  * Modal component for creating and editing YAML maps

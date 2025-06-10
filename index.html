@@ -255,8 +255,32 @@
   </style>
   
   <!-- Enhanced Settings Modal Styling - loaded last to override other styles -->
-  <link rel="stylesheet" href="/src/styles/components/settings-modal-enhancements.css">
-  <link rel="stylesheet" href="/src/styles/components/settings-advanced.css" type="text/css">
+  <script>
+    // Load CSS with environment detection
+    (function() {
+      const isProduction = window.location.hostname !== 'localhost' && !window.location.hostname.startsWith('192.168');
+      const cssFiles = [
+        { id: 'settings-modal-enhancements', path: 'settings-modal-enhancements.css' },
+        { id: 'settings-advanced', path: 'settings-advanced.css' }
+      ];
+
+      cssFiles.forEach(file => {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.id = file.id + '-styles';
+        link.href = isProduction 
+          ? `/css/${file.path}` 
+          : `/src/styles/components/${file.path}`;
+        
+        // Add error handling
+        link.onerror = () => {
+          console.error(`Failed to load stylesheet: ${file.path}`);
+        };
+        
+        document.head.appendChild(link);
+      });
+    })();
+  </script>
   
 </head>
 <body class="loading">

@@ -12,12 +12,22 @@ function importGuideStyles() {
   const existingLink = document.getElementById('guide-overlay-styles');
   if (existingLink) existingLink.remove();
   
+  // Determine the correct path based on environment
+  const isProduction = process.env.NODE_ENV === 'production';
+  const cssPath = isProduction 
+    ? '/css/guide-overlay.css' 
+    : '/src/styles/components/guide-overlay.css';
+  
   // Add new theme
   const themeLink = document.createElement('link');
   themeLink.id = 'guide-overlay-styles';
   themeLink.rel = 'stylesheet';
-  themeLink.href = '/src/styles/components/guide-overlay.css';
+  themeLink.href = cssPath;
   document.head.appendChild(themeLink);
+  
+  if (!isProduction) {
+    console.log('[GuideOverlay] Loading CSS from:', cssPath);
+  }
 }
 
 // Import the styles when this file is loaded

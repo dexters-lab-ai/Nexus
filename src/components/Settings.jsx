@@ -13,30 +13,61 @@ import { version } from '../../package.json';
 
 // Load all required CSS for settings modal
 function loadStylesheets() {
-  // Define all stylesheets we need to load
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  // Define all stylesheets we need to load with their production paths
   const stylesheets = [
-    '/src/styles/components/modal-theme-unified.css',       // Base unified modal theme
-    '/src/styles/components/settings-button-styles.css',     // Modern button styling
-    '/src/styles/components/settings-api-keys.css',          // API Keys tab styling
-    '/src/styles/components/settings-llm-tab.css',           // LLM Settings tab styling
-    '/src/styles/components/settings-advanced.css'           // Settings-specific styles
+    { 
+      dev: '/src/styles/components/modal-theme-unified.css',
+      prod: '/css/modal-theme-unified.css',
+      name: 'modal-theme-unified'
+    },
+    { 
+      dev: '/src/styles/components/settings-button-styles.css',
+      prod: '/css/settings-button-styles.css',
+      name: 'settings-button-styles'
+    },
+    { 
+      dev: '/src/styles/components/settings-api-keys.css',
+      prod: '/css/settings-api-keys.css',
+      name: 'settings-api-keys'
+    },
+    { 
+      dev: '/src/styles/components/settings-llm-tab.css',
+      prod: '/css/settings-llm-tab.css',
+      name: 'settings-llm-tab'
+    },
+    { 
+      dev: '/src/styles/components/settings-advanced.css',
+      prod: '/css/settings-advanced.css',
+      name: 'settings-advanced'
+    },
+    // Footer styles (loaded separately to maintain order)
+    { 
+      dev: '/src/styles/components/settings-footer.css',
+      prod: '/css/settings-footer.css',
+      name: 'settings-footer',
+      isFooter: true
+    }
   ];
   
   // Load each stylesheet in order
-  stylesheets.forEach(stylesheet => {
+  stylesheets.forEach(({ dev, prod, name, isFooter }) => {
+    const href = isProduction ? prod : dev;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = stylesheet;
+    link.href = href;
     link.type = 'text/css';
+    link.id = `settings-${name}`;
+    
+    // For debugging
+    if (!isProduction) {
+      link.onerror = () => console.error(`[Settings] Failed to load stylesheet: ${name}`);
+      link.onload = () => console.log(`[Settings] Loaded stylesheet: ${name}`);
+    }
+    
     document.head.appendChild(link);
   });
-  
-  // Add settings footer styling
-  const footerLink = document.createElement('link');
-  footerLink.rel = 'stylesheet';
-  footerLink.href = '/src/styles/components/settings-footer.css';
-  footerLink.type = 'text/css';
-  document.head.appendChild(footerLink);
 }
 
 // Load the stylesheets

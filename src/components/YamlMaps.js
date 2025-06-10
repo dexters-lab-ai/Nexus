@@ -285,29 +285,55 @@ class YamlMaps {
     }
   }
 
-  // Load CSS files
+  // Load CSS files with proper paths for both dev and production
   loadStylesheets() {
+    const isProduction = process.env.NODE_ENV === 'production';
     const cssFiles = [
-      '/src/styles/components/yaml-maps.css',
-      '/src/styles/components/yaml-editor-fixes.css'
+      {
+        id: 'yaml-maps-styles',
+        dev: '/src/styles/components/yaml-maps.css',
+        prod: '/css/yaml-maps.css',
+        name: 'yaml-maps'
+      },
+      {
+        id: 'yaml-editor-fixes-styles',
+        dev: '/src/styles/components/yaml-editor-fixes.css',
+        prod: '/css/yaml-editor-fixes.css',
+        name: 'yaml-editor-fixes'
+      }
     ];
     
-    console.log('Loading YAML Maps stylesheets...');
+    if (!isProduction) {
+      console.log('Loading YAML Maps stylesheets in development mode...');
+    }
     
-    cssFiles.forEach(cssFile => {
-      if (!document.querySelector(`link[href="${cssFile}"]`)) {
+    cssFiles.forEach(({ id, dev, prod, name }) => {
+      const href = isProduction ? prod : dev;
+      
+      if (!document.getElementById(id)) {
         try {
           const link = document.createElement('link');
+          link.id = id;
           link.rel = 'stylesheet';
           link.type = 'text/css';
-          link.href = cssFile;
+          link.href = href;
+          
+          // Add debug logging in development
+          if (!isProduction) {
+            link.onload = () => console.log(`[YamlMaps] Loaded stylesheet: ${name}`);
+            link.onerror = () => console.error(`[YamlMaps] Failed to load stylesheet: ${name}`);
+          }
+          
           document.head.appendChild(link);
-          console.log(`Added stylesheet: ${cssFile}`);
+          
+          if (!isProduction) {
+            console.log(`Added stylesheet: ${name} (${href})`);
+          }
         } catch (error) {
-          console.error(`Failed to load stylesheet ${cssFile}:`, error);
+          console.error(`[YamlMaps] Failed to load stylesheet ${name}:`, error);
         }
-      } else {
-        console.log(`Stylesheet already loaded: ${cssFile}`);
+      } else if (!isProduction) {
+        console.log(`Stylesheet already loaded: ${name}`);
       }
     });
     

@@ -1,6 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { getUserUsage, getPlans, purchaseTokens, subscribeToPlan, getTransactionHistory } from '../api/billing.js';
-import '../styles/components/billing-component.css';
+
+// Load billing component CSS with environment detection
+const loadBillingCSS = () => {
+  if (process.env.NODE_ENV === 'production') {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/css/billing-component.css';
+    link.id = 'billing-component-styles';
+    document.head.appendChild(link);
+  } else {
+    // In development, use dynamic import with cache busting
+    import('../styles/components/billing-component.css');
+  }
+};
+
+// Load the CSS when this module is imported
+loadBillingCSS();
 
 /**
  * BillingComponent - Display token usage, purchase options, and subscription plans
