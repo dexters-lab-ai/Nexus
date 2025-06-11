@@ -663,7 +663,7 @@ app.use((req, res, next) => {
   // Get the origin of the request
   const origin = req.headers.origin || '';
   const allowedOrigins = [
-    'https://operator-nexus-knmr8.ondigitalocean.app',
+    'https://operator-pjcgr.ondigitalocean.app',
     'http://localhost:3000',
     'http://localhost:5173' // Vite dev server
   ];
