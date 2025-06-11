@@ -82,7 +82,7 @@ USER node
 EXPOSE 3420 3000
 
 # Start the development server
-CMD ["npm", "run", "dev"]
+# CMD ["npm", "run", "dev"]
 
 # Production stage
 FROM node:20.13.1-bullseye-slim AS production
@@ -152,7 +152,7 @@ HEALTHCHECK --interval=30s --timeout=3s \
 USER node
 
 # Start the application with increased memory limit and better Node.js settings
-CMD ["node", "--max-old-space-size=4096", "--trace-warnings", "--unhandled-rejections=strict", "server.js"]
+CMD ["node", "--max-old-space-size=4096", "server.js"]
 
 # Production stage is the default target (last stage in the file) did this for DigitalOcean deployment
 # To build a specific stage, use: docker build --target <stage> -t <image> .

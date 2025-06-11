@@ -1,7 +1,7 @@
 // src/routes/auth.js
-import express  from 'express';
-import bcrypt   from 'bcrypt';
-import User     from '../models/User.js';
+import express from 'express';
+import bcrypt from 'bcrypt';
+import User from '../models/User.js';
 
 const router = express.Router();
 
@@ -9,96 +9,286 @@ const router = express.Router();
 router.post('/register', async (req, res) => {
   try {
     const { email, password } = req.body;
+    
+    // Development mock auth fallback
     if (req.useMockAuth) {
-      // Dev fallback: allow any registration and return mock user
       req.session.user = 'dev-user-id';
       return res.json({ success: true, userId: 'dev-user-id', mock: true });
     }
-    // Validation logic
-    if (await User.exists({ email })) throw new Error('Email already exists');
-    const hashed = await bcrypt.hash(password, 10);
-    const user = await User.create({ email, password: hashed });
-    req.session.user = user._id;
-    res.status(201).json({ success: true, userId: user._id.toString() });
+
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({ success: false, error: 'Email and password are required' });
+    }
+
+    // Check if user already exists
+    if (await User.exists({ email })) {
+      return res.status(400).json({ success: false, error: 'Email already registered' });
+    }
+
+    // Create new user
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({ 
+      email, 
+      password: hashedPassword 
+    });
+
+    // Regenerate session to prevent session fixation
+    req.session.regenerate(async (err) => {
+      if (err) {
+        console.error('Session regeneration error:', err);
+        return res.status(500).json({ success: false, error: 'Session error' });
+      }
+      
+      // Set user ID in session
+      req.session.user = user._id.toString();
+      
+      // Save session
+      req.session.save((err) => {
+        if (err) {
+          console.error('Session save error:', err);
+          return res.status(500).json({ success: false, error: 'Session error' });
+        }
+        
+        // Return success response with user data (excluding sensitive info)
+        const userResponse = user.toObject();
+        delete userResponse.password;
+        
+        res.status(201).json({ 
+          success: true, 
+          user: userResponse 
+        });
+      });
+    });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    console.error('Registration error:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Registration failed',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 });
 
 // POST /login
 router.post('/login', async (req, res) => {
-  /*
-  console.log('👉 Login request:', {
-    headers: req.headers,
-    body: req.body,
-    sessionID: req.sessionID,
-    cookies: req.headers.cookie,
-  });
-  */
+  // Debug logging
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('Login request:', {
+      path: req.path,
+      method: req.method,
+      sessionId: req.sessionID,
+      hasSessionUser: !!req.session.user,
+      hasAuthHeader: !!req.headers.authorization
+    });
+  }
   
   const { email, password } = req.body;
+  
+  // Validate input
   if (!email || !password) {
-    console.log('🚨 Missing credentials:', { email, password });
-    return res.status(400).json({ error: 'Email and password are required' });
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Email and password are required' 
+    });
   }
   
   try {
+    // Find user by email
     const user = await User.findOne({ email });
     if (!user) {
-      console.log('🔍 User not found for email:', email);
-      throw new Error('Invalid email or password');
+      console.log('Login failed: User not found for email:', email);
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid credentials' 
+      });
     }
     
+    // Verify password
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) {
-      console.log('🔒 Invalid password for user:', email);
-      throw new Error('Invalid email or password');
+      console.log('Login failed: Invalid password for user:', email);
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid credentials' 
+      });
     }
     
-    req.session.user = user._id;
-    console.log('✅ Successful login:', { userId: user._id, sessionId: req.sessionID });
-    
-    // Save session explicitly before responding
-    req.session.save(err => {
+    // Regenerate session to prevent session fixation
+    req.session.regenerate(async (err) => {
       if (err) {
-        console.error('❌ Session save error:', err);
+        console.error('Session regeneration error:', err);
         return res.status(500).json({ success: false, error: 'Session error' });
       }
-      res.json({ success: true, userId: user._id.toString() });
+      
+      // Set user ID in session
+      req.session.user = user._id.toString();
+      
+      // Save session
+      req.session.save((err) => {
+        if (err) {
+          console.error('Session save error:', err);
+          return res.status(500).json({ success: false, error: 'Session error' });
+        }
+        
+        // Prepare user response (exclude sensitive data)
+        const userResponse = user.toObject();
+        delete userResponse.password;
+        
+        console.log('Successful login:', { 
+          userId: user._id, 
+          email: user.email,
+          sessionId: req.sessionID 
+        });
+        
+        // Return success response
+        res.json({ 
+          success: true, 
+          user: userResponse
+        });
+      });
     });
   } catch (err) {
-    console.error('❌ Login error:', err);
-    res.status(400).json({ success: false, error: 'Invalid credentials' });
+    console.error('Login error:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Login failed',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 });
 
-// GET /user
-router.get('/user', async (req, res) => {
-  if (req.useMockAuth) {
-    if (!req.session.user) {
-      return res.status(401).json({ success: false, error: 'Not authenticated', mock: true });
-    }
-    return res.json({ success: true, user: { _id: 'dev-user-id', email: 'dev', mock: true } });
-  }
+// Test endpoint to verify session and CORS
+router.get('/test-session', (req, res) => {
   try {
-    if (!req.session.user) {
-      return res.status(401).json({ success: false, error: 'Not authenticated' });
-    }
-    const user = await User.findById(req.session.user).select('-password');
-    if (!user) {
-      return res.status(404).json({ success: false, error: 'User not found' });
-    }
-    res.json({ success: true, user });
+    // Return session information
+    res.json({
+      success: true,
+      sessionId: req.sessionID,
+      userId: req.session.user,
+      isGuest: req.session.user && req.session.user.startsWith('guest_'),
+      headers: req.headers,
+      cookies: req.cookies,
+      secure: req.secure,
+      hostname: req.hostname,
+      ip: req.ip
+    });
   } catch (err) {
-    res.status(500).json({ success: false, error: 'Failed to fetch user info' });
+    console.error('Test session error:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to test session',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 });
 
-// GET /logout
+// GET /user - Get current user info
+router.get('/user', async (req, res) => {
+  try {
+    // Development mock auth fallback
+    if (req.useMockAuth) {
+      if (!req.session.user) {
+        return res.status(401).json({ 
+          success: false, 
+          error: 'Not authenticated', 
+          mock: true 
+        });
+      }
+      return res.json({ 
+        success: true, 
+        user: { 
+          _id: 'dev-user-id', 
+          email: 'dev', 
+          mock: true 
+        } 
+      });
+    }
+
+    // If no user in session, return 401
+    if (!req.session.user) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Not authenticated' 
+      });
+    }
+
+    // Get user from database or create guest user
+    const user = await User.findByIdOrString(req.session.user);
+    
+    // Prepare user response (exclude sensitive data)
+    const userResponse = {
+      _id: user._id,
+      email: user.email,
+      isGuest: user.isGuest || false,
+      modelPreferences: user.modelPreferences || {
+        default: 'gpt-4o',
+        code: 'gpt-4o',
+        content: 'gpt-4o',
+        research: 'gpt-4o'
+      },
+      preferredEngine: user.preferredEngine || 'gpt-4o',
+      executionMode: user.executionMode || 'step-planning',
+      maxSteps: user.maxSteps || 10,
+      privacyMode: user.privacyMode || false,
+      customUrls: user.customUrls || []
+    };
+    
+    res.json({ 
+      success: true, 
+      user: userResponse 
+    });
+    
+  } catch (err) {
+    console.error('Error fetching user:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch user info',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+});
+
+// GET /logout - Log out the current user
 router.get('/logout', (req, res) => {
-  req.session.destroy(err => {
-    if (err) console.error('Logout error:', err);
-    res.redirect('/login.html');
+  // Only destroy the session if it exists
+  if (!req.session) {
+    return res.redirect('/login');
+  }
+  
+  // Destroy the session
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Logout error:', err);
+      // Even if there's an error, we still want to clear the session cookie
+      res.clearCookie('nexus.sid', {
+        path: '/',
+        domain: process.env.NODE_ENV === 'production' ? 
+          (process.env.COOKIE_DOMAIN || '.ondigitalocean.app') : undefined,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+      });
+      return res.status(500).json({ success: false, error: 'Logout failed' });
+    }
+    
+    // Clear the session cookie
+    res.clearCookie('nexus.sid', {
+      path: '/',
+      domain: process.env.NODE_ENV === 'production' ? 
+        (process.env.COOKIE_DOMAIN || '.ondigitalocean.app') : undefined,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+    });
+    
+    // Redirect to login page or return success response for API calls
+    if (req.headers['x-requested-with'] === 'XMLHttpRequest' || 
+        req.headers.accept?.includes('application/json')) {
+      return res.json({ success: true });
+    }
+    
+    res.redirect('/login');
   });
 });
 

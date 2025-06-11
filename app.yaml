@@ -1,4 +1,5 @@
-name: nexus-dev
+name: operator-nexus
+region: nyc
 services:
 - name: web
   github:
@@ -6,7 +7,7 @@ services:
     deploy_on_push: true
     repo: dexters-lab-ai/Nexus
   dockerfile_path: Dockerfile
-  http_port: 3000  # Vite default port
+  http_port: 3420  # Production port
   instance_size_slug: professional-xs
   instance_count: 1
   
@@ -14,50 +15,46 @@ services:
   envs:
     # Server Configuration
     - key: NODE_ENV
-      value: development
+      value: production
     - key: PORT
-      value: '3420'
-    - key: VITE_API_PORT
       value: '3420'
     - key: NODE_OPTIONS
       value: --max-old-space-size=4096
     
     # API Configuration
+    - key: APP_DOMAIN
+      value: operator-pjcgr.ondigitalocean.app
     - key: VITE_API_URL
-      value: https://${APP_DOMAIN}
+      value: https://operator-pjcgr.ondigitalocean.app
     - key: VITE_WS_URL
-      value: wss://${APP_DOMAIN}
+      value: wss://operator-pjcgr.ondigitalocean.app
     - key: API_URL
-      value: https://${APP_DOMAIN}
+      value: https://operator-pjcgr.ondigitalocean.app
     - key: FRONTEND_URL
-      value: https://${APP_DOMAIN}
+      value: https://operator-pjcgr.ondigitalocean.app
     - key: WS_URL
-      value: wss://${APP_DOMAIN}
+      value: wss://operator-pjcgr.ondigitalocean.app
     - key: OPERATOR_APP_WS_URL
       value: wss://operator-pjcgr.ondigitalocean.app/ws
     
-    # Development specific
-    - key: HOST
-      value: '0.0.0.0'
-    - key: VITE_DEV_SERVER_HOST
-      value: '0.0.0.0'
-    - key: VITE_DEV_SERVER_PORT
-      value: '3000'
-    - key: VITE_DEV_SERVER_HMR
-      value: 'true'
-    
     # Security
     - key: SECURE_COOKIES
-      value: 'false'
+      value: 'true'
     - key: COOKIE_DOMAIN
-      value: ${COOKIE_DOMAIN}
+      value: operator-pjcgr.ondigitalocean.app
     - key: SAME_SITE_COOKIE
-      value: 'lax'
+      value: 'none'
     - key: CORS_ORIGIN
       value: https://operator-pjcgr.ondigitalocean.app
     - key: TRUST_PROXY
       value: '1'
     
+    # Midscene Configuration
+    - key: MIDSCENE_MODEL_NAME
+      value: gpt-4o-mini
+    - key: MIDSCENE_RUN_DIR
+      value: /app/nexus_run
+
     # Secrets - These should be set in DigitalOcean dashboard
     - key: SESSION_SECRET
       scope: RUN_AND_BUILD_TIME
@@ -86,18 +83,6 @@ services:
       value: config/google-key.json
     - key: WEBHOOK_URL
       value: https://operator-pjcgr.ondigitalocean.app/api/webhook
-    
-    # Midscene Configuration
-    - key: MIDSCENE_MODEL_NAME
-      value: gpt-4o-mini
-    - key: MIDSCENE_RUN_DIR
-      value: /app/nexus_run
-
-  # No build command needed as we're using dev server
-  build_command: echo "Skipping build in development mode"
-
-  # Start command (runs the dev server)
-  run_command: npm run dev
 
   # Health Check Configuration
   health_check:
@@ -108,21 +93,6 @@ services:
     success_threshold: 1
     failure_threshold: 3
     port: 3420
-  
-  # HTTP Headers Configuration
-  http_headers:
-    - name: X-Robots-Tag
-      value: "noindex, nofollow"
-    - name: X-Frame-Options
-      value: "DENY"
-    - name: X-Content-Type-Options
-      value: "nosniff"
-    - name: Referrer-Policy
-      value: "same-origin"
-    - name: Permissions-Policy
-      value: "camera=(), microphone=(), geolocation=()"
-    - name: Set-Cookie
-      value: "__cf_bm=; Path=/; Domain=operator-pjcgr.ondigitalocean.app; Secure; HttpOnly; SameSite=None; Max-Age=14400"
 
   # Static file serving configuration
   static_assets:
@@ -135,7 +105,7 @@ services:
       directory: /app/public
       headers:
         - name: Cache-Control
-          value: "public, max-age=86400"  # 24 hours for public assets
+          value: "public, max-age=86400"
     
     # Serve bruno_demo_temp directory
     - path: /bruno_demo_temp

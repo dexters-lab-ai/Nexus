@@ -594,17 +594,15 @@ function getEngineDisplayName(engineId) {
 const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET || 'your-secret-key',
   resave: false,
-  saveUninitialized: false,
+  saveUninitialized: true, // Allow uninitialized sessions for guests
   cookie: {
-    secure: process.env.NODE_ENV === 'production', // true in production, false in development
+    secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     domain: process.env.NODE_ENV === 'production' ? 
-      (process.env.COOKIE_DOMAIN || '.ondigitalocean.app') : // Use COOKIE_DOMAIN if set, otherwise fallback
-      undefined, // No domain in development
-    path: '/',  // Ensure cookie is sent for all paths
-    sameSite: 'lax' // Add this line to ensure compatibility with modern browsers
+      (process.env.COOKIE_DOMAIN || '.ondigitalocean.app') : undefined,
+    path: '/',
   },
   store: MongoStore.create({
     mongoUrl: process.env.MONGO_URI,
@@ -622,10 +620,23 @@ const sessionMiddleware = session({
   unset: 'destroy',
   proxy: true, // Trust the reverse proxy (e.g., Nginx, Cloudflare)
   rolling: true, // Reset the cookie maxAge on every request
-  saveUninitialized: true, // Save new sessions
   genid: function(req) {
-    return uuidv4(); // Use UUIDs for session IDs
+    // Generate guest ID if no user is logged in
+    if (!req.user) {
+      return `guest_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    }
+    return uuidv4();
   }
+});
+
+// Add middleware to handle guest sessions
+app.use((req, res, next) => {
+  // If no session user ID, create a guest session
+  if (!req.session.user) {
+    req.session.user = `guest_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    console.log('Created guest session:', req.session.user);
+  }
+  next();
 });
 
 // 8.1 Body parsers
@@ -656,55 +667,70 @@ app.use((req, res, next) => {
   next();
 });
 
-// 8.4 CORS Middleware ** before routes **
+// 8.4 CORS Middleware - Must be before session middleware
 import { corsMiddleware } from './src/middleware/cors.middleware.js';
 app.use(corsMiddleware);
 
-// 8.5 CSP Middleware - Configured to work with CORS and session configurations
+// 8.5 Trust proxy in production (before session middleware)
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1); // Trust first proxy
+}
+
+// 8.6 Session middleware
+app.use(sessionMiddleware);
+
+// 8.7 CSP and Security Headers
 app.use((req, res, next) => {
-  // Get the origin of the request
+  // Get the origin from the request
   const origin = req.headers.origin || '';
-  const allowedOrigins = [
-    'https://operator-pjcgr.ondigitalocean.app',
-    'http://localhost:3000',
-    'http://localhost:5173' // Vite dev server
+  
+  // Set security headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  
+  // Set Content Security Policy
+  const cspDirectives = [
+    "default-src 'self' data: blob:;",
+    `connect-src 'self' ${origin} ws: wss: data: blob: https://api.openai.com;`,
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval';",
+    "style-src 'self' 'unsafe-inline';",
+    "img-src 'self' data: blob:;",
+    "font-src 'self' data:;",
+    "frame-ancestors 'none';",
+    "form-action 'self';"
   ];
   
-  // Check if the origin is allowed
-  const requestOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+  // Add report-uri in production
+  if (process.env.NODE_ENV === 'production' && process.env.CSP_REPORT_URI) {
+    cspDirectives.push(`report-uri ${process.env.CSP_REPORT_URI}`);
+  }
   
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', requestOrigin);
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  // Set the CSP header
+  res.setHeader('Content-Security-Policy', cspDirectives.join(' '));
+  
+  // Set HSTS in production
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
+  
+  // Set Referrer-Policy
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
+  // Set Permissions-Policy
+  res.setHeader('Permissions-Policy', [
+    'geolocation=()',
+    'microphone=()',
+    'camera=()',
+    'payment=()',
+    'fullscreen=()',
+    'display-capture=()'
+  ].join(', '));
   
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
   }
-  
-  // Set Content Security Policy headers
-  const cspDirectives = [
-    "default-src 'self' data: blob:;",
-    `connect-src 'self' ${requestOrigin} ws: wss: data: blob:;`,
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:;",
-    "style-src 'self' 'unsafe-inline' data: blob:;",
-    "img-src 'self' data: blob: *;",
-    "font-src 'self' data: *;",
-    "media-src 'self' data: blob: *;",
-    "worker-src 'self' blob: data: *;",
-    "child-src 'self' blob: data: *;",
-    "frame-src 'self' * data: blob:;"
-  ].join(' ');
-  
-  // Set security headers
-  res.setHeader('Content-Security-Policy', cspDirectives);
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'ALLOWALL');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Feature-Policy', "geolocation 'self'; microphone 'none'; camera 'none'");
   
   next();
 });
