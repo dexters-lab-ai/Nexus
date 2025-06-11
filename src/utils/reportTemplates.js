@@ -14,13 +14,13 @@ export function fixReportHtml(htmlContent) {
   // Replace Midscene logo with custom logo
   let fixedHtml = htmlContent.replace(
     /<div class="logo"><img alt="Midscene_logo" src="https:\/\/lf3-static\.bytednsdoc\.com\/obj\/eden-cn\/vhaeh7vhabf\/Midscene\.png"><\/div>/g,
-    '<div class="logo"><img alt="Operator Logo" src="/logo.svg" style="height: 60px; filter: drop-shadow(0 0 8px rgba(93, 63, 211, 0.8)) drop-shadow(0 0 12px rgba(41, 17, 122, 0.6));"></div>'
+    '<div class="logo"><img alt="Operator Logo" src="/logo.png" style="height: 60px; filter: drop-shadow(0 0 8px rgba(93, 63, 211, 0.8)) drop-shadow(0 0 12px rgba(41, 17, 122, 0.6));"></div>'
   );
 
   // Also handle other variations of the Midscene logo
   fixedHtml = fixedHtml.replace(
     /<img[^>]*alt="Midscene_logo"[^>]*>/g,
-    '<img alt="Operator Logo" src="/logo.svg" style="height: 60px; filter: drop-shadow(0 0 8px rgba(93, 63, 211, 0.8)) drop-shadow(0 0 12px rgba(41, 17, 122, 0.6));">'
+    '<img alt="Operator Logo" src="/logo.png" style="height: 60px; filter: drop-shadow(0 0 8px rgba(93, 63, 211, 0.8)) drop-shadow(0 0 12px rgba(41, 17, 122, 0.6));">'
   );
   
   // Comprehensive fix for HTML5 void elements

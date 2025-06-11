@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="public/logo.svg" alt="O.P.E.R.A.T.O.R Logo" width="200"/>
+  <img src="public/logo.png" alt="O.P.E.R.A.T.O.R Logo" width="200"/>
   
   # O.P.E.R.A.T.O.R
   

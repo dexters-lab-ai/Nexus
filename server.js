@@ -882,12 +882,6 @@ if (process.env.NODE_ENV !== 'development') {
     }
   }));
 
-  // Explicitly serve the logo with correct MIME type
-  app.get('/logo.svg', (req, res) => {
-    res.setHeader('Content-Type', 'image/svg+xml');
-    res.sendFile(path.join(__dirname, 'public', 'logo.svg'));
-  });
-
   // Serve public directory for other static assets with proper MIME types
   app.use(express.static(path.join(__dirname, 'public'), {
     setHeaders: (res, filePath) => {
