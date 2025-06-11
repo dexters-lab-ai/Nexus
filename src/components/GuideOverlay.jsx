@@ -14,15 +14,15 @@ function importGuideStyles() {
   
   // Determine the correct path based on environment
   const isProduction = process.env.NODE_ENV === 'production';
-  const cssPath = isProduction 
-    ? '/css/guide-overlay.css' 
+  const cssHref = isProduction 
+    ? '/css/components/guide-overlay.css' 
     : '/src/styles/components/guide-overlay.css';
   
   // Add new theme
   const themeLink = document.createElement('link');
   themeLink.id = 'guide-overlay-styles';
   themeLink.rel = 'stylesheet';
-  themeLink.href = cssPath;
+  themeLink.href = cssHref;
   document.head.appendChild(themeLink);
   
   if (!isProduction) {
