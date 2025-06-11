@@ -13,9 +13,8 @@ import configureMime from './mimeConfig.js';
  * Set security and caching headers for static files
  * @param {Object} res - Response object
  * @param {string} filePath - Path to the file being served
- * @param {Object} req - Request object
  */
-const setStaticFileHeaders = (res, filePath, req) => {
+const setStaticFileHeaders = (res, filePath) => {
   // Security headers
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -27,16 +26,7 @@ const setStaticFileHeaders = (res, filePath, req) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
   
   // Set CORS headers for all static assets
-  const allowedOrigins = [
-    'https://operator-nexus-knmr8.ondigitalocean.app',
-    'http://localhost:3000',
-    'http://localhost:5173'
-  ];
-  const requestOrigin = req.headers.origin;
-  if (allowedOrigins.includes(requestOrigin)) {
-    res.setHeader('Access-Control-Allow-Origin', requestOrigin);
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-  }
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours

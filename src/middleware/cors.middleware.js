@@ -8,29 +8,28 @@ import { corsConfig } from '../config/server.config.js';
 
 export const corsMiddleware = (req, res, next) => {
   const origin = req.headers.origin;
+  const allowedOrigins = [
+    'https://operator-nexus-knmr8.ondigitalocean.app',
+    'http://localhost:3000',
+    'http://localhost:5173' // Vite dev server
+  ];
+
+  // Set the origin based on the request
+  const requestOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
   
-  // Check if the origin is allowed
-  const isAllowedOrigin = corsConfig.origin.includes(origin);
-  
-  // If origin is allowed, set it in the response
-  if (isAllowedOrigin) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Credentials', 'true');
-  }
-  
-  // Set other CORS headers
+  // Set CORS headers
+  res.header('Access-Control-Allow-Origin', requestOrigin);
   res.header('Access-Control-Allow-Methods', corsConfig.methods.join(', '));
   res.header('Access-Control-Allow-Headers', corsConfig.allowedHeaders.join(', '));
+  res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Expose-Headers', corsConfig.exposedHeaders.join(', '));
   res.header('Access-Control-Max-Age', corsConfig.maxAge.toString());
   
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
-    // For preflight, we need to return 204 No Content with appropriate headers
     return res.status(204).end();
   }
   
-  // Continue to the next middleware
   next();
 };
 

@@ -1,15 +1,11 @@
 // Export CORS configuration for middleware
 export const corsConfig = {
-  origin: [
-    'https://operator-nexus-knmr8.ondigitalocean.app',
-    'http://localhost:3000',
-    'http://localhost:5173'
-  ],
+  origin: true, // Will be overridden by the middleware
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
   credentials: true,
-  exposedHeaders: ['Content-Length', 'Content-Range', 'X-Total-Count'],
-  maxAge: 600 // 10 minutes
+  exposedHeaders: ['Content-Type', 'Authorization', 'Set-Cookie'],
+  maxAge: 86400 // 24 hours
 };
 
 export default {

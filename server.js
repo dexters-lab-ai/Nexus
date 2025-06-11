@@ -590,22 +590,19 @@ function getEngineDisplayName(engineId) {
 // ======================================
 // 8. EXPRESS APP & MIDDLEWARE - IN ORDER
 // ======================================
-// Session configuration with enhanced security settings
+// Session configuration with secure settings
 const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET || 'your-secret-key',
   resave: false,
   saveUninitialized: false,
-  rolling: true, // Reset maxAge on every request
-  name: 'nexus.sid',
-  proxy: true, // Trust the reverse proxy
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.NODE_ENV === 'production', // true in production, false in development
     httpOnly: true,
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     domain: process.env.NODE_ENV === 'production' ? '.ondigitalocean.app' : undefined,
-    path: '/',
-    secureProxy: true // If behind a proxy (like nginx)
+    path: '/',  // Ensure cookie is sent for all paths
+    sameSite: 'lax' // Add this line to ensure compatibility with modern browsers
   },
   store: MongoStore.create({
     mongoUrl: process.env.MONGO_URI,
@@ -834,9 +831,9 @@ import serveStaticAssets from './src/middleware/staticAssets.js';
 if (process.env.NODE_ENV !== 'development') {
   // Serve static files from dist in production
   app.use(express.static(path.join(__dirname, 'dist'), {
-    setHeaders: (res, path, req) => {
-      // Use our enhanced static file headers with CORS support
-      setStaticFileHeaders(res, path, req);
+    setHeaders: (res, path) => {
+      // Set CORS headers for all static files
+      res.setHeader('Access-Control-Allow-Origin', '*');
       
       // Set proper content type based on file extension
       const ext = path.split('.').pop().toLowerCase();
@@ -844,23 +841,18 @@ if (process.env.NODE_ENV !== 'development') {
         res.setHeader('Content-Type', 'text/css');
       } else if (ext === 'js') {
         res.setHeader('Content-Type', 'application/javascript');
-      } else if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif'].includes(ext)) {
-        res.setHeader('Content-Type', `image/${ext === 'jpg' ? 'jpeg' : ext === 'svg' ? 'svg+xml' : ext}`);
+      } else if (['png', 'jpg', 'jpeg', 'gif', 'svg'].includes(ext)) {
+        res.setHeader('Content-Type', `image/${ext === 'jpg' ? 'jpeg' : ext}`);
       }
     }
   }));
   
-  // Serve public directory for other static assets with CORS support
-  app.use(express.static(path.join(__dirname, 'public'), {
-    setHeaders: (res, path, req) => {
-      setStaticFileHeaders(res, path, req);
-    }
-  }));
+  // Serve public directory for other static assets
+  app.use(express.static(path.join(__dirname, 'public')));
   
-  // Serve CSS files from dist/css with CORS support
+  // Serve CSS files from dist/css
   app.use('/css', express.static(path.join(__dirname, 'dist', 'css'), {
-    setHeaders: (res, path, req) => {
-      setStaticFileHeaders(res, path, req);
+    setHeaders: (res) => {
       res.setHeader('Content-Type', 'text/css');
     }
   }));

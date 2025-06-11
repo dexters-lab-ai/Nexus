@@ -1,15 +1,9 @@
 // src/routes/auth.js
-import express from 'express';
-import bcrypt from 'bcrypt';
-import User from '../models/User.js';
-import { authLimiter } from '../middleware/rateLimit.js';
+import express  from 'express';
+import bcrypt   from 'bcrypt';
+import User     from '../models/User.js';
 
 const router = express.Router();
-
-// Apply rate limiting to auth routes
-router.use('/login', authLimiter);
-router.use('/register', authLimiter);
-router.use('/request-reset', authLimiter);
 
 // POST /register
 router.post('/register', async (req, res) => {
@@ -33,96 +27,48 @@ router.post('/register', async (req, res) => {
 
 // POST /login
 router.post('/login', async (req, res) => {
-  // Debug logging
-  const debug = process.env.NODE_ENV !== 'production';
+  /*
+  console.log('👉 Login request:', {
+    headers: req.headers,
+    body: req.body,
+    sessionID: req.sessionID,
+    cookies: req.headers.cookie,
+  });
+  */
   
-  if (debug) {
-    console.log('🔐 Login attempt:', { 
-      email: req.body.email ? 'provided' : 'missing',
-      hasPassword: !!req.body.password,
-      ip: req.ip,
-      userAgent: req.get('user-agent')
-    });
-  }
-
   const { email, password } = req.body;
-  
-  // Input validation
   if (!email || !password) {
-    const error = 'Email and password are required';
-    debug && console.log('❌ Login validation failed:', error);
-    return res.status(400).json({ 
-      success: false, 
-      error 
-    });
+    console.log('🚨 Missing credentials:', { email, password });
+    return res.status(400).json({ error: 'Email and password are required' });
   }
   
   try {
-    // Find user by email (case-insensitive)
-    const user = await User.findOne({ 
-      email: { $regex: new RegExp(`^${email}$`, 'i') } 
-    }).select('+password').lean();
-    
-    // User not found
+    const user = await User.findOne({ email });
     if (!user) {
-      const error = 'Invalid email or password';
-      debug && console.log(`🔍 User not found: ${email}`);
-      return res.status(401).json({ 
-        success: false, 
-        error 
-      });
+      console.log('🔍 User not found for email:', email);
+      throw new Error('Invalid email or password');
     }
     
-    // Verify password
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) {
-      debug && console.log(`🔒 Invalid password for user: ${email}`);
-      return res.status(401).json({ 
-        success: false, 
-        error: 'Invalid email or password' 
-      });
+      console.log('🔒 Invalid password for user:', email);
+      throw new Error('Invalid email or password');
     }
     
-    // Regenerate session to prevent session fixation
-    req.session.regenerate(async (err) => {
+    req.session.user = user._id;
+    console.log('✅ Successful login:', { userId: user._id, sessionId: req.sessionID });
+    
+    // Save session explicitly before responding
+    req.session.save(err => {
       if (err) {
-        console.error('❌ Session regeneration error:', err);
-        return res.status(500).json({ 
-          success: false, 
-          error: 'Login failed. Please try again.' 
-        });
+        console.error('❌ Session save error:', err);
+        return res.status(500).json({ success: false, error: 'Session error' });
       }
-
-      // Store user ID in session
-      req.session.user = user._id;
-      
-      // Explicitly save session before responding
-      req.session.save((saveErr) => {
-        if (saveErr) {
-          console.error('❌ Session save error:', saveErr);
-          return res.status(500).json({ 
-            success: false, 
-            error: 'Failed to create session' 
-          });
-        }
-
-        debug && console.log(`✅ Successful login for user: ${user._id}`);
-        
-        // Return success response with user data (excluding password)
-        const { password: _, ...userData } = user;
-        res.json({ 
-          success: true, 
-          user: userData,
-          sessionId: req.sessionID
-        });
-      });
+      res.json({ success: true, userId: user._id.toString() });
     });
   } catch (err) {
     console.error('❌ Login error:', err);
-    res.status(500).json({ 
-      success: false, 
-      error: 'An error occurred during login' 
-    });
+    res.status(400).json({ success: false, error: 'Invalid credentials' });
   }
 });
 
