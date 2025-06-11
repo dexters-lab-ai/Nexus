@@ -1,5 +1,5 @@
 # Stage 1: Builder
-FROM node:18.20.3-bullseye-slim AS builder
+FROM node:20.13.1-bullseye-slim AS builder
 
 WORKDIR /usr/src/app
 
@@ -41,7 +41,7 @@ ENV ROLLUP_INLINE_RUN=1
 RUN npm run build
 
 # Development stage
-FROM node:18.20.3-bullseye-slim AS development
+FROM node:20.13.1-bullseye-slim AS development
 
 # Set working directory
 WORKDIR /usr/src/app
@@ -85,14 +85,19 @@ EXPOSE 3420 3000
 CMD ["npm", "run", "dev"]
 
 # Production stage
-FROM node:18.20.3-bullseye-slim AS production
+FROM node:20.13.1-bullseye-slim AS production
 
 WORKDIR /usr/src/app
 
 # Install system dependencies
 RUN apt-get update && \
-    apt-get install -y curl && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y \
+    curl \
+    build-essential \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set environment to production
 ENV NODE_ENV=production
@@ -101,7 +106,10 @@ ENV NEXUS_RUN_DIR=/usr/src/app/nexus_run
 
 # Install production dependencies
 COPY package*.json ./
-RUN npm install --only=production --legacy-peer-deps
+# Clean npm cache and install production deps
+RUN npm cache clean --force && \
+    npm install --omit=dev --legacy-peer-deps && \
+    npm cache clean --force
 
 # Copy built app from builder
 COPY --from=builder /usr/src/app/dist ./dist
@@ -143,8 +151,8 @@ HEALTHCHECK --interval=30s --timeout=3s \
 # Switch to non-root user
 USER node
 
-# Start the application with increased memory limit
-CMD ["node", "--max-old-space-size=4096", "server.js"]
+# Start the application with increased memory limit and better Node.js settings
+CMD ["node", "--max-old-space-size=4096", "--trace-warnings", "--unhandled-rejections=strict", "server.js"]
 
 # Production stage is the default target (last stage in the file) did this for DigitalOcean deployment
 # To build a specific stage, use: docker build --target <stage> -t <image> .
