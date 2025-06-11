@@ -40,17 +40,19 @@ ENV NEXUS_RUN_DIR=/usr/src/app/nexus_run
 COPY package*.json ./
 RUN npm ci --only=production --legacy-peer-deps
 
-# Copy built app from builder
+# Copy built app and source files from builder
 COPY --from=builder /usr/src/app/dist ./dist
 COPY --from=builder /usr/src/app/server.js .
+COPY --from=builder /usr/src/app/src ./src
 
-# Copy public directory
+# Copy public directory and other necessary files
 COPY --from=builder /usr/src/app/public ./public
-
-# Copy necessary assets
 COPY --from=builder /usr/src/app/bruno_demo_temp ./bruno_demo_temp
+COPY --from=builder /usr/src/app/config ./config
+COPY --from=builder /usr/src/app/scripts ./scripts
+COPY --from=builder /usr/src/app/patches ./patches
 
-# Create necessary directories
+# Create necessary directories and set permissions
 RUN mkdir -p nexus_run midscene_run public/assets public/models public/textures \
     && chown -R node:node /usr/src/app \
     && chmod +x /usr/src/app/server.js
