@@ -27,23 +27,15 @@ const setStaticFileHeaders = (res, filePath, req) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
   
   // Set CORS headers for all static assets
-  // In production, allow all subdomains of ondigitalocean.app
-  // In development, allow localhost origins
   const allowedOrigins = [
-    /^\.?operator-io[0-9]+\.ondigitalocean\.app$/,
-    /^https?:\/\/localhost(:[0-9]+)?$/,
-    /^https?:\/\/127\.0\.0\.1(:[0-9]+)?$/
+    'https://operator-nexus-knmr8.ondigitalocean.app',
+    'http://localhost:3000',
+    'http://localhost:5173'
   ];
-  
-  const origin = req.headers.origin || '';
-  const isAllowed = process.env.NODE_ENV === 'production' 
-    ? allowedOrigins.some(pattern => origin.match(pattern))
-    : true; // Allow all in development
-    
-  if (isAllowed && origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+  const requestOrigin = req.headers.origin;
+  if (allowedOrigins.includes(requestOrigin)) {
+    res.setHeader('Access-Control-Allow-Origin', requestOrigin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Vary', 'Origin');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');

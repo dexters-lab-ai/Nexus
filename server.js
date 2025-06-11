@@ -603,7 +603,7 @@ const sessionMiddleware = session({
     httpOnly: true,
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    domain: process.env.NODE_ENV === 'production' ? 'operator-nexus-knmr8.ondigitalocean.app' : undefined,
+    domain: process.env.NODE_ENV === 'production' ? '.ondigitalocean.app' : undefined,
     path: '/',
     secureProxy: true // If behind a proxy (like nginx)
   },
@@ -829,59 +829,41 @@ import serveStaticAssets from './src/middleware/staticAssets.js';
 // 1. STATIC FILES (must come before authentication)
 // =================================================
 
-// Configure static file serving
-const staticOptions = {
-  etag: true,
-  lastModified: true,
-  maxAge: '1y',
-  setHeaders: (res, filePath) => {
-    // Set security headers
-    setStaticFileHeaders(res, filePath, req);
-    
-    // Set proper content type based on file extension
-    const ext = path.extname(filePath).toLowerCase().substring(1);
-    if (ext === 'css') {
-      res.setHeader('Content-Type', 'text/css');
-    } else if (ext === 'js' || ext === 'mjs') {
-      res.setHeader('Content-Type', 'application/javascript');
-    } else if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif', 'ico'].includes(ext)) {
-      res.setHeader('Content-Type', `image/${ext === 'jpg' ? 'jpeg' : ext === 'svg' ? 'svg+xml' : ext}`);
-    } else if (ext === 'json') {
-      res.setHeader('Content-Type', 'application/json');
-    } else if (ext === 'html' || ext === 'htm') {
-      res.setHeader('Content-Type', 'text/html');
-    } else if (ext === 'wasm') {
-      res.setHeader('Content-Type', 'application/wasm');
-    }
-  }
-};
-
 // In development, we don't serve static files from the backend
 // as they are handled by Vite dev server on port 3000
 if (process.env.NODE_ENV !== 'development') {
-  // Serve static files with proper caching and security headers
-  app.use(express.static(path.join(__dirname, 'dist'), staticOptions));
-  
-  // Serve public directory for other static assets
-  app.use(express.static(path.join(__dirname, 'public'), staticOptions));
-  
-  // Explicitly serve index.html for SPA routing
-  app.get('*', (req, res, next) => {
-    // Skip API routes
-    if (req.path.startsWith('/api/')) {
-      return next();
-    }
-    
-    // For all other routes, serve index.html
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'), {
-      headers: {
-        'Content-Type': 'text/html',
-        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
+  // Serve static files from dist in production
+  app.use(express.static(path.join(__dirname, 'dist'), {
+    setHeaders: (res, path, req) => {
+      // Use our enhanced static file headers with CORS support
+      setStaticFileHeaders(res, path, req);
+      
+      // Set proper content type based on file extension
+      const ext = path.split('.').pop().toLowerCase();
+      if (ext === 'css') {
+        res.setHeader('Content-Type', 'text/css');
+      } else if (ext === 'js') {
+        res.setHeader('Content-Type', 'application/javascript');
+      } else if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif'].includes(ext)) {
+        res.setHeader('Content-Type', `image/${ext === 'jpg' ? 'jpeg' : ext === 'svg' ? 'svg+xml' : ext}`);
       }
-    });
-  });
+    }
+  }));
+  
+  // Serve public directory for other static assets with CORS support
+  app.use(express.static(path.join(__dirname, 'public'), {
+    setHeaders: (res, path, req) => {
+      setStaticFileHeaders(res, path, req);
+    }
+  }));
+  
+  // Serve CSS files from dist/css with CORS support
+  app.use('/css', express.static(path.join(__dirname, 'dist', 'css'), {
+    setHeaders: (res, path, req) => {
+      setStaticFileHeaders(res, path, req);
+      res.setHeader('Content-Type', 'text/css');
+    }
+  }));
   
   console.log('Serving static files from:', path.join(__dirname, 'dist'));
 }
