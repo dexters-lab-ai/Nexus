@@ -25,16 +25,55 @@ router.post('/register', async (req, res) => {
   }
 });
 
+// GET /me - Get current user session info
+router.get('/me', async (req, res) => {
+  try {
+    if (!req.session.user) {
+      return res.json({ authenticated: false });
+    }
+
+    // Handle guest sessions
+    if (typeof req.session.user === 'string' && req.session.user.startsWith('guest_')) {
+      return res.json({
+        authenticated: true,
+        user: {
+          _id: req.session.user,
+          isGuest: true,
+          email: 'guest@example.com'
+        },
+        isGuest: true
+      });
+    }
+
+    // Handle authenticated users
+    const user = await User.findById(req.session.user).select('-password');
+    if (!user) {
+      return res.json({ authenticated: false });
+    }
+
+    res.json({
+      authenticated: true,
+      user: {
+        _id: user._id,
+        email: user.email,
+        isGuest: false
+      },
+      isGuest: false
+    });
+  } catch (error) {
+    console.error('Session validation error:', error);
+    res.status(500).json({ error: 'Failed to validate session' });
+  }
+});
+
 // POST /login
 router.post('/login', async (req, res) => {
-  /*
   console.log('👉 Login request:', {
     headers: req.headers,
     body: req.body,
     sessionID: req.sessionID,
     cookies: req.headers.cookie,
   });
-  */
   
   const { email, password } = req.body;
   if (!email || !password) {
@@ -58,52 +97,64 @@ router.post('/login', async (req, res) => {
     }
 
     // Regenerate session to prevent session fixation
-    req.session.regenerate((err) => {
-      if (err) {
-        console.error('❌ Session regenerate error:', err);
-        return res.status(500).json({ success: false, error: 'Session error' });
-      }
-
-      // Set user ID in session
-      req.session.user = user._id;
-      console.log('✅ Session after login:', {
-        userId: user._id,
-        sessionId: req.sessionID,
-        session: req.session
-      });
-
-      // Explicitly save session before responding
-      req.session.save((err) => {
+    return new Promise((resolve, reject) => {
+      req.session.regenerate((err) => {
         if (err) {
-          console.error('❌ Session save error:', err);
-          return res.status(500).json({ success: false, error: 'Session error' });
+          console.error('Session regeneration error:', err);
+          return reject(new Error('Failed to create session'));
         }
         
-        // Set cookie manually to ensure proper domain and secure flags
-        res.cookie('nexus.sid', req.sessionID, {
-          path: '/',
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-          domain: process.env.NODE_ENV === 'production' ? 
-            (process.env.COOKIE_DOMAIN || '.ondigitalocean.app') : undefined
-        });
-
-        console.log('✅ Login successful:', { 
-          userId: user._id,
-          sessionId: req.sessionID 
-        });
+        // Set user ID in session
+        req.session.user = user._id;
         
-        res.json({ 
-          success: true, 
-          userId: user._id.toString() 
+        // Configure session cookie
+        req.session.cookie.secure = process.env.NODE_ENV === 'production';
+        req.session.cookie.sameSite = process.env.NODE_ENV === 'production' ? 'none' : 'lax';
+        req.session.cookie.maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
+        req.session.cookie.domain = process.env.NODE_ENV === 'production' ? 
+          (process.env.COOKIE_DOMAIN || '.ondigitalocean.app') : undefined;
+          
+        // Save the session
+        req.session.save((err) => {
+          if (err) {
+            console.error('Session save error:', err);
+            return reject(new Error('Failed to save session'));
+          }
+          
+          // Generate a new token for the client
+          const crypto = require('crypto');
+          const token = crypto.randomBytes(32).toString('hex');
+          
+          // Send success response with user data (excluding password)
+          const userResponse = user.toObject();
+          delete userResponse.password;
+          
+          console.log('✅ Login successful:', { 
+            userId: user._id,
+            email: user.email,
+            sessionId: req.sessionID
+          });
+          
+          res.json({
+            success: true,
+            user: {
+              ...userResponse,
+              isGuest: false
+            },
+            token,
+            isGuest: false
+          });
+          
+          resolve();
         });
       });
+    }).catch(error => {
+      console.error('Login error:', error);
+      throw error; // This will be caught by the outer try-catch
     });
-  } catch (err) {
-    console.error('❌ Login error:', err);
-    res.status(400).json({ success: false, error: 'Invalid credentials' });
+  } catch (error) {
+    console.error('❌ Login error:', error);
+    res.status(400).json({ success: false, error: error.message || 'Login failed' });
   }
 });
 

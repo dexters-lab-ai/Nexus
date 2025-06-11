@@ -1,3 +1,5 @@
+import { setAuthState, clearAuthState } from './utils/auth.js';
+
 let isLogin = true;
 
 function toggleForm() {
@@ -6,28 +8,36 @@ function toggleForm() {
   const submitBtn = document.getElementById('submit-btn');
   const toggleLink = document.getElementById('toggle-link');
   const errorEl = document.getElementById('error-message');
+  const loadingIndicator = document.getElementById('loading-indicator');
 
   formTitle.textContent = isLogin ? 'Login' : 'Register';
   submitBtn.textContent = isLogin ? 'Login' : 'Register';
   toggleLink.textContent = isLogin ? 'Switch to Register' : 'Switch to Login';
   errorEl.style.display = 'none';
+  
+  // Clear any previous input
+  document.getElementById('email').value = '';
+  document.getElementById('password').value = '';
 }
 
 async function submitForm() {
   const email = document.getElementById('email').value.trim();
   const password = document.getElementById('password').value.trim();
   const errorEl = document.getElementById('error-message');
+  const submitBtn = document.getElementById('submit-btn');
+  const originalBtnText = submitBtn.textContent;
 
   if (!email || !password) {
-    errorEl.textContent = 'Please fill out both fields.';
-    errorEl.style.display = 'block';
+    showError('Please fill out both fields.');
     return;
   }
 
-  const url = isLogin ? '/api/auth/login' : '/api/auth/register';
   try {
-    console.log(`Attempting to ${isLogin ? 'login' : 'register'}...`);
+    // Show loading state
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
     
+    const url = isLogin ? '/api/auth/login' : '/api/auth/register';
     const res = await fetch(url, {
       method: 'POST',
       credentials: 'include',
@@ -38,33 +48,48 @@ async function submitForm() {
       body: JSON.stringify({ email, password }),
     });
     
-    console.log(`Response status: ${res.status}`);
-    
-    // Handle non-JSON responses
     const contentType = res.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
       const text = await res.text();
-      console.error('Non-JSON response:', text);
-      errorEl.textContent = `Error: Server returned non-JSON response (${res.status})`;
-      errorEl.style.display = 'block';
-      return;
+      throw new Error(`Server returned ${res.status}: ${text}`);
     }
     
     const data = await res.json();
-    console.log('Response data:', data);
     
-    if (data.success) {
-      console.log('Login successful, redirecting...');
-      window.location.href = '/';
+    if (!res.ok) {
+      throw new Error(data.error || 'Authentication failed');
+    }
+    
+    if (data.success && data.user && data.token) {
+      // Update auth state with user data and token
+      setAuthState(data.user._id, data.token);
+      
+      // Redirect to home or intended URL
+      const redirectTo = new URLSearchParams(window.location.search).get('redirect') || '/';
+      window.location.href = redirectTo;
       return;
     }
     
-    errorEl.textContent = data.error || 'Unknown error occurred';
+    throw new Error(data.error || 'Authentication failed');
   } catch (error) {
-    console.error('Login error:', error);
-    errorEl.textContent = `Network error: ${error.message || 'Please try again'}`;
+    console.error('Auth error:', error);
+    showError(error.message || 'An error occurred. Please try again.');
+  } finally {
+    // Reset button state
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalBtnText;
   }
+}
+
+function showError(message) {
+  const errorEl = document.getElementById('error-message');
+  errorEl.textContent = message;
   errorEl.style.display = 'block';
+  
+  // Auto-hide error after 5 seconds
+  setTimeout(() => {
+    errorEl.style.display = 'none';
+  }, 5000);
 }
 
 document.addEventListener('DOMContentLoaded', () => {

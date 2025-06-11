@@ -7,51 +7,114 @@ import { eventBus } from './utils/events.js';
 import WebSocketManager from './utils/WebSocketManager.js';
 import { initializeModernUI } from './app-modern-integration.js';
 import { stores } from './store/index.js';
+import { initializeAuth, isAuthenticated, getCurrentUserId, clearAuthState } from './utils/auth.js';
 
 // Maintain references to all initialized components
 let appComponents = null;
 
 // Wait for DOM to be fully loaded
-document.addEventListener('DOMContentLoaded', () => {
-  initializeApp();
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    // Initialize auth state first
+    const { isAuthenticated: isAuth } = await initializeAuth();
+    
+    // If we're on the login page but already authenticated, redirect to home
+    if (window.location.pathname === '/login.html' && isAuth) {
+      window.location.href = '/';
+      return;
+    }
+    
+    // Initialize the app
+    await initializeApp();
+  } catch (error) {
+    console.error('Initialization error:', error);
+    // Show error to user if needed
+    if (window.showNotification) {
+      showNotification('Failed to initialize application', 'error');
+    }
+  }
 });
 
 // Initialize the application
 async function initializeApp() {
   console.log('Initializing modern OPERATOR application...');
-
-  // Initialize WebSocket connection with guest state
-  const userId = localStorage.getItem('userId') || `guest-${Math.random().toString(36).substr(2, 9)}`;
-  const isAuthenticated = !!localStorage.getItem('authToken');
   
-  // Initialize WebSocket with current auth state
-  WebSocketManager.init(userId, isAuthenticated).catch(error => {
-    console.error('Failed to initialize WebSocket:', error);
-  });
+  // Show loading state
+  const splashScreen = document.getElementById('splash-screen');
+  const loadingProgress = document.getElementById('loading-progress');
   
-  // Listen for authentication events to update WebSocket connection
-  eventBus.on('user-authenticated', async (userData) => {
-    if (userData?.id) {
-      try {
-        // Update WebSocket with authenticated state
-        await WebSocketManager.updateAuthState(userData.id, true);
-        console.log('WebSocket updated for authenticated user:', userData.id);
-      } catch (error) {
-        console.error('Failed to update WebSocket after authentication:', error);
-      }
+  try {
+    // Initialize WebSocket connection with current auth state
+    const userId = getCurrentUserId() || `guest-${Math.random().toString(36).substr(2, 9)}`;
+    const isAuth = isAuthenticated();
+    
+    // Initialize WebSocket
+    await WebSocketManager.init(userId, isAuth);
+    
+    // Update loading progress
+    updateLoadingProgress(30, loadingProgress);
+    
+    // Initialize stores with data from API
+    await initializeStores();
+    updateLoadingProgress(50, loadingProgress);
+    
+    // Load required assets and styles
+    await loadAssets();
+    updateLoadingProgress(70, loadingProgress);
+    
+    // Initialize modern UI components
+    await initializeComponents();
+    updateLoadingProgress(90, loadingProgress);
+    
+    // Complete initialization
+    finalizeInitialization();
+    updateLoadingProgress(100, loadingProgress);
+    
+    // Hide splash screen with animated transition
+    if (splashScreen) {
+      setTimeout(() => {
+        splashScreen.style.opacity = '0';
+        setTimeout(() => {
+          splashScreen.style.display = 'none';
+        }, 500);
+      }, 500);
     }
-  });
+    
+    console.log('Application initialization complete!');
+  } catch (error) {
+    console.error('Failed to initialize application:', error);
+    showNotification('Failed to initialize application', 'error');
+    
+    // If auth error, clear auth state and reload
+    if (error.message === 'Unauthorized' || error.status === 401) {
+      clearAuthState();
+      window.location.href = '/login.html';
+    }
+  }
   
-  // Listen for logout events
-  eventBus.on('user-logged-out', async () => {
+  // Listen for authentication state changes
+  eventBus.on('auth-state-changed', async ({ isAuthenticated, userId }) => {
     try {
-      // Update WebSocket with guest state
-      const guestId = `guest-${Math.random().toString(36).substr(2, 9)}`;
-      await WebSocketManager.updateAuthState(guestId, false);
-      console.log('WebSocket updated for guest user');
+      if (isAuthenticated && userId) {
+        // Update WebSocket with authenticated state
+        await WebSocketManager.updateAuthState(userId, true);
+        console.log('WebSocket updated for authenticated user:', userId);
+      } else {
+        // Update WebSocket with guest state
+        const guestId = `guest-${Math.random().toString(36).substr(2, 9)}`;
+        await WebSocketManager.updateAuthState(guestId, false);
+        console.log('WebSocket updated for guest user');
+      }
     } catch (error) {
-      console.error('Failed to update WebSocket after logout:', error);
+      console.error('Failed to update WebSocket after auth state change:', error);
     }
+  });
+  
+  // Listen for session expiration
+  eventBus.on('session-expired', () => {
+    clearAuthState();
+    showNotification('Your session has expired. Please log in again.', 'warning');
+    window.location.href = '/login.html';
   });
   
   try {
