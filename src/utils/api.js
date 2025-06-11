@@ -18,10 +18,11 @@ const DEFAULT_HEADERS = {
 
 // Default fetch options
 const DEFAULT_OPTIONS = {
-  credentials: 'include', // Important: include cookies for auth
+  credentials: 'include', // Include cookies for auth
   mode: 'cors',
   cache: 'no-store',
-  headers: DEFAULT_HEADERS
+  headers: DEFAULT_HEADERS,
+  redirect: 'manual' // Handle redirects manually
 };
 
 /**
@@ -36,6 +37,12 @@ const DEFAULT_OPTIONS = {
  * @param {Object} options - Fetch options to include
  * @returns {Promise<any>} - Parsed response data
  */
+/**
+ * Fetches data from the API with proper error handling and authentication
+ * @param {string} url - The API endpoint
+ * @param {Object} options - Fetch options
+ * @returns {Promise<any>} - Parsed response data
+ */
 export async function fetchAPI(url, options = {}) {
   try {
     // Ensure URL is properly formatted
@@ -48,12 +55,17 @@ export async function fetchAPI(url, options = {}) {
     const fetchOptions = {
       ...DEFAULT_OPTIONS,
       ...options,
-      // Merge headers to preserve default headers
       headers: {
         ...DEFAULT_HEADERS,
         ...(options.headers || {})
       }
     };
+    
+    // Add CSRF token if available
+    const csrfToken = getCsrfToken();
+    if (csrfToken) {
+      fetchOptions.headers['X-CSRF-Token'] = csrfToken;
+    }
 
     // Log request for debugging
     if (!isProduction) {
@@ -66,31 +78,32 @@ export async function fetchAPI(url, options = {}) {
     const response = await fetch(fullUrl, fetchOptions);
     const responseClone = response.clone(); // Clone for potential re-reading
 
-    // Handle authentication errors
+    // Handle 401 Unauthorized
     if (response.status === 401) {
-      // Only redirect if not already on login page
-      if (!window.location.pathname.includes('login')) {
-        window.location.href = '/login.html';
+      // Skip if we're already on the login page
+      if (!window.location.pathname.includes('/login')) {
+        // Clear any existing session
+        document.cookie = 'nexus.sid=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+        
+        // Store current URL for redirect after login
+        const redirectUrl = encodeURIComponent(`${window.location.pathname}${window.location.search}`);
+        window.location.href = `/login.html?redirect=${redirectUrl}`;
       }
-      return null;
+      throw new Error('Session expired. Please log in again.');
     }
 
-    // Handle other error responses
+    // Handle other errors
     if (!response.ok) {
       let errorData;
-      const contentType = response.headers.get('content-type');
-      
       try {
-        errorData = await responseClone.json();
+        errorData = await response.json();
       } catch (e) {
-        const text = await responseClone.text();
-        errorData = { error: text || 'Unknown error occurred' };
+        errorData = { message: response.statusText || 'An error occurred' };
       }
-
-      const error = new Error(errorData.error || `HTTP Error: ${response.status}`);
+      
+      const error = new Error(errorData.message || 'An error occurred');
       error.status = response.status;
       error.data = errorData;
-      
       // Log detailed error in development
       if (!isProduction) {
         console.error(`[API Error] ${response.status} ${response.statusText}`, {

@@ -590,18 +590,22 @@ function getEngineDisplayName(engineId) {
 // ======================================
 // 8. EXPRESS APP & MIDDLEWARE - IN ORDER
 // ======================================
-// Session configuration with secure settings
+// Session configuration with enhanced security settings
 const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET || 'your-secret-key',
   resave: false,
   saveUninitialized: false,
+  rolling: true, // Reset maxAge on every request
+  name: 'nexus.sid',
+  proxy: true, // Trust the reverse proxy
   cookie: {
-    secure: process.env.NODE_ENV === 'production', // true in production, false in development
+    secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     domain: process.env.NODE_ENV === 'production' ? '.ondigitalocean.app' : undefined,
-    path: '/'  // Ensure cookie is sent for all paths
+    path: '/',
+    secureProxy: true // If behind a proxy (like nginx)
   },
   store: MongoStore.create({
     mongoUrl: process.env.MONGO_URI,
