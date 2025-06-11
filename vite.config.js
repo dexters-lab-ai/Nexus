@@ -227,9 +227,13 @@ export default defineConfig(({ mode }) => {
             const name = assetInfo.name || '';
             const ext = name.split('.').pop() || '';
             
-            // Handle CSS files - copy them to dist/css/ with original structure
-            if (ext === 'css' && name.includes('src/styles/')) {
-              return name.replace('src/styles/', 'css/');
+            // Handle CSS files - ensure consistent paths for components
+            if (ext === 'css') {
+              if (name.includes('src/styles/components/')) {
+                return name.replace('src/styles/', 'css/');
+              } else if (name.includes('src/styles/')) {
+                return name.replace('src/styles/', 'css/');
+              }
             }
             
             // Other assets
@@ -251,7 +255,20 @@ export default defineConfig(({ mode }) => {
               for (const file of files) {
                 const content = await fs.readFile(file, 'utf-8');
                 const relativePath = path.relative('src/styles', file);
-                const outputPath = `css/${relativePath}`;
+                
+                // Only process CSS files that don't start with _ (Sass partials)
+                if (!file.endsWith('.css') || path.basename(file).startsWith('_')) {
+                  continue;
+                }
+                
+                // For component CSS, ensure they go to the components directory
+                let outputPath;
+                if (file.includes('src/styles/components/')) {
+                  const fileName = path.basename(file);
+                  outputPath = `css/components/${fileName}`;
+                } else {
+                  outputPath = `css/${path.basename(file)}`;
+                }
                 
                 // Add file to the bundle
                 this.emitFile({

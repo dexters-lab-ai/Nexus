@@ -1,0 +1,139 @@
+/*!
+ * Font Awesome 6 Free - Fixed Paths
+ */
+@font-face {
+  font-family: 'Font Awesome 6 Free';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('/webfonts/fa-regular-400.woff2') format('woff2'),
+       url('/webfonts/fa-regular-400.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Font Awesome 6 Free';
+  font-style: normal;
+  font-weight: 900;
+  font-display: block;
+  src: url('/webfonts/fa-solid-900.woff2') format('woff2'),
+       url('/webfonts/fa-solid-900.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Font Awesome 6 Brands';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('/webfonts/fa-brands-400.woff2') format('woff2'),
+       url('/webfonts/fa-brands-400.ttf') format('truetype');
+}
+
+/* Base styles */
+.fa,
+.fas,
+.far,
+.fal,
+.fad,
+.fab {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  display: inline-block;
+  font-style: normal;
+  font-variant: normal;
+  text-rendering: auto;
+  line-height: 1;
+}
+
+/* Font weights */
+.fa,
+.fas {
+  font-family: 'Font Awesome 6 Free';
+  font-weight: 900;
+}
+
+.far {
+  font-family: 'Font Awesome 6 Free';
+  font-weight: 400;
+}
+
+.fab {
+  font-family: 'Font Awesome 6 Brands';
+  font-weight: 400;
+}
+
+/* Sizes */
+.fa-xs {
+  font-size: 0.75em;
+}
+
+.fa-sm {
+  font-size: 0.875em;
+}
+
+.fa-lg {
+  font-size: 1.25em;
+}
+
+.fa-2x {
+  font-size: 2em;
+}
+
+.fa-3x {
+  font-size: 3em;
+}
+
+/* Icons */
+.fa-user::before {
+  content: "\f007";
+}
+
+.fa-lock::before {
+  content: "\f023";
+}
+
+.fa-envelope::before {
+  content: "\f0e0";
+}
+
+.fa-arrow-right::before {
+  content: "\f061";
+}
+
+.fa-spinner::before {
+  content: "\f110";
+}
+
+.fa-check::before {
+  content: "\f00c";
+}
+
+.fa-times::before {
+  content: "\f00d";
+}
+
+/* Animation */
+.fa-spin {
+  animation: fa-spin 2s infinite linear;
+}
+
+@keyframes fa-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Accessibility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

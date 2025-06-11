@@ -861,13 +861,49 @@ if (process.env.NODE_ENV !== 'development') {
     }
   }));
   
+  // Serve webfonts with correct MIME types
+  app.use('/webfonts', express.static(path.join(__dirname, 'public', 'webfonts'), {
+    setHeaders: (res, path) => {
+      if (path.endsWith('.woff2')) {
+        res.set('Content-Type', 'font/woff2');
+      } else if (path.endsWith('.woff')) {
+        res.set('Content-Type', 'font/woff');
+      } else if (path.endsWith('.ttf')) {
+        res.set('Content-Type', 'font/ttf');
+      } else if (path.endsWith('.eot')) {
+        res.set('Content-Type', 'application/vnd.ms-fontobject');
+      } else if (path.endsWith('.svg')) {
+        res.set('Content-Type', 'image/svg+xml');
+      }
+      // Add caching headers for fonts
+      res.set('Cache-Control', 'public, max-age=31536000');
+    }
+  }));
+
   // Serve public directory for other static assets
   app.use(express.static(path.join(__dirname, 'public')));
   
-  // Serve CSS files from dist/css
+  // Serve CSS files from dist/css and its subdirectories
   app.use('/css', express.static(path.join(__dirname, 'dist', 'css'), {
-    setHeaders: (res) => {
-      res.setHeader('Content-Type', 'text/css');
+    setHeaders: (res, filePath) => {
+      // Only set Content-Type for CSS files
+      if (filePath.endsWith('.css')) {
+        res.setHeader('Content-Type', 'text/css');
+      }
+    },
+    // Enable directory listing to serve files from subdirectories
+    index: false,
+    redirect: false
+  }));
+  
+  // Serve static files from dist directory with proper MIME types
+  app.use(express.static(path.join(__dirname, 'dist'), {
+    setHeaders: (res, filePath) => {
+      // Set proper content type based on file extension
+      const ext = path.extname(filePath).toLowerCase();
+      if (ext === '.css') {
+        res.setHeader('Content-Type', 'text/css');
+      }
     }
   }));
   
