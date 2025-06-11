@@ -21,19 +21,19 @@ const loadModernSidebar = () => {
     {
       id: 'modern-sidebar-css',
       dev: '/src/styles/components/sidebar-modern.css',
-      prod: '/css/sidebar-modern.css',
+      prod: '/css/components/sidebar-modern.css',
       name: 'sidebar-modern'
     },
     {
       id: 'yaml-maps-css',
       dev: '/src/styles/components/yaml-maps.css',
-      prod: '/css/yaml-maps.css',
+      prod: '/css/components/yaml-maps.css',
       name: 'yaml-maps'
     },
     {
       id: 'yaml-maps-fixes-css',
       dev: '/src/styles/components/yaml-maps-fixes.css',
-      prod: '/css/yaml-maps-fixes.css',
+      prod: '/css/components/yaml-maps-fixes.css',
       name: 'yaml-maps-fixes'
     }
   ];

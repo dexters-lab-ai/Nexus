@@ -19,33 +19,33 @@ function loadStylesheets() {
   const stylesheets = [
     { 
       dev: '/src/styles/components/modal-theme-unified.css',
-      prod: '/css/modal-theme-unified.css',
+      prod: '/css/components/modal-theme-unified.css',
       name: 'modal-theme-unified'
     },
     { 
       dev: '/src/styles/components/settings-button-styles.css',
-      prod: '/css/settings-button-styles.css',
+      prod: '/css/components/settings-button-styles.css',
       name: 'settings-button-styles'
     },
     { 
       dev: '/src/styles/components/settings-api-keys.css',
-      prod: '/css/settings-api-keys.css',
+      prod: '/css/components/settings-api-keys.css',
       name: 'settings-api-keys'
     },
     { 
       dev: '/src/styles/components/settings-llm-tab.css',
-      prod: '/css/settings-llm-tab.css',
+      prod: '/css/components/settings-llm-tab.css',
       name: 'settings-llm-tab'
     },
     { 
       dev: '/src/styles/components/settings-advanced.css',
-      prod: '/css/settings-advanced.css',
+      prod: '/css/components/settings-advanced.css',
       name: 'settings-advanced'
     },
     // Footer styles (loaded separately to maintain order)
     { 
       dev: '/src/styles/components/settings-footer.css',
-      prod: '/css/settings-footer.css',
+      prod: '/css/components/settings-footer.css',
       name: 'settings-footer',
       isFooter: true
     }

@@ -292,13 +292,13 @@ class YamlMaps {
       {
         id: 'yaml-maps-styles',
         dev: '/src/styles/components/yaml-maps.css',
-        prod: '/css/yaml-maps.css',
+        prod: '/css/components/yaml-maps.css',
         name: 'yaml-maps'
       },
       {
         id: 'yaml-editor-fixes-styles',
         dev: '/src/styles/components/yaml-editor-fixes.css',
-        prod: '/css/yaml-editor-fixes.css',
+        prod: '/css/components/yaml-editor-fixes.css',
         name: 'yaml-editor-fixes'
       }
     ];
