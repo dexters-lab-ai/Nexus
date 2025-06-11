@@ -55,6 +55,7 @@
   box-sizing: border-box;
   color: rgba(255, 255, 255, 0.9);
   border-radius: 13px;
+  height: 65%;
   max-height: 520px;
   margin-bottom: 0.5rem;
 }

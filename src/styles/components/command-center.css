@@ -392,6 +392,9 @@
   -webkit-background-clip: text !important;
   background-clip: text !important;
   -webkit-text-fill-color: transparent;
+  padding-block: 0.5em;
+  font-size: 1em;
+  justify-content: right;
 }
 
 .command-center-card .card-title .tooltip {
