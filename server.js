@@ -603,7 +603,7 @@ const sessionMiddleware = session({
     httpOnly: true,
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    domain: process.env.NODE_ENV === 'production' ? '.ondigitalocean.app' : undefined,
+    domain: process.env.NODE_ENV === 'production' ? 'operator-nexus-knmr8.ondigitalocean.app' : undefined,
     path: '/',
     secureProxy: true // If behind a proxy (like nginx)
   },
