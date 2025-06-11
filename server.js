@@ -861,53 +861,51 @@ if (process.env.NODE_ENV !== 'development') {
     }
   }));
   
-  // Serve webfonts with correct MIME types from both possible locations
-  const serveWebfonts = (req, res, next) => {
-    const fontFile = req.path.split('/').pop();
-    const possiblePaths = [
-      path.join(__dirname, 'dist', 'webfonts', fontFile),
-      path.join(__dirname, 'dist', 'webfonts', 'css', fontFile),
-      path.join(__dirname, 'public', 'webfonts', fontFile),
-      path.join(__dirname, 'vendors', 'fontawesome', 'webfonts', fontFile)
-    ];
+  // Serve webfonts from public/webfonts with correct MIME types
+  app.use('/webfonts', express.static(path.join(__dirname, 'public', 'webfonts'), {
+    setHeaders: (res, filePath) => {
+      // Set appropriate content type based on file extension
+      const ext = path.extname(filePath).toLowerCase().substring(1);
+      if (ext === 'woff2') {
+        res.setHeader('Content-Type', 'font/woff2');
+      } else if (ext === 'woff') {
+        res.setHeader('Content-Type', 'font/woff');
+      } else if (ext === 'ttf') {
+        res.setHeader('Content-Type', 'font/ttf');
+      } else if (ext === 'eot') {
+        res.setHeader('Content-Type', 'application/vnd.ms-fontobject');
+      } else if (ext === 'svg') {
+        res.setHeader('Content-Type', 'image/svg+xml');
+      }
+      // Add caching headers
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+    }
+  }));
 
-    // Try each possible path
-    const tryPath = (index) => {
-      if (index >= possiblePaths.length) return next();
-      
-      const currentPath = possiblePaths[index];
-      fs.access(currentPath, fs.constants.F_OK, (err) => {
-        if (err) return tryPath(index + 1);
-        
-        // Set appropriate content type
-        if (currentPath.endsWith('.woff2')) {
-          res.set('Content-Type', 'font/woff2');
-        } else if (currentPath.endsWith('.woff')) {
-          res.set('Content-Type', 'font/woff');
-        } else if (currentPath.endsWith('.ttf')) {
-          res.set('Content-Type', 'font/ttf');
-        } else if (currentPath.endsWith('.eot')) {
-          res.set('Content-Type', 'application/vnd.ms-fontobject');
-        } else if (currentPath.endsWith('.svg')) {
-          res.set('Content-Type', 'image/svg+xml');
-        }
-        
-        // Add caching headers
-        res.set('Cache-Control', 'public, max-age=31536000');
-        
-        // Send the file
-        res.sendFile(currentPath);
-      });
-    };
-    
-    tryPath(0);
-  };
-  
-  // Handle webfonts requests
-  app.get('/webfonts/*', serveWebfonts);
+  // Explicitly serve the logo with correct MIME type
+  app.get('/logo.svg', (req, res) => {
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.sendFile(path.join(__dirname, 'public', 'logo.svg'));
+  });
 
-  // Serve public directory for other static assets
-  app.use(express.static(path.join(__dirname, 'public')));
+  // Serve public directory for other static assets with proper MIME types
+  app.use(express.static(path.join(__dirname, 'public'), {
+    setHeaders: (res, filePath) => {
+      // Set proper content type based on file extension
+      const ext = path.extname(filePath).toLowerCase();
+      if (ext === '.svg') {
+        res.setHeader('Content-Type', 'image/svg+xml');
+      } else if (ext === '.css') {
+        res.setHeader('Content-Type', 'text/css');
+      } else if (ext === '.js') {
+        res.setHeader('Content-Type', 'application/javascript');
+      } else if (['.png', '.jpg', '.jpeg', '.gif'].includes(ext)) {
+        res.setHeader('Content-Type', `image/${ext.slice(1)}`);
+      } else if (ext === '.ico') {
+        res.setHeader('Content-Type', 'image/x-icon');
+      }
+    }
+  }));
   
   // Serve CSS files from dist/css and its subdirectories
   app.use('/css', express.static(path.join(__dirname, 'dist', 'css'), {
@@ -915,6 +913,8 @@ if (process.env.NODE_ENV !== 'development') {
       // Only set Content-Type for CSS files
       if (filePath.endsWith('.css')) {
         res.setHeader('Content-Type', 'text/css');
+      } else if (filePath.endsWith('.svg')) {
+        res.setHeader('Content-Type', 'image/svg+xml');
       }
     },
     // Enable directory listing to serve files from subdirectories
