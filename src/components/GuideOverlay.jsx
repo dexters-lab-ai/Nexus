@@ -26,7 +26,7 @@ function importGuideStyles() {
   document.head.appendChild(themeLink);
   
   if (!isProduction) {
-    console.log('[GuideOverlay] Loading CSS from:', cssPath);
+    console.log('[GuideOverlay] Loading CSS from:', cssHref);
   }
 }
 

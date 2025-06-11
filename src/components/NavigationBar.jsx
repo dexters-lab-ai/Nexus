@@ -61,7 +61,7 @@ export function NavigationBar(props = {}) {
   // Create logo container with SVG and text
   logo.innerHTML = `
     <div class="logo-container">
-      <img src="/logo.svg" alt="Operator Logo" class="logo-svg" />
+      <img src="/logo.png" alt="Operator Logo" class="logo-svg" />
       <span class="logo-text">O.P.E.R.A.T.O.R</span>
     </div>
   `;
