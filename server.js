@@ -600,7 +600,9 @@ const sessionMiddleware = session({
     httpOnly: true,
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    domain: process.env.NODE_ENV === 'production' ? '.ondigitalocean.app' : undefined,
+    domain: process.env.NODE_ENV === 'production' ? 
+      (process.env.COOKIE_DOMAIN || '.ondigitalocean.app') : // Use COOKIE_DOMAIN if set, otherwise fallback
+      undefined, // No domain in development
     path: '/',  // Ensure cookie is sent for all paths
     sameSite: 'lax' // Add this line to ensure compatibility with modern browsers
   },
