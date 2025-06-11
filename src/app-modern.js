@@ -40,10 +40,8 @@ import * as settingsApi from './api/settings.js';
 // Maintain references to all initialized components
 let appComponents = null;
 
-// Initialize app when DOM loads
-document.addEventListener('DOMContentLoaded', initializeApp);
-
-async function initializeApp() {
+// Initialize app when ready
+const initializeApp = async () => {
   try {
     console.log('Initializing modern OPERATOR application...');
     
@@ -271,8 +269,8 @@ async function loadAssets() {
   
   // Load non-critical assets in background
   if (lowPriorityAssets.length > 0) {
-    Promise.all(lowPriorityAssets).then(() => {
-      console.log('Low priority assets loaded in background');
+    await Promise.all(lowPriorityAssets).then(() => {
+      console.log('Low priority assets loaded');
     });
   }
 }

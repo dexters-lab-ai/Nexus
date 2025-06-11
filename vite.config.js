@@ -204,66 +204,62 @@ export default defineConfig(({ mode }) => {
       },
     },
 
+    // Build configuration to copy the entire src/styles directory to dist/css
     build: {
-      outDir:            'dist',
-      assetsDir:         'assets',
-      emptyOutDir:       true,
-      sourcemap:         isDev ? 'inline' : false,
-      minify:            isDev ? false : 'esbuild',
-      target:            'esnext',
-      chunkSizeWarningLimit: 1600,
-      reportCompressedSize: true,
-      cssCodeSplit:      true,
-      commonjsOptions: {
-        include:               /node_modules/,
-        transformMixedEsModules:true,
-        sourceMap:             isDev,
-        exclude:               [],
-      },
+      outDir: 'dist',
+      assetsDir: 'assets',
+      emptyOutDir: true,
+      sourcemap: isDev ? 'inline' : false,
+      minify: isDev ? false : 'esbuild',
+      target: 'esnext',
+      cssCodeSplit: true,
+      
+      // Copy all files from src/styles to dist/css
       rollupOptions: {
         input: path.resolve(__dirname, 'index.html'),
-        onwarn(warning, warn) {
-          const ignored = ['MODULE_LEVEL_DIRECTIVE', 'SOURCEMAP_ERROR', 'THIS_IS_UNDEFINED'];
-          if (ignored.includes(warning.code)) return;
-          warn(warning);
-        },
         output: {
-          manualChunks(id) {
-            if (id.includes('node_modules')) {
-              if (id.match(/react|react-dom|react-router-dom/))       return 'vendor-react';
-              if (id.match(/@mantine|@tabler\/icons/))              return 'vendor-mantine';
-              if (id.match(/three|@react-three/))                   return 'vendor-three';
-              if (id.match(/@headlessui|@heroicons/))               return 'vendor-ui';
-              return 'vendor';
-            }
-          },
+          // JavaScript files
           entryFileNames: 'assets/js/[name]-[hash].js',
           chunkFileNames: 'assets/js/[name]-[hash].js',
-          assetFileNames: ({ name }) => {
-            const ext = name?.split('.').pop();
-            if (ext === 'css') {
-              // Handle CSS files from styles/components/
-              if (name.includes('/styles/components/')) {
-                return 'assets/css/components/[name]-[hash][extname]';
-              }
-              return 'assets/css/[name]-[hash][extname]';
+          
+          // Asset file naming
+          assetFileNames: (assetInfo) => {
+            const name = assetInfo.name || '';
+            const ext = name.split('.').pop() || '';
+            
+            // Handle CSS files - copy them to dist/css/ with original structure
+            if (ext === 'css' && name.includes('src/styles/')) {
+              return name.replace('src/styles/', 'css/');
             }
-            if (['png', 'jpg', 'jpeg', 'svg', 'gif'].includes(ext)) {
-              return 'assets/img/[name]-[hash][extname]';
-            }
-            return `assets/${ext}/[name]-[hash][extname]`;
-          },
+            
+            // Other assets
+            return 'assets/[name]-[hash][extname]';
+          }
         },
-        // Add CSS loading optimization
         plugins: [
+          // Plugin to ensure all files from src/styles are included
           {
-            name: 'css-loader',
-            generateBundle(_, bundle) {
-              Object.entries(bundle).forEach(([name, file]) => {
-                if (file.type === 'asset' && name.endsWith('.css')) {
-                  file.fileName = name.replace(/\/src\//, '/assets/css/');
-                }
-              });
+            name: 'copy-styles',
+            async generateBundle() {
+              const fs = await import('fs/promises');
+              const path = await import('path');
+              const { glob } = await import('glob');
+              
+              // Find all files in src/styles
+              const files = await glob('src/styles/**/*', { nodir: true });
+              
+              for (const file of files) {
+                const content = await fs.readFile(file, 'utf-8');
+                const relativePath = path.relative('src/styles', file);
+                const outputPath = `css/${relativePath}`;
+                
+                // Add file to the bundle
+                this.emitFile({
+                  type: 'asset',
+                  fileName: outputPath,
+                  source: content
+                });
+              }
             }
           }
         ]

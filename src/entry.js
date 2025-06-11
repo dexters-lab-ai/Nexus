@@ -48,10 +48,23 @@ const updateMessageStoreUserId = (userId) => {
 
 // After world initialization, launch React app on event
 eventBus.once('initialize-application', async () => {
-  if (!reactRoot) return;
-  
+  // First, check if we have a valid container
+  const container = document.getElementById('app-container');
+  if (!container) {
+    console.error('Missing app-container element');
+    return;
+  }
+
+  // Get the react root element
+  const reactRoot = document.getElementById('react-root');
+  if (!reactRoot) {
+    console.error('Missing react-root element');
+    return;
+  }
+
+  // Show the react root container
   reactRoot.style.display = 'block';
-  
+
   try {
     // First, check all possible sources for user ID
     let userId = (
