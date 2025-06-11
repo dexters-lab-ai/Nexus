@@ -86,12 +86,20 @@ export function cdnAndCookieFixer(req, res, next) {
     }
 
     // 5. Prevent Cloudflare cookies
-    const cloudflareCookies = [
-      `__cf_bm=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=None`,
-      `__cfruid=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=None`,
-      `_cfuvid=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=None`,
-    ];
-    res.setHeader('Set-Cookie', cloudflareCookies.join(', '));
+    const domain = req.headers.host || '';
+    const isProduction = process.env.NODE_ENV === 'production';
+    const baseDomain = isProduction ? domain.replace(/^[^.]*/, '').replace(':', '') : '';
+    const domainSuffix = baseDomain ? `; Domain=${baseDomain}` : '';
+    
+    // Only set cookies if we have a valid domain in production
+    if (!isProduction || baseDomain) {
+      const cloudflareCookies = [
+        `__cf_bm=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=None${domainSuffix}`,
+        `__cfruid=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=None${domainSuffix}`,
+        `_cfuvid=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=None${domainSuffix}`,
+      ];
+      res.setHeader('Set-Cookie', cloudflareCookies);
+    }
 
     // 6. Add security headers
     const securityHeaders = {

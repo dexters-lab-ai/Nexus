@@ -861,24 +861,50 @@ if (process.env.NODE_ENV !== 'development') {
     }
   }));
   
-  // Serve webfonts with correct MIME types
-  app.use('/webfonts', express.static(path.join(__dirname, 'public', 'webfonts'), {
-    setHeaders: (res, path) => {
-      if (path.endsWith('.woff2')) {
-        res.set('Content-Type', 'font/woff2');
-      } else if (path.endsWith('.woff')) {
-        res.set('Content-Type', 'font/woff');
-      } else if (path.endsWith('.ttf')) {
-        res.set('Content-Type', 'font/ttf');
-      } else if (path.endsWith('.eot')) {
-        res.set('Content-Type', 'application/vnd.ms-fontobject');
-      } else if (path.endsWith('.svg')) {
-        res.set('Content-Type', 'image/svg+xml');
-      }
-      // Add caching headers for fonts
-      res.set('Cache-Control', 'public, max-age=31536000');
-    }
-  }));
+  // Serve webfonts with correct MIME types from both possible locations
+  const serveWebfonts = (req, res, next) => {
+    const fontFile = req.path.split('/').pop();
+    const possiblePaths = [
+      path.join(__dirname, 'dist', 'webfonts', fontFile),
+      path.join(__dirname, 'dist', 'webfonts', 'css', fontFile),
+      path.join(__dirname, 'public', 'webfonts', fontFile),
+      path.join(__dirname, 'vendors', 'fontawesome', 'webfonts', fontFile)
+    ];
+
+    // Try each possible path
+    const tryPath = (index) => {
+      if (index >= possiblePaths.length) return next();
+      
+      const currentPath = possiblePaths[index];
+      fs.access(currentPath, fs.constants.F_OK, (err) => {
+        if (err) return tryPath(index + 1);
+        
+        // Set appropriate content type
+        if (currentPath.endsWith('.woff2')) {
+          res.set('Content-Type', 'font/woff2');
+        } else if (currentPath.endsWith('.woff')) {
+          res.set('Content-Type', 'font/woff');
+        } else if (currentPath.endsWith('.ttf')) {
+          res.set('Content-Type', 'font/ttf');
+        } else if (currentPath.endsWith('.eot')) {
+          res.set('Content-Type', 'application/vnd.ms-fontobject');
+        } else if (currentPath.endsWith('.svg')) {
+          res.set('Content-Type', 'image/svg+xml');
+        }
+        
+        // Add caching headers
+        res.set('Cache-Control', 'public, max-age=31536000');
+        
+        // Send the file
+        res.sendFile(currentPath);
+      });
+    };
+    
+    tryPath(0);
+  };
+  
+  // Handle webfonts requests
+  app.get('/webfonts/*', serveWebfonts);
 
   // Serve public directory for other static assets
   app.use(express.static(path.join(__dirname, 'public')));
@@ -903,6 +929,14 @@ if (process.env.NODE_ENV !== 'development') {
       const ext = path.extname(filePath).toLowerCase();
       if (ext === '.css') {
         res.setHeader('Content-Type', 'text/css');
+      } else if (ext === '.svg') {
+        res.setHeader('Content-Type', 'image/svg+xml');
+      } else if (ext === '.js') {
+        res.setHeader('Content-Type', 'application/javascript');
+      } else if (['.png', '.jpg', '.jpeg', '.gif'].includes(ext)) {
+        res.setHeader('Content-Type', `image/${ext.slice(1)}`);
+      } else if (ext === '.ico') {
+        res.setHeader('Content-Type', 'image/x-icon');
       }
     }
   }));
