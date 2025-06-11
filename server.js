@@ -594,17 +594,15 @@ function getEngineDisplayName(engineId) {
 const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET || 'your-secret-key',
   resave: false,
-  saveUninitialized: false,
+  saveUninitialized: true, // Allow uninitialized sessions for guests
   cookie: {
-    secure: process.env.NODE_ENV === 'production', // true in production, false in development
+    secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     domain: process.env.NODE_ENV === 'production' ? 
-      (process.env.COOKIE_DOMAIN || '.ondigitalocean.app') : // Use COOKIE_DOMAIN if set, otherwise fallback
-      undefined, // No domain in development
-    path: '/',  // Ensure cookie is sent for all paths
-    sameSite: 'lax' // Add this line to ensure compatibility with modern browsers
+      (process.env.COOKIE_DOMAIN || '.ondigitalocean.app') : undefined,
+    path: '/'  // Ensure cookie is sent for all paths
   },
   store: MongoStore.create({
     mongoUrl: process.env.MONGO_URI,
@@ -624,7 +622,11 @@ const sessionMiddleware = session({
   rolling: true, // Reset the cookie maxAge on every request
   saveUninitialized: true, // Save new sessions
   genid: function(req) {
-    return uuidv4(); // Use UUIDs for session IDs
+    // Generate guest ID if no user is logged in
+    if (!req.session || !req.session.user) {
+      return `guest_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    }
+    return uuidv4(); // Use UUIDs for authenticated session IDs
   }
 });
 
@@ -632,11 +634,21 @@ const sessionMiddleware = session({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// 8.2 Session ,iddleware
+// 8.2 Session middleware
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1); // Trust first proxy
 }
 app.use(sessionMiddleware);
+
+// 8.2.1 Guest session middleware
+app.use((req, res, next) => {
+  // If no session user ID, create a guest session
+  if (!req.session.user) {
+    req.session.user = `guest_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    console.log('Created guest session:', req.session.user);
+  }
+  next();
+});
 
 // 8.3 Custom request logging middleware to silence 404s for specific endpoints
 app.use((req, res, next) => {

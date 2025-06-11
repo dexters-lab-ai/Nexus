@@ -44,5 +44,29 @@ userSchema.pre('save', function(next) {
   next();
 });
 
+// Static method to find user by ID, handling both ObjectId and guest string IDs
+userSchema.statics.findByIdOrString = async function(id) {
+  try {
+    // Try to find by ObjectId first if it's a valid ObjectId and not a guest ID
+    if (mongoose.Types.ObjectId.isValid(id) && !id.startsWith('guest_')) {
+      const user = await this.findById(id);
+      if (user) return user;
+    }
+    // If not found or it's a guest ID, return a guest user object
+    return {
+      _id: id,
+      isGuest: true,
+      email: 'guest@example.com'
+    };
+  } catch (err) {
+    console.error('Error finding user:', err);
+    return {
+      _id: id,
+      isGuest: true,
+      email: 'guest@example.com'
+    };
+  }
+};
+
 const User = mongoose.model('User', userSchema);
 export default User;

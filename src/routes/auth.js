@@ -39,32 +39,67 @@ router.post('/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     console.log('🚨 Missing credentials:', { email, password });
-    return res.status(400).json({ error: 'Email and password are required' });
+    return res.status(400).json({ success: false, error: 'Email and password are required' });
   }
   
   try {
+    // Find user by email
     const user = await User.findOne({ email });
     if (!user) {
       console.log('🔍 User not found for email:', email);
       throw new Error('Invalid email or password');
     }
     
+    // Verify password
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) {
       console.log('🔒 Invalid password for user:', email);
       throw new Error('Invalid email or password');
     }
-    
-    req.session.user = user._id;
-    console.log('✅ Successful login:', { userId: user._id, sessionId: req.sessionID });
-    
-    // Save session explicitly before responding
-    req.session.save(err => {
+
+    // Regenerate session to prevent session fixation
+    req.session.regenerate((err) => {
       if (err) {
-        console.error('❌ Session save error:', err);
+        console.error('❌ Session regenerate error:', err);
         return res.status(500).json({ success: false, error: 'Session error' });
       }
-      res.json({ success: true, userId: user._id.toString() });
+
+      // Set user ID in session
+      req.session.user = user._id;
+      console.log('✅ Session after login:', {
+        userId: user._id,
+        sessionId: req.sessionID,
+        session: req.session
+      });
+
+      // Explicitly save session before responding
+      req.session.save((err) => {
+        if (err) {
+          console.error('❌ Session save error:', err);
+          return res.status(500).json({ success: false, error: 'Session error' });
+        }
+        
+        // Set cookie manually to ensure proper domain and secure flags
+        res.cookie('nexus.sid', req.sessionID, {
+          path: '/',
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+          domain: process.env.NODE_ENV === 'production' ? 
+            (process.env.COOKIE_DOMAIN || '.ondigitalocean.app') : undefined
+        });
+
+        console.log('✅ Login successful:', { 
+          userId: user._id,
+          sessionId: req.sessionID 
+        });
+        
+        res.json({ 
+          success: true, 
+          userId: user._id.toString() 
+        });
+      });
     });
   } catch (err) {
     console.error('❌ Login error:', err);
