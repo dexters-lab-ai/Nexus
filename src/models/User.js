@@ -44,55 +44,5 @@ userSchema.pre('save', function(next) {
   next();
 });
 
-// Static method to find user by ID (supports both ObjectId and string IDs)
-userSchema.statics.findByIdOrString = async function(id) {
-  try {
-    // If it's a valid ObjectId and not a guest ID, try to find by _id
-    if (mongoose.Types.ObjectId.isValid(id) && !id.startsWith('guest_')) {
-      const user = await this.findById(id);
-      if (user) return user;
-    }
-    
-    // If not found or it's a guest ID, return a guest user object
-    return {
-      _id: id,
-      isGuest: true,
-      email: 'guest@example.com',
-      apiKeys: {},
-      modelPreferences: {
-        default: 'gpt-4o',
-        code: 'gpt-4o',
-        content: 'gpt-4o',
-        research: 'gpt-4o'
-      },
-      preferredEngine: 'gpt-4o',
-      executionMode: 'step-planning',
-      maxSteps: 10,
-      privacyMode: false,
-      customUrls: []
-    };
-  } catch (err) {
-    console.error('Error finding user:', err);
-    // Return a guest user object on error
-    return {
-      _id: id,
-      isGuest: true,
-      email: 'guest@example.com',
-      apiKeys: {},
-      modelPreferences: {
-        default: 'gpt-4o',
-        code: 'gpt-4o',
-        content: 'gpt-4o',
-        research: 'gpt-4o'
-      },
-      preferredEngine: 'gpt-4o',
-      executionMode: 'step-planning',
-      maxSteps: 10,
-      privacyMode: false,
-      customUrls: []
-    };
-  }
-};
-
 const User = mongoose.model('User', userSchema);
 export default User;
