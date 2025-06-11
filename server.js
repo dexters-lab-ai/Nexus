@@ -592,24 +592,38 @@ function getEngineDisplayName(engineId) {
 // ======================================
 // Session configuration with secure settings
 const sessionMiddleware = session({
-  secret: process.env.SESSION_SECRET,
+  secret: process.env.SESSION_SECRET || 'your-secret-key',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production', // Set based on environment
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    secure: process.env.NODE_ENV === 'production', // true in production, false in development
     httpOnly: true,
-    sameSite: 'lax',
-    domain: process.env.COOKIE_DOMAIN === 'localhost' ? undefined : process.env.COOKIE_DOMAIN
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    domain: process.env.NODE_ENV === 'production' ? '.ondigitalocean.app' : undefined,
+    path: '/',  // Ensure cookie is sent for all paths
+    sameSite: 'lax' // Add this line to ensure compatibility with modern browsers
   },
   store: MongoStore.create({
     mongoUrl: process.env.MONGO_URI,
-    ttl: 7 * 24 * 60 * 60, // 7 days to match cookie maxAge
+    ttl: 7 * 24 * 60 * 60, // 7 days
     autoRemove: 'interval',
-    autoRemoveInterval: 60 // Check for expired sessions every 60 minutes
+    autoRemoveInterval: 60, // Check for expired sessions every 60 minutes
+    collectionName: 'sessions',
+    stringify: false,
+    touchAfter: 3600, // 1 hour - only update session if it's been modified
+    crypto: {
+      secret: process.env.SESSION_ENCRYPTION_KEY || 'your-encryption-key'
+    }
   }),
   name: 'nexus.sid',
-  unset: 'destroy'
+  unset: 'destroy',
+  proxy: true, // Trust the reverse proxy (e.g., Nginx, Cloudflare)
+  rolling: true, // Reset the cookie maxAge on every request
+  saveUninitialized: true, // Save new sessions
+  genid: function(req) {
+    return uuidv4(); // Use UUIDs for session IDs
+  }
 });
 
 // 8.1 Body parsers
@@ -644,32 +658,51 @@ app.use((req, res, next) => {
 import { corsMiddleware } from './src/middleware/cors.middleware.js';
 app.use(corsMiddleware);
 
-// 8.5 CSP Middleware - Configured to work with CORS and Cloudflare
-// 8.5 CSP Middleware - Configured to work with CORS and Cloudflare
+// 8.5 CSP Middleware - Configured to work with CORS and session configurations
 app.use((req, res, next) => {
-  // In production, we trust Cloudflare to handle security
-  // In development, we allow all sources for easier development
+  // Get the origin of the request
+  const origin = req.headers.origin || '';
+  const allowedOrigins = [
+    'https://operator-nexus-knmr8.ondigitalocean.app',
+    'http://localhost:3000',
+    'http://localhost:5173' // Vite dev server
+  ];
+  
+  // Check if the origin is allowed
+  const requestOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+  
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  
+  // Set Content Security Policy headers
   const cspDirectives = [
-    "default-src 'self' * data: blob:;",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' * data: blob:;",
-    "style-src 'self' 'unsafe-inline' * data: blob:;",
+    "default-src 'self' data: blob:;",
+    `connect-src 'self' ${requestOrigin} ws: wss: data: blob:;`,
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:;",
+    "style-src 'self' 'unsafe-inline' data: blob:;",
     "img-src 'self' data: blob: *;",
-    "connect-src 'self' ws: wss: * data: blob:;",
     "font-src 'self' data: *;",
     "media-src 'self' data: blob: *;",
     "worker-src 'self' blob: data: *;",
     "child-src 'self' blob: data: *;",
-    "frame-src 'self' * data: blob:;",
-    "frame-ancestors 'self' *;"
+    "frame-src 'self' * data: blob:;"
   ].join(' ');
-
-  // Set CSP headers
-  res.setHeader('Content-Security-Policy', cspDirectives);
   
-  // Additional security headers - keeping these as they're good practice
+  // Set security headers
+  res.setHeader('Content-Security-Policy', cspDirectives);
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'ALLOWALL'); // More permissive for iframe embedding
+  res.setHeader('X-Frame-Options', 'ALLOWALL');
   res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Feature-Policy', "geolocation 'self'; microphone 'none'; camera 'none'");
   
   next();
 });

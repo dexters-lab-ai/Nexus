@@ -2,27 +2,31 @@
 /**
  * CORS Middleware
  * 
- * This middleware allows all origins when using Cloudflare.
- * Security is handled at the Cloudflare level using:
- * - WAF Rules
- * - Rate Limiting
- * - Bot Fight Mode
- * - Security Headers
+ * Handles CORS with proper credentials and security settings
  */
 import { corsConfig } from '../config/server.config.js';
 
 export const corsMiddleware = (req, res, next) => {
-  // Set CORS headers using configuration
-  res.header('Access-Control-Allow-Origin', corsConfig.origin ? '*' : '*');
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    'https://operator-nexus-knmr8.ondigitalocean.app',
+    'http://localhost:3000',
+    'http://localhost:5173' // Vite dev server
+  ];
+
+  // Set the origin based on the request
+  const requestOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+  
+  // Set CORS headers
+  res.header('Access-Control-Allow-Origin', requestOrigin);
   res.header('Access-Control-Allow-Methods', corsConfig.methods.join(', '));
   res.header('Access-Control-Allow-Headers', corsConfig.allowedHeaders.join(', '));
-  res.header('Access-Control-Allow-Credentials', corsConfig.credentials.toString());
+  res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Expose-Headers', corsConfig.exposedHeaders.join(', '));
   res.header('Access-Control-Max-Age', corsConfig.maxAge.toString());
   
-  // Handle preflight requests more explicitly
+  // Handle preflight requests
   if (req.method === 'OPTIONS') {
-    res.header('Content-Type', 'text/plain');
     return res.status(204).end();
   }
   
