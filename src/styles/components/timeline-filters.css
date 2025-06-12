@@ -8,6 +8,7 @@
   align-items: center;
   justify-content: space-between; /* Keeps space between filter buttons and refresh button */
   gap: 12px;
+  max-height: 42.5px;
   margin: 0 10px;
   padding: 5px;
   box-sizing: border-box;

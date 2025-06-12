@@ -122,8 +122,7 @@ router.post('/login', async (req, res) => {
           }
           
           // Generate a new token for the client
-          const { randomBytes } = await import('crypto');
-          const token = randomBytes(32).toString('hex');
+          const token = crypto.randomBytes(32).toString('hex');
           
           // Send success response with user data (excluding password)
           const userResponse = user.toObject();

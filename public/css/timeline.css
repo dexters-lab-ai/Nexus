@@ -10,7 +10,7 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  max-height: 400px;
+  height: 520px;
   border: 1px solid var(--dark-border);
   box-shadow: var(--shadow-subtle);
 }
