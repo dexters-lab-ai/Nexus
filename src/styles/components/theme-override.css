@@ -31,6 +31,17 @@ body.large-text h3 { font-size: 1.9em !important; }
 body.large-text h4 { font-size: 1.6em !important; }
 body.large-text h5 { font-size: 1.3em !important; }
 
+/* Theme Switcher */
+html[data-theme="dark"] body #react-root,
+body[class] [data-theme="dark"] #react-root {
+  background-color: #000000 !important;
+}
+
+html[data-theme="light"] body #react-root,
+body[class] [data-theme="light"] #react-root {
+  background-color: whitesmoke !important;
+}
+
 /* Ultra high-specificity light theme selectors */
 html[data-theme="light"] body .message-timeline-container,
 body[class] [data-theme="light"] .message-timeline-container {

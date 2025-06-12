@@ -187,91 +187,93 @@ async function loadFullHistoryInBackground() {
 // Load required assets with better progress tracking
 async function loadAssets() {
   console.log('Loading application assets...');
+  const isProduction = process.env.NODE_ENV === 'production';
   
   // Emit event to signal asset loading has started
   const assetLoadStartEvent = new Event('loading-assets-start');
   document.dispatchEvent(assetLoadStartEvent);
-  
+
   // CSS with fallback - handles both development and production paths
   const loadCSS = (path) => {
     return new Promise((resolve) => {
-      const isProduction = process.env.NODE_ENV === 'production';
       const cssFile = path.split('/').pop();
       
-      // Convert development path to production path if needed
-      const href = isProduction && path.startsWith('/src/styles/') 
-        ? `/css/${cssFile}` 
-        : path;
+      // In development, use Vite's built-in CSS handling
+      // In production, use the built CSS files
+      const href = isProduction 
+        ? `/css/${cssFile}`
+        : path.replace('/css/', '/src/styles/');
       
       // Skip if already loaded
-      if (document.querySelector(`link[href="${href}"]`)) {
+      if (document.querySelector(`link[href*="${cssFile}"]`)) {
         if (!isProduction) {
           console.log(`[loadCSS] Stylesheet already loaded: ${cssFile}`);
         }
         return resolve();
       }
-      
+
+      // In development, let Vite handle CSS imports directly
+      if (!isProduction) {
+        import(/* @vite-ignore */ href)
+          .then(() => {
+            console.log(`[loadCSS] Loaded via Vite: ${cssFile}`);
+            resolve();
+          })
+          .catch(err => {
+            console.warn(`[loadCSS] Failed to load via Vite: ${cssFile}`, err);
+            resolve(); // Don't block loading
+          });
+        return;
+      }
+
+      // Production: Load CSS via link tag
       const link = document.createElement('link');
       link.rel = 'stylesheet';
       link.href = href;
-      
-      // Add debug logging in development
-      if (!isProduction) {
-        console.log(`[loadCSS] Loading stylesheet: ${cssFile} from ${href}`);
-        link.onload = () => console.log(`[loadCSS] Loaded: ${cssFile}`);
-      }
-      
+      link.onload = () => resolve();
       link.onerror = () => {
         console.warn(`[loadCSS] Failed to load: ${cssFile} from ${href}`);
-        resolve(); // Don't block loading if CSS fails
+        resolve(); // Don't block loading
       };
-      
-      if (!isProduction && link.onload) {
-        link.onload();
-      } else {
-        link.onload = () => resolve();
-      }
-      
       document.head.appendChild(link);
     });
   };
   
   // Group assets by priority
   const criticalAssets = [
-    loadCSS('/css/components.css'),
-    loadCSS('/css/variables.css')
+    loadCSS('/css/variables.css'),
+    loadCSS('/css/components.css')
   ];
   
   // Non-critical assets that can be loaded later
-  const lowPriorityAssets = [
-    // Additional style assets that aren't needed immediately
-    // These will be loaded after critical assets are done
-  ];
+  const lowPriorityAssets = [];
   
-  // Update loading progress for critical assets
-  const splashScreen = document.getElementById('splash-screen');
+  // Update loading progress
   const loadingProgress = document.getElementById('loading-progress');
-  let loaded = 0;
-  const total = criticalAssets.length;
-  criticalAssets.forEach(p => p.then(() => {
-    loaded++;
-    if (loadingProgress) {
+  if (loadingProgress) {
+    let loaded = 0;
+    const total = criticalAssets.length;
+    criticalAssets.forEach(p => p.then(() => {
+      loaded++;
       const percent = Math.round((loaded / total) * 100);
-      loadingProgress.style.width = percent + '%';
+      loadingProgress.style.width = `${percent}%`;
       loadingProgress.setAttribute('aria-valuenow', percent);
-    }
-  }));
+    }));
+  }
 
-  // Wait for critical assets to load
-  await Promise.all(criticalAssets);
-  
-  // Assets are now loaded - wormhole handling is now triggered by init-modern-operator
-  
-  // Load non-critical assets in background
-  if (lowPriorityAssets.length > 0) {
-    await Promise.all(lowPriorityAssets).then(() => {
-      console.log('Low priority assets loaded');
-    });
+  try {
+    // Wait for critical assets to load
+    await Promise.all(criticalAssets);
+    console.log('Critical assets loaded');
+    
+    // Load non-critical assets in background
+    if (lowPriorityAssets.length > 0) {
+      Promise.all(lowPriorityAssets).then(() => {
+        console.log('Low priority assets loaded');
+      });
+    }
+  } catch (error) {
+    console.warn('Error loading assets:', error);
   }
 }
 
@@ -373,24 +375,29 @@ async function initComponents() {
 function finalizeInitialization() {
   console.log('Finalizing application initialization...');
   
+  // Emit application-ready event
+  console.log('Emitting application-ready event');
+  eventBus.emit('application-ready');
+  
+  // Also dispatch as DOM event for components that listen directly
+  document.dispatchEvent(new Event('application-ready'));
+  
   // Check for first-time users
   const isFirstTime = localStorage.getItem('operator_first_visit') == 'false';
   if (!isFirstTime) {
-    // Show welcome tips when application is ready
-    eventBus.once('application-ready', () => {
-      setTimeout(() => {
-        if (appComponents && appComponents.notifications) {
-          appComponents.notifications.addNotification({
-            title: 'Welcome to OPERATOR',
-            message: 'Take a moment to explore the new interface. Click the settings icon to customize your experience.',
-            type: 'info',
-            duration: 10000
-          });
-        }
-        
-        localStorage.setItem('operator_first_visit', 'false');
-      }, 2000);
-    });
+    // Show welcome tips
+    setTimeout(() => {
+      if (appComponents && appComponents.notifications) {
+        appComponents.notifications.addNotification({
+          title: 'Welcome to OPERATOR',
+          message: 'Take a moment to explore the new interface. Click the settings icon to customize your experience.',
+          type: 'info',
+          duration: 10000
+        });
+      }
+      
+      localStorage.setItem('operator_first_visit', 'false');
+    }, 2000);
   }
 }
 

@@ -86,6 +86,7 @@ export function NavigationBar(props = {}) {
     }
     
     .logo-text {
+      font-size: 1.3em;
       font-weight: 600;
       letter-spacing: 0.5px;
       background: linear-gradient(90deg, #4a7bf0, #7b5afa);
