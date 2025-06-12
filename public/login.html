@@ -28,27 +28,31 @@
   <div class="card">
     <div class="card-content">
       <h2 id="form-title">Login</h2>
+      
+      <form id="login-form">
+        <div class="form-group">
+          <i class="fa fa-envelope fa-icon"></i>
+          <input type="email" id="email" placeholder=" " autocomplete="username" required />
+          <label for="email">Email</label>
+        </div>
 
-      <div class="form-group">
-        <i class="fa fa-envelope fa-icon"></i>
-        <input type="email" id="email" placeholder=" " autocomplete="username" />
-        <label for="email">Email</label>
-      </div>
+        <div class="form-group">
+          <i class="fa fa-lock fa-icon"></i>
+          <input
+            type="password"
+            id="password"
+            placeholder=" "
+            autocomplete="current-password"
+            required
+          />
+          <label for="password">Password</label>
+        </div>
 
-      <div class="form-group">
-        <i class="fa fa-lock fa-icon"></i>
-        <input
-          type="password"
-          id="password"
-          placeholder=" "
-          autocomplete="current-password"
-        />
-        <label for="password">Password</label>
-      </div>
+        <div class="error-message" id="error-message"></div>
 
-      <div class="error-message" id="error-message"></div>
+        <button type="submit" class="btn" id="submit-btn">Login</button>
+      </form>
 
-      <button class="btn" id="submit-btn">Login</button>
 
       <div class="toggle">
         <a href="#" id="toggle-link">Switch to Register</a>
@@ -56,6 +60,6 @@
     </div>
   </div>
 
-  <script src="/js/login.js"></script>
+  <script type="module" src="/js/login.js"></script>
 </body>
 </html>

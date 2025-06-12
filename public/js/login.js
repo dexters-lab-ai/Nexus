@@ -92,10 +92,22 @@ function showError(message) {
   }, 5000);
 }
 
+// Add form submission handler
 document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('submit-btn').addEventListener('click', submitForm);
-  document.getElementById('toggle-link').addEventListener('click', (e) => {
-    e.preventDefault();
-    toggleForm();
-  });
+  const loginForm = document.getElementById('login-form');
+  const toggleLink = document.getElementById('toggle-link');
+  
+  if (loginForm) {
+    loginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      submitForm();
+    });
+  }
+  
+  if (toggleLink) {
+    toggleLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      toggleForm();
+    });
+  }
 });
