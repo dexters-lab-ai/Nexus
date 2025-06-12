@@ -5,9 +5,21 @@
 
 // Configuration for API requests
 const isProduction = import.meta.env.PROD;
-const API_BASE = isProduction 
-  ? (import.meta.env.VITE_API_BASE || window.location.origin)
-  : ''; // Use relative paths in development to avoid CORS
+const isLocalhost = window.location.hostname === 'localhost' || 
+                   window.location.hostname === '127.0.0.1';
+
+// Determine the base API URL
+let API_BASE = '';
+if (import.meta.env.VITE_API_URL) {
+  // Use explicit API URL from environment if set
+  API_BASE = import.meta.env.VITE_API_URL;
+} else if (isLocalhost) {
+  // For local development, use the Vite dev server proxy
+  API_BASE = ''; // Relative URLs will be used
+} else {
+  // For production, use the current origin
+  API_BASE = window.location.origin;
+}
 
 // Common headers for all requests
 const DEFAULT_HEADERS = {
@@ -21,8 +33,22 @@ const DEFAULT_OPTIONS = {
   credentials: 'include', // Important: include cookies for auth
   mode: 'cors',
   cache: 'no-store',
-  headers: DEFAULT_HEADERS
+  headers: DEFAULT_HEADERS,
+  // Add CORS specific headers
+  referrerPolicy: 'strict-origin-when-cross-origin'
 };
+
+// Log API configuration in development
+if (!isProduction) {
+  console.log('[API] Environment:', {
+    isProduction,
+    isLocalhost,
+    VITE_API_URL: import.meta.env.VITE_API_URL,
+    VITE_WS_URL: import.meta.env.VITE_WS_URL,
+    API_BASE,
+    location: window.location.href
+  });
+}
 
 /**
  * General fetch wrapper with error handling

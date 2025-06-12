@@ -7,7 +7,7 @@ import { visualizer } from 'rollup-plugin-visualizer';
 import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname  = path.dirname(__filename);
+const __dirname = path.dirname(__filename);
 
 export default defineConfig(({ mode }) => {
   // load .env and system env
@@ -16,18 +16,29 @@ export default defineConfig(({ mode }) => {
     ...loadEnv(mode, process.cwd(), ''),
   };
 
-  const isDev    = mode === 'development';
+  const isDev = mode === 'development';
   const isDocker = env.DOCKER === 'true';
-
-  const host    = '0.0.0.0';
+  const host = '0.0.0.0';
   const hmrHost = isDocker ? '0.0.0.0' : 'localhost';
 
+  // API and WebSocket URLs
   const apiUrl = isDocker
     ? 'http://localhost:3420'
     : (env.VITE_API_URL || (isDev ? 'http://localhost:3420' : ''));
   const wsUrl = isDocker
     ? 'ws://localhost:3420'
-    : (env.VITE_WS_URL || (isDev ? 'ws://localhost:3420' : `wss://${env.APP_DOMAIN}`));
+    : (env.VITE_WS_URL || (isDev ? 'ws://localhost:3420' : `wss://${env.VITE_APP_DOMAIN || 'operator-io236.ondigitalocean.app'}`));
+
+  // Define global constants for the client
+  const define = {
+    'process.env.NODE_ENV': JSON.stringify(mode),
+    'import.meta.env.MODE': JSON.stringify(mode),
+    'import.meta.env.DEV': isDev,
+    'import.meta.env.PROD': !isDev,
+    'import.meta.env.VITE_API_URL': JSON.stringify(apiUrl),
+    'import.meta.env.VITE_WS_URL': JSON.stringify(wsUrl),
+    'import.meta.env.VITE_APP_DOMAIN': JSON.stringify(env.VITE_APP_DOMAIN || 'operator-io236.ondigitalocean.app'),
+  };
 
   // debug dump
   if (isDev || env.DEBUG === 'true') {
