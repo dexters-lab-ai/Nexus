@@ -5,6 +5,80 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { visualizer } from 'rollup-plugin-visualizer';
 import fs from 'fs';
+import { writeFileSync, mkdirSync } from 'fs';
+
+// Plugin to copy auth and events utilities to assets
+function copyUtilsPlugin() {
+  return {
+    name: 'copy-utils',
+    buildStart() {
+      // Ensure assets directory exists
+      const assetsDir = path.resolve(__dirname, 'public/assets/js');
+      mkdirSync(assetsDir, { recursive: true });
+      
+      // Copy auth.js
+      const authContent = `
+        // Simple auth state management
+        export const AUTH_TOKEN_KEY = 'authToken';
+        export const USER_ID_KEY = 'userId';
+        
+        export function setAuthState(userId, token) {
+          if (userId && token) {
+            localStorage.setItem(USER_ID_KEY, userId);
+            localStorage.setItem(AUTH_TOKEN_KEY, token);
+            return true;
+          }
+          return false;
+        }
+        
+        export function clearAuthState() {
+          localStorage.removeItem(AUTH_TOKEN_KEY);
+          localStorage.removeItem(USER_ID_KEY);
+        }
+        
+        export function isAuthenticated() {
+          return !!localStorage.getItem(AUTH_TOKEN_KEY);
+        }
+      `;
+      
+      // Copy events.js
+      const eventsContent = `
+        // Simple event bus
+        const events = new Map();
+        
+        export const eventBus = {
+          on(event, callback) {
+            if (!events.has(event)) {
+              events.set(event, new Set());
+            }
+            events.get(event).add(callback);
+            return () => this.off(event, callback);
+          },
+          
+          off(event, callback) {
+            if (!events.has(event)) return;
+            events.get(event).delete(callback);
+          },
+          
+          emit(event, data) {
+            if (!events.has(event)) return;
+            events.get(event).forEach(cb => {
+              try {
+                cb(data);
+              } catch (e) {
+                console.error('Event handler error:', e);
+              }
+            });
+          }
+        };
+      `;
+      
+      // Write files
+      writeFileSync(path.join(assetsDir, 'auth.js'), authContent);
+      writeFileSync(path.join(assetsDir, 'events.js'), eventsContent);
+    }
+  };
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -60,6 +134,15 @@ export default defineConfig(({ mode }) => {
     publicDir: 'public',
     base: '/',
     logLevel: 'warn',
+    plugins: [
+      react(),
+      copyUtilsPlugin(),
+      visualizer({
+        open: true,
+        gzipSize: true,
+        brotliSize: true,
+      }),
+    ],
 
     server: {
       host,

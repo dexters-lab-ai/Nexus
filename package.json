@@ -85,7 +85,7 @@
         "postcss": "^8.5.3",
         "react": "19.1.0",
         "react-dom": "19.1.0",
-        "react-router-dom": "6.22.3",
+        "react-router-dom": "^6.30.1",
         "rollup-plugin-visualizer": "5.9.2",
         "terser": "^5.40.0",
         "typescript": "^5.8.3",
