@@ -1,4 +1,5 @@
-import { setAuthState, clearAuthState } from './utils/auth.js';
+import { setAuthState, clearAuthState } from '/src/utils/auth.js';
+import { eventBus } from '/src/utils/events.js';
 
 let isLogin = true;
 
