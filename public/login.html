@@ -68,23 +68,19 @@
     </div>
   </div>
 
-  <script>
-    // Simple auth state management
-    const AUTH_TOKEN_KEY = 'authToken';
-    const USER_ID_KEY = 'userId';
-
-    function isAuthenticated() {
-      return !!localStorage.getItem(AUTH_TOKEN_KEY);
-    }
-
-    function setAuthState(userId, token) {
-      if (userId && token) {
-        localStorage.setItem(USER_ID_KEY, userId);
-        localStorage.setItem(AUTH_TOKEN_KEY, token);
-        return true;
+  <script type="module">
+    // Import the auth and events modules from the public directory
+    import { isAuthenticated, setAuthState } from '/js/utils/auth.js';
+    import { eventBus } from '/js/utils/events.js';
+    
+    // Listen for auth state changes
+    eventBus.on('auth-state-changed', (data) => {
+      console.log('Auth state changed:', data);
+      if (data.isAuthenticated) {
+        const redirectTo = new URLSearchParams(window.location.search).get('redirect') || '/';
+        window.location.href = redirectTo;
       }
-      return false;
-    }
+    });
 
     // Check if user is already logged in
     if (isAuthenticated()) {
