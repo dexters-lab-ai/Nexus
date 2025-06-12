@@ -68,11 +68,24 @@
     </div>
   </div>
 
-  <script type="module">
-    // Import the auth and events modules from the assets directory
-    import { setAuthState, clearAuthState, isAuthenticated } from '/assets/js/auth.js';
-    import { eventBus } from '/assets/js/events.js';
-    
+  <script>
+    // Simple auth state management
+    const AUTH_TOKEN_KEY = 'authToken';
+    const USER_ID_KEY = 'userId';
+
+    function isAuthenticated() {
+      return !!localStorage.getItem(AUTH_TOKEN_KEY);
+    }
+
+    function setAuthState(userId, token) {
+      if (userId && token) {
+        localStorage.setItem(USER_ID_KEY, userId);
+        localStorage.setItem(AUTH_TOKEN_KEY, token);
+        return true;
+      }
+      return false;
+    }
+
     // Check if user is already logged in
     if (isAuthenticated()) {
       const redirectTo = new URLSearchParams(window.location.search).get('redirect') || '/';
@@ -135,12 +148,12 @@
         const data = await response.json();
         
         if (!response.ok) {
-          throw new Error(data.error || 'Authentication failed');
+          throw new Error(data.message || data.error || 'Authentication failed');
         }
         
-        if (data.success && data.user && data.token) {
-          // Update auth state with user data and token
-          setAuthState(data.user._id, data.token);
+        if (data.success && data.token) {
+          // Store the token and user ID
+          setAuthState(data.user?._id || data.userId, data.token);
           
           // Redirect to home or intended URL
           const redirectTo = new URLSearchParams(window.location.search).get('redirect') || '/';
@@ -148,14 +161,14 @@
           return;
         }
         
-        throw new Error(data.error || 'Authentication failed');
+        throw new Error(data.message || data.error || 'Authentication failed');
       } catch (error) {
         console.error('Auth error:', error);
         showError(error.message || 'An error occurred. Please try again.');
       } finally {
         // Reset button state
         submitBtn.disabled = false;
-        submitBtn.textContent = isLogin ? 'Login' : 'Register';
+        submitBtn.textContent = originalBtnText;
       }
     }
 
