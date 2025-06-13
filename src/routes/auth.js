@@ -1,6 +1,7 @@
 // src/routes/auth.js
 import express  from 'express';
 import bcrypt   from 'bcrypt';
+import crypto   from 'crypto';
 import User     from '../models/User.js';
 
 const router = express.Router();
