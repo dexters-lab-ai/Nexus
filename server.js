@@ -369,8 +369,8 @@ function setupWebSocketServer(server) {
       }
     });
 
-    // Verify session
-    sessionMiddleware(request, null, (error) => {
+    // Verify session using the middleware with a simplified approach
+    sessionMiddleware(request, {}, (error) => {
       try {
         if (error) {
           console.error('[WebSocket] Session middleware error:', error);
@@ -378,9 +378,10 @@ function setupWebSocketServer(server) {
           return socket.destroy();
         }
 
-        const session = request.session;
-        const isAuthenticated = !!session?.user;
-        const userId = session?.user || `guest_${randomBytes(8).toString('hex')}`;
+        // Get session from request
+        const session = request.session || {};
+        const isAuthenticated = !!session.user && !session.user.startsWith('guest_');
+        const userId = session.user || `guest_${randomBytes(8).toString('hex')}`;
         
         // Verify origin
         const origin = request.headers.origin;
@@ -1059,26 +1060,37 @@ async function startApp() {
     // Start the server
     return new Promise((resolve) => {
       httpServer.listen(PORT, '0.0.0.0', () => {
+        const protocol = process.env.NODE_ENV === 'production' ? 'wss' : 'ws';
+        const host = process.env.NODE_ENV === 'production' 
+          ? process.env.DOMAIN || 'operator-io236.ondigitalocean.app'
+          : 'localhost';
+        const wsUrl = `${protocol}://${host}${process.env.NODE_ENV === 'production' ? '' : `:${PORT}`}/ws`;
+        
         console.log(`\n🚀 Server running on port ${PORT}`);
-        console.log(`🌐 WebSocket available at ws://localhost:${PORT}/ws`);
+        console.log(`🌐 WebSocket available at ${wsUrl}`);
         console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}\n`);
-const ROBOT_ICON = '\u001b[38;5;39m🤖\u001b[0m'; // Bright blue robot
-const LAB_ICON = '\u001b[38;5;208m🧪\u001b[0m';   // Orange lab flask
-const GEAR_ICON = '\u001b[38;5;220m⚙️\u001b[0m';   // Yellow gear
 
-console.log(`\n${ROBOT_ICON}  \u001b[1mO.P.E.R.A.T.O.R - Nexus Server started successfully!\u001b[0m`);
-console.log(`================================`);
-console.log(`${LAB_ICON}  Environment: \u001b[36m${process.env.NODE_ENV || 'development'}\u001b[0m`);
-console.log(`${GEAR_ICON}  Port: \u001b[33m${PORT}\u001b[0m`);
-console.log(`${ROBOT_ICON}  API URL: \u001b[32m${config.apiUrl}\u001b[0m`);
-console.log(`${LAB_ICON}  Frontend URL: \u001b[35m${config.frontendUrl}\u001b[0m`);
-console.log(`${ROBOT_ICON}  WebSocket URL: \u001b[34m${config.wsUrl}\u001b[0m`);
-console.log(`================================\n`);
+        const ROBOT_ICON = '\u001b[38;5;39m🤖\u001b[0m'; // Bright blue robot
+        const LAB_ICON = '\u001b[38;5;208m🧪\u001b[0m';   // Orange lab flask
+        const GEAR_ICON = '\u001b[38;5;220m⚙️\u001b[0m';   // Yellow gear
+
+        console.log(`\n${ROBOT_ICON}  \u001b[1mO.P.E.R.A.T.O.R - Nexus Server started successfully!\u001b[0m`);
+        console.log(`================================`);
+        console.log(`${LAB_ICON}  Environment: \u001b[36m${process.env.NODE_ENV || 'development'}\u001b[0m`);
+        console.log(`${GEAR_ICON}  Port: \u001b[33m${PORT}\u001b[0m`);
+        console.log(`${ROBOT_ICON}  API URL: \u001b[32m${config.apiUrl}\u001b[0m`);
+        console.log(`${LAB_ICON}  Frontend URL: \u001b[35m${config.frontendUrl}\u001b[0m`);
+        console.log(`${ROBOT_ICON}  WebSocket URL: \u001b[34m${wsUrl}\u001b[0m`);
+        console.log(`================================\n`);
+        
+        // Update config with the correct WebSocket URL
+        if (config) {
+          config.wsUrl = wsUrl;
+        }
         
         // Store the server and WebSocket instances globally for cleanup
         global.httpServer = httpServer;
         global.wss = wss;
-        
         
         resolve(httpServer);
       });
