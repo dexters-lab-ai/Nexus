@@ -57,17 +57,8 @@ const initializeApp = async () => {
     await initializeStores();
     updateLoadingProgress(40, loadingProgress);
     
-    // Initialize WebSocket connection after stores are ready
-    if (typeof WebSocketManager !== 'undefined' && WebSocketManager.initialize) {
-      try {
-        await WebSocketManager.initialize();
-        console.log('WebSocket connection initialized');
-      } catch (error) {
-        console.error('Failed to initialize WebSocket connection:', error);
-      }
-    } else {
-      console.warn('WebSocketManager not available for initialization');
-    }
+    // WebSocket initialization is now handled in entry.js
+    console.log('Skipping WebSocket initialization - already handled in entry.js');
     
     // Load required assets and styles
     await loadAssets();

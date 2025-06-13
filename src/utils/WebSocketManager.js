@@ -1,643 +1,455 @@
-// WebSocket Manager with enhanced reliability and authentication support
-export const WebSocketManager = {
-    // Initialize with default values
-    _initialized: false,
-    ws: null,
-    subscribers: new Set(),
-    isConnected: false,
-    reconnectAttempts: 0,
-    MAX_RETRIES: 10, // Increased max retries
-    INITIAL_RETRY_DELAY: 1000, // Start with 1 second
-    MAX_RETRY_DELAY: 30000, // Max 30 seconds between retries
-    currentUserId: null,
-    isAuthenticated: false,
-    connectionPromise: null,
-    connectionTimeout: null,
-    reconnectTimeout: null,
-    debug: process.env.NODE_ENV !== 'production',
-    lastPingTime: null,
-    PING_INTERVAL: 60000, // 60 seconds between pings
-    PONG_TIMEOUT: 30000,    // 30 seconds to wait for pong before reconnecting
-    CONNECTION_TIMEOUT: 10000, // 10 seconds connection timeout
-    lastPongTime: null,     // Track last pong received
-    pendingAuthUpdates: [], // Queue for auth updates that need to be sent after connection
+// WebSocketManager.js - Refactored and cleaned up
+const connectionStates = {
+  DISCONNECTED: 'disconnected',
+  CONNECTING: 'connecting',
+  CONNECTED: 'connected',
+  RECONNECTING: 'reconnecting',
+  ERROR: 'error'
+};
 
-    log(...args) {
-      if (this.debug) {
-        console.log('[WebSocket]', ...args);
-      }
-    },
+class WebSocketManager {
+  static instance = null;
+  
+  constructor() {
+    if (WebSocketManager.instance) {
+      return WebSocketManager.instance;
+    }
+
+    // Configuration
+    this.config = {
+      PING_INTERVAL: 30000,     // 30 seconds between pings
+      PONG_TIMEOUT: 10000,      // 10 seconds to wait for pong
+      MAX_RETRIES: 5,           // Max reconnection attempts
+      INITIAL_RETRY_DELAY: 1000, // Start with 1 second
+      MAX_RETRY_DELAY: 30000,    // Max 30 seconds between retries
+      DEBUG: process.env.NODE_ENV !== 'production'
+    };
+
+    // Connection state
+    this.ws = null;
+    this.connectionState = connectionStates.DISCONNECTED;
+    this.reconnectAttempts = 0;
+    this.reconnectTimeout = null;
+    this.pingInterval = null;
+    this.lastPingTime = null;
+    this.lastPongTime = null;
     
-    /**
-     * Sends an authentication update to the server
-     * @private
-     */
-    async sendAuthUpdate(userId, isAuthenticated) {
-      if (!this.isConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
-        this.log('Queueing auth update - not connected');
-        this.pendingAuthUpdates.push({ userId, isAuthenticated });
-        return false;
-      }
-      
+    // User context
+    this.userId = null;
+    this.isAuthenticated = false;
+    
+    // Event subscribers
+    this.subscribers = new Set();
+    this.pendingMessages = [];
+    
+    WebSocketManager.instance = this;
+  }
+
+  // ====================
+  // Public API
+  // ====================
+  
+  /**
+   * Initialize WebSocket connection with user context
+   * @param {Object} options - Connection options
+   * @param {string} options.userId - User ID
+   * @param {boolean} [options.isAuthenticated=false] - Whether the user is authenticated
+   * @returns {Promise<void>}
+   */
+  async initialize({ userId, isAuthenticated = false } = {}) {
+    this.userId = userId || this.userId || 'guest_' + Math.random().toString(36).substr(2, 9);
+    this.isAuthenticated = isAuthenticated;
+    
+    if (this.connectionState === connectionStates.CONNECTED) {
+      this.log('WebSocket already connected');
+      return;
+    }
+    
+    if (this.connectionState === connectionStates.CONNECTING) {
+      this.log('WebSocket connection already in progress');
+      return;
+    }
+    
+    return this.connect();
+  }
+
+  /**
+   * Send a message through the WebSocket
+   * @param {Object} data - Data to send
+   * @returns {boolean} - Whether the message was sent or queued
+   */
+  send(data) {
+    if (this.connectionState === connectionStates.CONNECTED && this.ws?.readyState === WebSocket.OPEN) {
       try {
-        const message = {
-          type: 'update_auth_state',
-          userId,
-          isAuthenticated,
-          timestamp: Date.now()
-        };
-        
-        this.log('Sending auth update:', message);
-        this.ws.send(JSON.stringify(message));
+        this.ws.send(JSON.stringify(data));
         return true;
       } catch (error) {
-        this.error('Failed to send auth update:', error);
-        this.pendingAuthUpdates.push({ userId, isAuthenticated });
+        this.error('Failed to send message:', error);
+        this.queueMessage(data);
         return false;
       }
-    },
+    } else {
+      this.queueMessage(data);
+      return false;
+    }
+  }
 
-    error(...args) {
-      console.error('[WebSocket]', ...args);
-    },
+  /**
+   * Subscribe to WebSocket events
+   * @param {Function} callback - Callback function
+   * @returns {Function} Unsubscribe function
+   */
+  subscribe(callback) {
+    this.subscribers.add(callback);
+    return () => this.subscribers.delete(callback);
+  }
 
-    /**
-     * Process any pending authentication updates
-     * @private
-     */
-    processPendingAuthUpdates() {
-      if (!this.pendingAuthUpdates.length) return;
-      
-      this.log(`Processing ${this.pendingAuthUpdates.length} pending auth updates`);
-      
-      // Process all pending updates
-      while (this.pendingAuthUpdates.length > 0) {
-        const update = this.pendingAuthUpdates.shift();
-        if (update) {
-          this.sendAuthUpdate(update.userId, update.isAuthenticated)
-            .catch(error => {
-              this.error('Error processing pending auth update:', error);
-              // Re-queue the failed update
-              this.pendingAuthUpdates.unshift(update);
-              return false;
-            });
-        }
+  /**
+   * Close the WebSocket connection
+   * @param {number} [code=1000] - Close code
+   * @param {string} [reason] - Close reason
+   */
+  close(code = 1000, reason) {
+    this.cleanup();
+    if (this.ws) {
+      this.ws.close(code, reason);
+    }
+    this.connectionState = connectionStates.DISCONNECTED;
+  }
+
+  // ====================
+  // Internal Methods
+  // ====================
+
+  async connect() {
+    if (this.ws) {
+      this.cleanup();
+    }
+
+    this.connectionState = connectionStates.CONNECTING;
+    this.notify({ type: 'connecting' });
+
+    const wsUrl = this.getWebSocketUrl();
+    this.log(`Connecting to WebSocket: ${wsUrl}`);
+
+    try {
+      this.ws = new WebSocket(wsUrl);
+      this.setupEventHandlers();
+      await this.waitForConnection();
+      this.setupPingPong();
+      this.processPendingMessages();
+    } catch (error) {
+      this.error('WebSocket connection failed:', error);
+      this.handleDisconnect();
+    }
+  }
+
+  setupEventHandlers() {
+    if (!this.ws) return;
+
+    this.ws.onopen = () => {
+      this.connectionState = connectionStates.CONNECTED;
+      this.reconnectAttempts = 0;
+      this.log('WebSocket connected');
+      this.notify({ type: 'connected' });
+      this.sendAuthUpdate();
+    };
+
+    this.ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        this.handleIncomingMessage(data);
+      } catch (error) {
+        this.error('Error parsing WebSocket message:', error);
       }
-    },
-    
-    /**
-     * Cleans up the WebSocket connection and all related resources
-     * @param {boolean} isLogout - Whether this cleanup is due to a user logout
-     */
-    cleanup(isLogout = false) {
-      this.log(`Cleaning up WebSocket connection${isLogout ? ' (logout)' : ''}`);
-      
-      // Clear all timeouts and intervals
-      this.clearTimeouts();
-      this.clearPingInterval();
-      
-      // If this is a logout, clear all pending messages and auth updates
-      if (isLogout) {
-        this.pendingAuthUpdates = [];
-        this.isAuthenticated = false;
-        this.currentUserId = null;
-        // Notify all subscribers about the logout
-        this.notify({ type: 'logout', timestamp: Date.now() });
-      }
-      
-      // Clean up WebSocket connection if it exists
-      if (this.ws) {
-        // Remove all event listeners to prevent memory leaks
-        this.ws.onopen = null;
-        this.ws.onclose = null;
-        this.ws.onmessage = null;
-        this.ws.onerror = null;
-        
-        // Close the connection if it's open or connecting
-        if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
-          try {
-            // If this is a logout, send a final message to the server
-            if (isLogout && this.ws.readyState === WebSocket.OPEN) {
-              this.ws.send(JSON.stringify({ 
-                type: 'user_logout',
-                timestamp: Date.now() 
-              }));
-            }
-            this.ws.close();
-          } catch (error) {
-            this.error('Error during WebSocket close:', error);
-          } finally {
-            this.ws = null;
-          }
-        } else {
-          this.ws = null;
-        }
-      }
-      
-      this.isConnected = false;
-      this.notify({ 
-        type: 'connection', 
-        status: 'disconnected', 
-        isAuthenticated: this.isAuthenticated 
-      });
-      
-      // Only attempt to reconnect if this wasn't a logout
-      if (!isLogout) {
-        this.attemptReconnect();
-      }
-    },
-    
-    clearTimeouts() {
-      if (this.connectionTimeout) {
-        clearTimeout(this.connectionTimeout);
-        this.connectionTimeout = null;
-      }
-      
-      if (this.reconnectTimeout) {
-        clearTimeout(this.reconnectTimeout);
-        this.reconnectTimeout = null;
-      }
-    },
-    
-    clearPingInterval() {
-      if (this.pingInterval) {
-        clearInterval(this.pingInterval);
-        this.pingInterval = null;
-      }
-      this.lastPingTime = null;
-      this.lastPongTime = null;
-      // Remove pong handler
-      if (this.ws) {
-        this.ws.onpong = null;
-      }
-    },
-    
-    setupPing() {
-      this.clearPingInterval();
-      
-      this.lastPingTime = Date.now();
+    };
+
+    this.ws.onclose = (event) => {
+      this.log(`WebSocket closed: ${event.code} ${event.reason || ''}`);
+      this.handleDisconnect(event);
+    };
+
+    this.ws.onerror = (error) => {
+      this.error('WebSocket error:', error);
+      this.handleDisconnect();
+    };
+  }
+
+  handleIncomingMessage(data) {
+    if (data.type === 'pong') {
       this.lastPongTime = Date.now();
-      
-      // Setup ping interval
-      this.pingInterval = setInterval(() => {
-        if (this.isConnected && this.ws && this.ws.readyState === WebSocket.OPEN) {
-          try {
-            // Check if we've missed too many pongs
-            if (Date.now() - this.lastPongTime > (this.PING_INTERVAL + this.PONG_TIMEOUT)) {
-              this.log('No pong received, reconnecting...');
-              this.handleDisconnect();
-              return;
-            }
-            
-            // Send ping message and update last ping time
-            try {
-              this.ws.send(JSON.stringify({ type: 'ping' }));
-              this.lastPingTime = Date.now();
-            } catch (err) {
-              this.error('Error sending ping:', err);
-              this.handleDisconnect();
-            }
-            
-          } catch (error) {
-            this.error('Error in ping interval:', error);
-            this.handleDisconnect();
-          }
+      this.log(`Pong received for ping ${data.pingId || 'unknown'}`);
+      // Forward the pong to any listeners
+      this.notify(data);
+    } else if (data.type === 'ping') {
+      this.log(`Ping received, sending pong for ping ${data.pingId || 'unknown'}`);
+      this.send({ 
+        type: 'pong', 
+        pingId: data.pingId, 
+        timestamp: Date.now() 
+      });
+    } else {
+      this.notify(data);
+    }
+  }
+
+  /**
+   * Manually send a ping and wait for pong
+   * @returns {Promise<boolean>} Whether pong was received
+   */
+  async ping() {
+    if (!this.isConnected) {
+      this.log('Cannot ping: WebSocket not connected');
+      return false;
+    }
+
+    return new Promise((resolve) => {
+      const pingId = Date.now();
+      const timeout = setTimeout(() => {
+        this.log(`Ping ${pingId} timed out`);
+        resolve(false);
+      }, this.config.PONG_TIMEOUT);
+
+      const unsubscribe = this.subscribe((message) => {
+        if (message.type === 'pong' && message.pingId === pingId) {
+          clearTimeout(timeout);
+          unsubscribe();
+          this.log(`Pong received for ping ${pingId}`);
+          resolve(true);
         }
-      }, this.PING_INTERVAL);
-      
-      // Setup pong handler
-      if (this.ws) {
-        this.ws.onpong = () => {
-          this.lastPongTime = Date.now();
-          this.log('Pong received');
-        };
+      });
+
+      try {
+        this.send({ type: 'ping', pingId, timestamp: Date.now() });
+        this.lastPingTime = Date.now();
+      } catch (error) {
+        this.error('Error sending ping:', error);
+        clearTimeout(timeout);
+        unsubscribe();
+        resolve(false);
       }
-    },
-    
-    getWebSocketUrl(userId, isAuthenticated) {
-      // Use environment variable if available, otherwise construct from current host
-      let wsUrl = window.__ENV__?.wsUrl || 
-                `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}:${window.location.port || (window.location.protocol === 'https:' ? '443' : '80')}/ws`;
-      
-      // Ensure URL ends with /ws
-      if (!wsUrl.endsWith('/ws')) {
-        wsUrl = wsUrl.endsWith('/') ? `${wsUrl}ws` : `${wsUrl}/ws`;
-      }
-      
-      const separator = wsUrl.includes('?') ? '&' : '?';
-      wsUrl = `${wsUrl}${separator}userId=${encodeURIComponent(userId)}`;
-      
-      if (isAuthenticated) {
-        wsUrl += '&authenticated=true';
-      }
-      
-      return wsUrl;
-    },
-    
-    handleDisconnect() {
-      this.isConnected = false;
-      this.cleanup();
-      this.notify({ type: 'connection', status: 'disconnected', isAuthenticated: this.isAuthenticated });
-      this.attemptReconnect();
-    },
-    
-    attemptReconnect() {
-      if (this.reconnectAttempts >= this.MAX_RETRIES) {
-        this.error('Max reconnection attempts reached');
-        this.notify({ 
-          type: 'connection', 
-          status: 'error', 
-          error: 'max_retries_reached',
-          message: 'Max reconnection attempts reached',
-          isAuthenticated: this.isAuthenticated 
-        });
+    });
+  }
+
+  setupPingPong() {
+    this.clearPingInterval();
+    this.lastPingTime = Date.now();
+    this.lastPongTime = Date.now();
+
+    this.pingInterval = setInterval(async () => {
+      if (this.connectionState !== connectionStates.CONNECTED || !this.ws) {
         return;
       }
+
+      const now = Date.now();
+      const timeSinceLastPong = now - this.lastPongTime;
       
-      if (!this.currentUserId) {
-        this.log('No user ID available for reconnection');
+      // Check if we missed a pong
+      if (timeSinceLastPong > this.config.PONG_TIMEOUT) {
+        this.log(`No pong received in ${timeSinceLastPong}ms (timeout: ${this.config.PONG_TIMEOUT}ms), reconnecting...`);
+        this.handleDisconnect();
         return;
       }
-      
-      this.reconnectAttempts++;
-      
-      // Exponential backoff with jitter
-      const baseDelay = Math.min(
-        this.INITIAL_RETRY_DELAY * Math.pow(2, this.reconnectAttempts - 1),
-        this.MAX_RETRY_DELAY
-      );
-      const jitter = Math.random() * 1000; // Add up to 1s jitter
-      const delay = Math.min(baseDelay + jitter, this.MAX_RETRY_DELAY);
-      
-      this.log(`Reconnecting in ${Math.round(delay)}ms... (${this.reconnectAttempts}/${this.MAX_RETRIES})`);
-      
-      this.reconnectTimeout = setTimeout(() => {
-        this.init(this.currentUserId, this.isAuthenticated).catch(error => {
-          this.error('Reconnection attempt failed:', error);
-        });
-      }, delay);
-    },
 
-    /**
-     * Initialize WebSocket connection with authentication
-     * @param {string} userId - The user ID to connect with
-     * @param {boolean} isAuthenticated - Whether the user is authenticated
-     * @returns {Promise} Resolves when connected, rejects on error
-     */
-    async init(userId, isAuthenticated = false) {
-      // If already connected with same auth state, do nothing
-      if (this.ws && this.isConnected && this.isAuthenticated === isAuthenticated && this.currentUserId === userId) {
-        this.log('Already connected with same auth state');
-        return Promise.resolve();
-      }
-
-      // If we have a connection in progress with different auth state, queue the update
-      if (this.connectionPromise && (this.isAuthenticated !== isAuthenticated || this.currentUserId !== userId)) {
-        this.log('Queuing auth state update for after connection');
-        this.pendingAuthUpdates.push({ userId, isAuthenticated });
-        return this.connectionPromise;
-      }
-
-      // Clean up any existing connection
-      this.cleanup();
-      this.clearTimeouts();
-
-      this.currentUserId = userId;
-      this.isAuthenticated = isAuthenticated;
-      
-      // If we already have a connection in progress, return that promise
-      if (this.connectionPromise) {
-        this.log('Connection already in progress, returning existing promise');
-        return this.connectionPromise;
-      }
-
-      this.connectionPromise = new Promise((resolve, reject) => {
-        const wsUrl = this.getWebSocketUrl(userId, isAuthenticated);
-        this.log(`Attempting ${isAuthenticated ? 'authenticated' : 'guest'} connection to:`, wsUrl);
-        
-        try {
-          this.ws = new WebSocket(wsUrl);
-          
-          // Set up connection timeout
-          this.connectionTimeout = setTimeout(() => {
-            if (!this.isConnected) {
-              this.error('Connection timeout');
-              this.cleanup();
-              this.notify({ 
-                type: 'connection', 
-                status: 'error', 
-                error: 'timeout',
-                message: 'Connection timeout',
-                isAuthenticated 
-              });
-              reject(new Error('Connection timeout'));
-            }
-          }, this.CONNECTION_TIMEOUT);
-          
-          this.ws.onopen = () => {
-            this.clearTimeouts();
-            this.isConnected = true;
-            this.reconnectAttempts = 0;
-            
-            // Process any pending auth updates
-            this.processPendingAuthUpdates();
-            
-            // Send initial auth state if we have one
-            if (this.currentUserId) {
-              this.sendAuthUpdate(this.currentUserId, this.isAuthenticated);
-            }
-            this.log(`${isAuthenticated ? 'Authenticated' : 'Guest'} connection established`);
-            this.setupPing();
-            // Set up message handler
-            this.ws.onmessage = (event) => {
-              try {
-                // Handle binary pong messages (standard WebSocket pong)
-                if (typeof event.data === 'string') {
-                  const data = JSON.parse(event.data);
-                  
-                  // Handle ping requests from server
-                  if (data.type === 'ping') {
-                    this.log('Received ping from server, sending pong');
-                    this.ws.send(JSON.stringify({ type: 'pong' }));
-                    return;
-                  }
-                  
-                  // Handle pong responses to our pings
-                  if (data.type === 'pong') {
-                    this.lastPongTime = Date.now();
-                    return;
-                  }
-                  
-                  // Handle auth state acknowledgements
-                  if (data.type === 'auth_state_updated') {
-                    this.log('Auth state updated on server:', data);
-                    this.isAuthenticated = data.isAuthenticated;
-                    this.currentUserId = data.userId;
-                  }
-                  
-                  // Notify subscribers about the message
-                  this.notify(data);
-                }
-              } catch (error) {
-                this.error('Error parsing message:', error, event.data);
-              }
-            };
-            
-            // Notify about successful connection
-            this.notify({ 
-              type: 'connection', 
-              status: 'connected',
-              isAuthenticated,
-              timestamp: Date.now() 
-            });
-            
-            resolve();
-          };
-      
-          this.ws.onclose = (event) => {
-            this.clearTimeouts();
-            this.log(`${isAuthenticated ? 'Authenticated' : 'Guest'} connection closed`, event);
-            
-            // If we were connected, try to reconnect
-            if (this.isConnected) {
-              this.handleDisconnect();
-            } else {
-              // If we were trying to connect, reject the promise
-              if (this.connectionPromise) {
-                const error = new Error(`Connection closed: ${event.reason || 'Unknown reason'}`);
-                error.code = event.code;
-                reject(error);
-              }
-            }
-            
-            this.connectionPromise = null;
-          };
-      
-          this.ws.onerror = (error) => {
-            this.clearTimeouts();
-            this.error('WebSocket error:', error);
-            
-            if (this.connectionPromise) {
-              reject(error);
-              this.connectionPromise = null;
-            }
-            
-            this.handleDisconnect();
-          };
-          
-        } catch (error) {
-          this.clearTimeouts();
-          this.error('Error creating WebSocket:', error);
-          reject(error);
-          this.connectionPromise = null;
+      // Send ping and wait for pong
+      try {
+        this.log('Sending ping...');
+        const pongReceived = await this.ping();
+        if (!pongReceived) {
+          this.log('Ping failed, reconnecting...');
           this.handleDisconnect();
         }
-      });
-
-      return this.connectionPromise.finally(() => {
-        this.connectionPromise = null;
-      });
-    },
-
-    /**
-     * Updates the authentication state and manages WebSocket reconnection if needed
-     * @param {string} userId - The user ID to authenticate with
-     * @param {boolean} isAuthenticated - Whether the user is authenticated
-     * @returns {Promise<void>} Resolves when the update is complete
-     * @throws {Error} If there's an error during the update process
-     */
-    async updateAuthState(userId, isAuthenticated) {
-      // Normalize inputs
-      const newUserId = userId || 'guest';
-      
-      // Skip if no meaningful change
-      if (this.isAuthenticated === isAuthenticated && this.currentUserId === newUserId) {
-        this.log('Auth state unchanged, skipping update');
-        return;
-      }
-
-      const wasAuthenticated = this.isAuthenticated;
-      const previousUserId = this.currentUserId;
-      
-      // Update local state first
-      this.isAuthenticated = isAuthenticated;
-      this.currentUserId = newUserId;
-      
-      this.log(`Auth state changed: ${previousUserId} -> ${this.currentUserId}, auth: ${wasAuthenticated} -> ${isAuthenticated}`);
-      
-      try {
-        // If we have an active connection, try to update it
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-          this.log('Sending auth update to server...');
-          await this._sendAuthUpdate();
-        } 
-        // If no connection or connection closed, reconnect with new auth state
-        else {
-          this.log('No active connection, reconnecting with new auth state...');
-          await this.reconnect();
-          return;
-        }
-        
-        // If we're still connected after the update, we need to fully reconnect
-        if (this.isConnected) {
-          this.log('Reinitializing connection with new auth state...');
-          this.cleanup();
-          await this.init(this.currentUserId, this.isAuthenticated);
-        }
       } catch (error) {
-        this.log(`Error updating auth state: ${error.message}`, 'error');
-        // Re-throw to allow callers to handle the error
-        throw error;
+        this.error('Error in ping/pong:', error);
+        this.handleDisconnect();
       }
-    },
+    }, this.config.PING_INTERVAL);
+  }
 
-    /**
-     * Sends authentication update to the WebSocket server
-     * @private
-     * @returns {Promise<void>}
-     */
-    _sendAuthUpdate() {
-      return new Promise((resolve, reject) => {
-        try {
-          const authMessage = {
-            type: 'auth_update',
-            userId: this.currentUserId,
-            isAuthenticated: this.isAuthenticated,
-            timestamp: Date.now()
-          };
-          
-          this.ws.send(JSON.stringify(authMessage), (error) => {
-            if (error) {
-              this.log(`Failed to send auth update: ${error.message}`, 'error');
-              reject(error);
-            } else {
-              this.log('Auth update sent successfully');
-              resolve();
-            }
-          });
-        } catch (error) {
-          this.log(`Error in _sendAuthUpdate: ${error.message}`, 'error');
-          reject(error);
-        }
-      });
-    },
-  
-    subscribe(callback) {
-      this.subscribers.add(callback);
-      return () => this.unsubscribe(callback);
-    },
-  
-    unsubscribe(callback) {
-      this.subscribers.delete(callback);
-    },
-  
-    notify(data) {
-      // Add timestamp if not present
-      const message = { ...data };
-      if (!message.timestamp) {
-        message.timestamp = Date.now();
+  async waitForConnection() {
+    return new Promise((resolve, reject) => {
+      if (!this.ws) {
+        return reject(new Error('WebSocket not initialized'));
       }
-      
-      // Notify all subscribers
-      for (const callback of this.subscribers) {
-        try {
-          callback(message);
-        } catch (error) {
-          this.error('Error in WebSocket subscriber:', error);
-        }
+
+      const timeout = setTimeout(() => {
+        reject(new Error('Connection timeout'));
+      }, 10000); // 10 second timeout
+
+      const onOpen = () => {
+        clearTimeout(timeout);
+        this.ws?.removeEventListener('open', onOpen);
+        resolve();
+      };
+
+      if (this.ws.readyState === WebSocket.OPEN) {
+        onOpen();
+      } else {
+        this.ws.addEventListener('open', onOpen);
       }
-    },
-  
-    send(data, { queueIfDisconnected = true } = {}) {
-      // If not connected but queuing is enabled, queue the message
-      if (!this.isConnected && queueIfDisconnected) {
-        this.log('Queueing message (disconnected):', data.type || 'unknown');
-        return new Promise((resolve, reject) => {
-          // Try to send when connected
-          const onConnected = () => {
-            this.unsubscribe(onConnected);
-            this.send(data, { queueIfDisconnected: false })
-              .then(resolve)
-              .catch(reject);
-          };
-          
-          this.subscribe(onConnected);
-          
-          // If not connected within 10 seconds, reject
-          setTimeout(() => {
-            this.unsubscribe(onConnected);
-            reject(new Error('Failed to send message: connection timeout'));
-          }, 10000);
-        });
-      }
-      
-      // If connected, send immediately
-      if (this.isConnected && this.ws && this.ws.readyState === WebSocket.OPEN) {
-        try {
-          const message = JSON.stringify(data);
-          this.ws.send(message);
-          this.log('Message sent:', data.type || 'unknown');
-          return Promise.resolve();
-        } catch (error) {
-          this.error('Error sending message:', error);
-          return Promise.reject(error);
-        }
-      }
-      
-      this.error('Cannot send message - not connected');
-      return Promise.reject(new Error('Not connected to WebSocket server'));
-    },
-    
-    // Close the connection cleanly
-    close() {
-      this.log('Closing WebSocket connection');
-      this.cleanup();
-      this.currentUserId = null;
-      this.isAuthenticated = false;
-      this.connectionPromise = null;
-      this.reconnectAttempts = 0;
-    },
-    
-    /**
-     * Initialize the WebSocket connection
-     * @param {Object} options - Configuration options
-     * @param {string} [options.userId] - Optional user ID for initial connection
-     * @param {boolean} [options.isAuthenticated=false] - Whether the user is authenticated
-     * @returns {Promise} Resolves when connected
-     */
-    initialize: async function(options = {}) {
-      if (this._initialized) {
-        this.log('WebSocketManager already initialized');
-        return Promise.resolve();
-      }
-      
-      this._initialized = true;
-      const { userId, isAuthenticated = false } = options;
-      
-      // If no userId provided, generate a guest ID
-      const connectionUserId = userId || `guest_${Math.random().toString(36).substr(2, 9)}`;
-      
-      this.log('Initializing WebSocket connection for user:', connectionUserId);
-      
-      try {
-        await this.init(connectionUserId, isAuthenticated);
-        this.log('WebSocket connection initialized successfully');
-        return Promise.resolve();
-      } catch (error) {
-        this.error('Failed to initialize WebSocket connection:', error);
-        return Promise.reject(error);
-      }
+    });
+  }
+
+  handleDisconnect(event) {
+    if (this.connectionState === connectionStates.DISCONNECTED) {
+      return;
     }
-  };
 
-// Make available globally for backward compatibility
-if (typeof window !== 'undefined') {
-  window.WebSocketManager = WebSocketManager;
-  
-  // Initialize with default guest connection
-  WebSocketManager.initialize().catch(error => {
-    console.error('Failed to initialize WebSocket connection:', error);
-  });
+    this.cleanup();
+    this.connectionState = connectionStates.DISCONNECTED;
+    this.notify({ type: 'disconnected', event });
+
+    if (this.reconnectAttempts < this.config.MAX_RETRIES) {
+      this.attemptReconnect();
+    } else {
+      this.connectionState = connectionStates.ERROR;
+      this.notify({ 
+        type: 'error', 
+        message: 'Max reconnection attempts reached' 
+      });
+    }
+  }
+
+  attemptReconnect() {
+    this.connectionState = connectionStates.RECONNECTING;
+    this.reconnectAttempts++;
+    
+    const delay = Math.min(
+      this.config.INITIAL_RETRY_DELAY * Math.pow(2, this.reconnectAttempts - 1),
+      this.config.MAX_RETRY_DELAY
+    );
+
+    this.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.config.MAX_RETRIES})`);
+    
+    this.reconnectTimeout = setTimeout(() => {
+      this.connect().catch(error => {
+        this.error('Reconnection failed:', error);
+        this.handleDisconnect();
+      });
+    }, delay);
+  }
+
+  sendAuthUpdate() {
+    if (!this.userId) return;
+    
+    this.send({
+      type: 'auth',
+      userId: this.userId,
+      isAuthenticated: this.isAuthenticated,
+      timestamp: Date.now()
+    });
+  }
+
+  queueMessage(data) {
+    if (this.pendingMessages.length > 50) {
+      this.pendingMessages.shift(); // Remove oldest message if queue is full
+    }
+    this.pendingMessages.push(data);
+  }
+
+  processPendingMessages() {
+    while (this.pendingMessages.length > 0 && this.isConnected) {
+      const message = this.pendingMessages.shift();
+      this.send(message);
+    }
+  }
+
+  cleanup() {
+    this.clearPingInterval();
+    
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
+    if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      
+      if (this.ws.readyState === WebSocket.OPEN) {
+        this.ws.close(1000, 'Client closed');
+      }
+      
+      this.ws = null;
+    }
+  }
+
+  clearPingInterval() {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+  }
+
+  getWebSocketUrl() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    const path = '/ws';
+    const params = new URLSearchParams({
+      userId: this.userId,
+      isAuthenticated: this.isAuthenticated ? 'true' : 'false',
+      v: '1.0' // Version for cache busting
+    });
+
+    return `${protocol}//${host}${path}?${params.toString()}`;
+  }
+
+  notify(message) {
+    this.subscribers.forEach(callback => {
+      try {
+        callback(message);
+      } catch (error) {
+        console.error('Error in WebSocket subscriber:', error);
+      }
+    });
+  }
+
+  log(...args) {
+    if (this.config.DEBUG) {
+      console.log('[WebSocket]', ...args);
+    }
+  }
+
+  error(...args) {
+    console.error('[WebSocket]', ...args);
+  }
+
+  /**
+   * Update authentication state and reconnect if needed
+   * @param {string} userId - New user ID
+   * @param {boolean} isAuthenticated - Whether the user is authenticated
+   * @returns {Promise<void>}
+   */
+  async updateAuthState(userId, isAuthenticated) {
+    const authChanged = this.userId !== userId || this.isAuthenticated !== isAuthenticated;
+    
+    if (!authChanged) {
+      this.log('Auth state unchanged, skipping update');
+      return;
+    }
+    
+    this.log('Updating auth state:', { userId, isAuthenticated });
+    this.userId = userId || this.userId;
+    this.isAuthenticated = isAuthenticated;
+    
+    // If connected, update the server with new auth state
+    if (this.isConnected) {
+      this.sendAuthUpdate();
+    } else {
+      // If not connected, reconnect with new auth state
+      await this.connect();
+    }
+  }
+
+  // Getters
+  get isConnected() {
+    return this.connectionState === connectionStates.CONNECTED && 
+           this.ws?.readyState === WebSocket.OPEN;
+  }
 }
 
-export default WebSocketManager;
+// Export a singleton instance
+export const webSocketManager = new WebSocketManager();
+export default webSocketManager;

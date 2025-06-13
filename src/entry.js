@@ -109,6 +109,20 @@ eventBus.once('initialize-application', async () => {
     // Update message store with the user ID
     updateMessageStoreUserId(userId);
     
+    // Initialize WebSocket with user context
+    const isAuthenticated = !userId.startsWith('guest_');
+    try {
+      const { WebSocketManager } = await import('./utils/WebSocketManager.js');
+      await WebSocketManager.initialize({
+        userId,
+        isAuthenticated
+      });
+      console.log('WebSocket initialized with user:', { userId, isAuthenticated });
+    } catch (error) {
+      console.error('Failed to initialize WebSocket:', error);
+      // Continue with app initialization even if WebSocket fails
+    }
+    
     // Update auth store with the user ID
     if (window.stores?.auth) {
       window.stores.auth.setState({
@@ -118,10 +132,31 @@ eventBus.once('initialize-application', async () => {
       });
     }
     
+    // Listen for logout events
+    eventBus.on('user-logged-out', async () => {
+      // Update WebSocket authentication state
+      try {
+        const { WebSocketManager } = await import('./utils/WebSocketManager.js');
+        await WebSocketManager.updateAuthState(null, false);
+        console.log('WebSocket authentication reset after logout');
+      } catch (error) {
+        console.error('Failed to update WebSocket authentication on logout:', error);
+      }
+    });
+    
     // Listen for authentication events
-    eventBus.on('user-authenticated', (userData) => {
+    eventBus.on('user-authenticated', async (userData) => {
       if (userData?.id) {
         const newUserId = userData.id;
+        
+        // Update WebSocket authentication state
+        try {
+          const { WebSocketManager } = await import('./utils/WebSocketManager.js');
+          await WebSocketManager.updateAuthState(newUserId, true);
+          console.log('WebSocket authentication updated for user:', newUserId);
+        } catch (error) {
+          console.error('Failed to update WebSocket authentication:', error);
+        }
         // Update all storage locations
         localStorage.setItem('userId', newUserId);
         sessionStorage.setItem('userId', newUserId);
