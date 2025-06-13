@@ -373,23 +373,88 @@ export const WebSocketManager = {
         this.connectionPromise = null;
       });
     },
-  
-    // Update authentication state
+
+    /**
+     * Updates the authentication state and manages WebSocket reconnection if needed
+     * @param {string} userId - The user ID to authenticate with
+     * @param {boolean} isAuthenticated - Whether the user is authenticated
+     * @returns {Promise<void>} Resolves when the update is complete
+     * @throws {Error} If there's an error during the update process
+     */
     async updateAuthState(userId, isAuthenticated) {
-      if (this.isAuthenticated === isAuthenticated && this.currentUserId === userId) {
+      // Normalize inputs
+      const newUserId = userId || 'guest';
+      
+      // Skip if no meaningful change
+      if (this.isAuthenticated === isAuthenticated && this.currentUserId === newUserId) {
         this.log('Auth state unchanged, skipping update');
-        return Promise.resolve();
+        return;
       }
+
+      const wasAuthenticated = this.isAuthenticated;
+      const previousUserId = this.currentUserId;
       
-      this.log(`Updating auth state: ${isAuthenticated ? 'authenticated' : 'guest'}`);
+      // Update local state first
+      this.isAuthenticated = isAuthenticated;
+      this.currentUserId = newUserId;
       
-      // If we're already connected, close the connection first
-      if (this.isConnected) {
-        this.log('Closing existing connection before updating auth state');
-        this.cleanup();
+      this.log(`Auth state changed: ${previousUserId} -> ${this.currentUserId}, auth: ${wasAuthenticated} -> ${isAuthenticated}`);
+      
+      try {
+        // If we have an active connection, try to update it
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.log('Sending auth update to server...');
+          await this._sendAuthUpdate();
+        } 
+        // If no connection or connection closed, reconnect with new auth state
+        else {
+          this.log('No active connection, reconnecting with new auth state...');
+          await this.reconnect();
+          return;
+        }
+        
+        // If we're still connected after the update, we need to fully reconnect
+        if (this.isConnected) {
+          this.log('Reinitializing connection with new auth state...');
+          this.cleanup();
+          await this.init(this.currentUserId, this.isAuthenticated);
+        }
+      } catch (error) {
+        this.log(`Error updating auth state: ${error.message}`, 'error');
+        // Re-throw to allow callers to handle the error
+        throw error;
       }
-      
-      return this.init(userId, isAuthenticated);
+    },
+
+    /**
+     * Sends authentication update to the WebSocket server
+     * @private
+     * @returns {Promise<void>}
+     */
+    _sendAuthUpdate() {
+      return new Promise((resolve, reject) => {
+        try {
+          const authMessage = {
+            type: 'auth_update',
+            userId: this.currentUserId,
+            isAuthenticated: this.isAuthenticated,
+            timestamp: Date.now()
+          };
+          
+          this.ws.send(JSON.stringify(authMessage), (error) => {
+            if (error) {
+              this.log(`Failed to send auth update: ${error.message}`, 'error');
+              reject(error);
+            } else {
+              this.log('Auth update sent successfully');
+              resolve();
+            }
+          });
+        } catch (error) {
+          this.log(`Error in _sendAuthUpdate: ${error.message}`, 'error');
+          reject(error);
+        }
+      });
     },
   
     subscribe(callback) {
@@ -466,48 +531,48 @@ export const WebSocketManager = {
       this.isAuthenticated = false;
       this.connectionPromise = null;
       this.reconnectAttempts = 0;
+    },
+    
+    /**
+     * Initialize the WebSocket connection
+     * @param {Object} options - Configuration options
+     * @param {string} [options.userId] - Optional user ID for initial connection
+     * @param {boolean} [options.isAuthenticated=false] - Whether the user is authenticated
+     * @returns {Promise} Resolves when connected
+     */
+    initialize: async function(options = {}) {
+      if (this._initialized) {
+        this.log('WebSocketManager already initialized');
+        return Promise.resolve();
+      }
+      
+      this._initialized = true;
+      const { userId, isAuthenticated = false } = options;
+      
+      // If no userId provided, generate a guest ID
+      const connectionUserId = userId || `guest_${Math.random().toString(36).substr(2, 9)}`;
+      
+      this.log('Initializing WebSocket connection for user:', connectionUserId);
+      
+      try {
+        await this.init(connectionUserId, isAuthenticated);
+        this.log('WebSocket connection initialized successfully');
+        return Promise.resolve();
+      } catch (error) {
+        this.error('Failed to initialize WebSocket connection:', error);
+        return Promise.reject(error);
+      }
     }
   };
-  
-  /**
-   * Initialize the WebSocket connection
-   * @param {Object} options - Configuration options
-   * @param {string} [options.userId] - Optional user ID for initial connection
-   * @param {boolean} [options.isAuthenticated=false] - Whether the user is authenticated
-   * @returns {Promise} Resolves when connected
-   */
-  WebSocketManager.initialize = async function(options = {}) {
-    if (this._initialized) {
-      this.log('WebSocketManager already initialized');
-      return Promise.resolve();
-    }
-    
-    this._initialized = true;
-    const { userId, isAuthenticated = false } = options;
-    
-    // If no userId provided, generate a guest ID
-    const connectionUserId = userId || `guest_${Math.random().toString(36).substr(2, 9)}`;
-    
-    this.log('Initializing WebSocket connection for user:', connectionUserId);
-    
-    try {
-      await this.init(connectionUserId, isAuthenticated);
-      this.log('WebSocket connection initialized successfully');
-      return Promise.resolve();
-    } catch (error) {
-      this.error('Failed to initialize WebSocket connection:', error);
-      return Promise.reject(error);
-    }
-  };
-  
-  // Make available globally for backward compatibility
-  if (typeof window !== 'undefined') {
-    window.WebSocketManager = WebSocketManager;
-    
-    // Initialize with default guest connection
-    WebSocketManager.initialize().catch(error => {
-      console.error('Failed to initialize WebSocket connection:', error);
-    });
-  }
 
-  export default WebSocketManager;
+// Make available globally for backward compatibility
+if (typeof window !== 'undefined') {
+  window.WebSocketManager = WebSocketManager;
+  
+  // Initialize with default guest connection
+  WebSocketManager.initialize().catch(error => {
+    console.error('Failed to initialize WebSocket connection:', error);
+  });
+}
+
+export default WebSocketManager;

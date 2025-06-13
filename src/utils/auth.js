@@ -75,37 +75,29 @@ function handleAuthStateChange(authState) {
  */
 async function updateWebSocketAuth(userId, isAuthenticated, previousUserId) {
   try {
-    // If we have a previous user ID and it's different from the new one,
-    // we should disconnect the old connection first
-    if (previousUserId && previousUserId !== userId) {
-      console.log('[Auth] User ID changed, reinitializing WebSocket connection');
-      await WebSocketManager.close();
-    }
-    
-    // If we have a user ID, initialize or update the WebSocket connection
-    if (userId) {
-      // If we're authenticated, update the auth state
-      if (isAuthenticated) {
-        await WebSocketManager.updateAuthState(userId, true);
-      } else {
-        // For unauthenticated users with an ID, just initialize the connection
-        await WebSocketManager.init(userId, false);
+    console.log('[Auth] Updating WebSocket auth state:', { 
+      userId, 
+      isAuthenticated, 
+      previousUserId,
+      currentState: {
+        currentUserId: WebSocketManager.currentUserId,
+        isAuthenticated: WebSocketManager.isAuthenticated
       }
-    } else {
-      // For guest users, use WebSocketManager's initialization
-      await WebSocketManager.initialize({ isAuthenticated: false });
-    }
+    });
+
+    // Always update the WebSocket connection with the new auth state
+    await WebSocketManager.updateAuthState(userId, isAuthenticated);
     
-    console.log('[Auth] WebSocket auth state updated:', { userId, isAuthenticated });
+    console.log('[Auth] WebSocket auth state updated successfully');
   } catch (error) {
     console.error('[Auth] Error updating WebSocket auth state:', error);
     
     // If we're authenticated and there was an error, try to reconnect
     if (isAuthenticated && userId) {
-      console.log('[Auth] Attempting to reconnect WebSocket...');
+      console.log('[Auth] Attempting to reconnect WebSocket in 5 seconds...');
       setTimeout(() => {
         updateWebSocketAuth(userId, isAuthenticated, previousUserId);
-      }, 5000); // Retry after 5 seconds
+      }, 5000);
     }
   }
 }

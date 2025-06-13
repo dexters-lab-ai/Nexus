@@ -362,23 +362,116 @@ function setupWebSocketServer(server) {
   
   // Handle HTTP server upgrade for WebSocket connections
   server.on('upgrade', (request, socket, head) => {
-    try {
-      const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
-      
-      // Accept both /ws and root path for WebSocket connections
-      if (pathname === '/ws' || pathname === '/') {
+    // Verify session before upgrading
+    sessionMiddleware(request, {}, async () => {
+      try {
+        // Get session from request
+        const session = request.session;
+        
+        // Check if user is authenticated
+        const isAuthenticated = session.user ? true : false;
+        const userId = session.user || `guest_${crypto.randomBytes(8).toString('hex')}`;
+        
+        // Verify origin
+        const origin = request.headers.origin;
+        if (!isOriginAllowed(origin)) {
+          console.error(`[WebSocket] Origin not allowed: ${origin}`);
+          socket.destroy();
+          return;
+        }
+        
+        // Handle the upgrade
         wss.handleUpgrade(request, socket, head, (ws) => {
-          // The connection will be handled by the 'connection' event handler above
-          wss.emit('connection', ws, request);
+          // Store user info in the WebSocket connection
+          ws.userId = userId;
+          ws.isAuthenticated = isAuthenticated;
+          ws.connectedAt = Date.now();
+          ws.lastPong = Date.now();
+          ws.isAlive = true;
+          
+          // Generate a connection ID
+          const connectionId = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+          ws.connectionId = connectionId;
+          
+          // Add to connections
+          allConnections.add(ws);
+          
+          // Add to user connections
+          if (!userConnections.has(userId)) {
+            userConnections.set(userId, new Set());
+          }
+          userConnections.get(userId).add(ws);
+          
+          console.log(`[WebSocket] New ${isAuthenticated ? 'authenticated' : 'guest'} connection`, {
+            connectionId,
+            userId,
+            isAuthenticated,
+            ip: request.socket.remoteAddress
+          });
+          
+          // Send welcome message
+          ws.send(JSON.stringify({
+            type: 'connection_established',
+            connectionId,
+            userId,
+            isAuthenticated,
+            timestamp: Date.now()
+          }));
+          
+          // Handle pings
+          ws.on('pong', () => {
+            ws.lastPong = Date.now();
+            ws.isAlive = true;
+          });
+          
+          // Handle messages
+          ws.on('message', (message) => {
+            try {
+              const data = JSON.parse(message);
+              
+              // Handle authentication updates
+              if (data.type === 'auth_update') {
+                // Only allow updates if the session is valid
+                if (session.user) {
+                  ws.userId = session.user;
+                  ws.isAuthenticated = true;
+                  
+                  // Update connection in user connections
+                  userConnections.get(userId)?.delete(ws);
+                  if (!userConnections.has(session.user)) {
+                    userConnections.set(session.user, new Set());
+                  }
+                  userConnections.get(session.user).add(ws);
+                  
+                  ws.send(JSON.stringify({
+                    type: 'auth_updated',
+                    userId: session.user,
+                    isAuthenticated: true
+                  }));
+                }
+              }
+              
+              // Handle other message types...
+              
+            } catch (error) {
+              console.error('[WebSocket] Error processing message:', error);
+            }
+          });
+          
+          // Handle close
+          ws.on('close', () => {
+            allConnections.delete(ws);
+            userConnections.get(userId)?.delete(ws);
+            if (userConnections.get(userId)?.size === 0) {
+              userConnections.delete(userId);
+            }
+          });
         });
-      } else {
-        console.log(`[WebSocket] Rejected upgrade request for path: ${pathname}`);
+      } catch (error) {
+        console.error('[WebSocket] Upgrade error:', error);
         socket.destroy();
       }
-    } catch (error) {
-      console.error('Error during WebSocket upgrade:', error);
-      socket.destroy();
-    }
+    });
   });
   
   // WebSocket keep-alive and health check
