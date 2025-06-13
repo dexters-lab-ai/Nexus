@@ -1,7 +1,9 @@
 /* Main CSS for OPERATOR Modern Interface */
 
-/* Add your main cyberpunk styles here */
+/* Fonts */
+@import './fonts.css';
 
+/* Add your main cyberpunk styles here */
 @import './theme.css';
 @import './components/index.css';
 @import './components/animations.css';
