@@ -85,25 +85,66 @@ export const WebSocketManager = {
       }
     },
     
-    cleanup() {
-      this.log('Cleaning up WebSocket connection');
+    /**
+     * Cleans up the WebSocket connection and all related resources
+     * @param {boolean} isLogout - Whether this cleanup is due to a user logout
+     */
+    cleanup(isLogout = false) {
+      this.log(`Cleaning up WebSocket connection${isLogout ? ' (logout)' : ''}`);
+      
+      // Clear all timeouts and intervals
       this.clearTimeouts();
       this.clearPingInterval();
       
+      // If this is a logout, clear all pending messages and auth updates
+      if (isLogout) {
+        this.pendingAuthUpdates = [];
+        this.isAuthenticated = false;
+        this.currentUserId = null;
+        // Notify all subscribers about the logout
+        this.notify({ type: 'logout', timestamp: Date.now() });
+      }
+      
+      // Clean up WebSocket connection if it exists
       if (this.ws) {
+        // Remove all event listeners to prevent memory leaks
         this.ws.onopen = null;
         this.ws.onclose = null;
         this.ws.onmessage = null;
         this.ws.onerror = null;
         
+        // Close the connection if it's open or connecting
         if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
-          this.ws.close();
+          try {
+            // If this is a logout, send a final message to the server
+            if (isLogout && this.ws.readyState === WebSocket.OPEN) {
+              this.ws.send(JSON.stringify({ 
+                type: 'user_logout',
+                timestamp: Date.now() 
+              }));
+            }
+            this.ws.close();
+          } catch (error) {
+            this.error('Error during WebSocket close:', error);
+          } finally {
+            this.ws = null;
+          }
+        } else {
+          this.ws = null;
         }
-        
-        this.ws = null;
       }
       
       this.isConnected = false;
+      this.notify({ 
+        type: 'connection', 
+        status: 'disconnected', 
+        isAuthenticated: this.isAuthenticated 
+      });
+      
+      // Only attempt to reconnect if this wasn't a logout
+      if (!isLogout) {
+        this.attemptReconnect();
+      }
     },
     
     clearTimeouts() {

@@ -180,13 +180,44 @@ router.get('/user', async (req, res) => {
   }
 });
 
-// GET /logout
-router.get('/logout', (req, res) => {
+// Handle logout (both GET and POST)
+const handleLogout = (req, res) => {
+  // Clear the user session
+  const sessionId = req.sessionID;
+  const userId = req.session.user;
+  
+  // Destroy the session
   req.session.destroy(err => {
-    if (err) console.error('Logout error:', err);
+    if (err) {
+      console.error('Session destruction error:', err);
+      return res.status(500).json({ success: false, error: 'Failed to destroy session' });
+    }
+    
+    // Clear the session cookie
+    res.clearCookie('connect.sid', {
+      path: '/',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      domain: process.env.NODE_ENV === 'production' ? 
+        (process.env.COOKIE_DOMAIN || '.ondigitalocean.app') : undefined
+    });
+    
+    console.log('✅ User logged out:', { userId, sessionId });
+    
+    // For API requests, return JSON
+    if (req.xhr || req.get('Accept')?.includes('application/json')) {
+      return res.json({ success: true, message: 'Logged out successfully' });
+    }
+    
+    // For regular web requests, redirect to login
     res.redirect('/login.html');
   });
-});
+};
+
+// Logout routes (support both GET and POST for backward compatibility)
+router.get('/logout', handleLogout);
+router.post('/logout', handleLogout);
 
 // DELETE /api/auth/account
 router.delete('/account', async (req, res) => {

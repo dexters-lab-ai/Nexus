@@ -213,6 +213,12 @@ function setupWebSocketServer(server) {
         if (data.type === 'ping') {
           ws.isAlive = true;
           ws.lastPong = Date.now();
+          // Send pong response to client
+          try {
+            ws.send(JSON.stringify({ type: 'pong' }));
+          } catch (error) {
+            console.error(`[WebSocket] Error sending pong to ${ws.connectionId}:`, error);
+          }
           return;
         }
         
@@ -1205,6 +1211,7 @@ if (process.env.NODE_ENV !== 'development') {
 const guard = (req, res, next) => {
   // Skip authentication for static files and login page
   if (
+    req.path === '/api/health' ||
     req.path.startsWith('/css/') || 
     req.path.startsWith('/assets/') ||
     req.path.startsWith('/js/') ||
@@ -1237,13 +1244,29 @@ const guard = (req, res, next) => {
 // 2. API ROUTES
 // =================================================
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  try {
+    res.json({
+      status: 'ok',
+      serverReady: true,
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || 'development'
+    });
+  } catch (error) {
+    console.error('Health check failed:', error);
+    res.status(500).json({
+      status: 'error',
+      serverReady: false,
+      error: error.message
+    });
+  }
+});
+
 // Public API routes (no auth required)
 app.use('/api/auth', authRoutes);
 
-// Health check endpoint (public)
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
-});
 
 // API: Who Am I (userId sync endpoint) - Moved to robust implementation below
 

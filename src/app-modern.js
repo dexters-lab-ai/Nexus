@@ -196,6 +196,7 @@ async function loadFullHistoryInBackground() {
 // Load required assets with better progress tracking
 async function loadAssets() {
   console.log('Loading application assets...');
+  // Define environment
   const isProduction = process.env.NODE_ENV === 'production';
   
   // Emit event to signal asset loading has started
@@ -249,7 +250,6 @@ async function loadAssets() {
   };
   
   // Group assets by priority - use relative paths that work in both dev and prod
-  const isProduction = process.env.NODE_ENV === 'production';
   const cssBasePath = isProduction ? '/css/' : '/src/styles/components/';
   const criticalAssets = [
     loadCSS(`${cssBasePath}variables.css`),
