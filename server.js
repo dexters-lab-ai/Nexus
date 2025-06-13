@@ -14,7 +14,7 @@ import { createServer } from 'http';
 import session from 'express-session';
 import MongoStore from 'connect-mongo';
 import mongoose from 'mongoose';
-import { WebSocketServer } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
 import winston from 'winston';
 import pRetry from 'p-retry';
 import { v4 as uuidv4 } from 'uuid';
@@ -56,36 +56,29 @@ function isOriginAllowed(origin) {
 }
 
 function setupWebSocketServer(server) {
-  // Create WebSocket server
-  const wss = new WebSocketServer({ noServer: true });
-  
+  // Create WebSocket server with configuration
+  const wss = new WebSocket.Server({ 
+    noServer: true, // Handle upgrade manually
+    perMessageDeflate: {
+      zlibDeflateOptions: { chunkSize: 1024, memLevel: 7, level: 3 },
+      clientNoContextTakeover: true,
+      serverNoContextTakeover: true,
+      serverMaxWindowBits: 10,
+      concurrencyLimit: 10,
+      threshold: 1024
+    }
+  });
+
   // Store the server instance globally for cleanup
   global.wss = wss;
 
   // WebSocket server event listeners
   wss.on('listening', () => {
-    console.log('[WebSocket] Server is listening for WebSocket connections');
+    console.log('[WebSocket] Server is ready for WebSocket connections');
   });
 
   wss.on('error', (error) => {
     console.error('[WebSocket] Server error:', error);
-  });
-
-  wss.on('message', (message) => {
-    try {
-      const data = JSON.parse(message);
-      console.log(`[WebSocket] Message from ${ws.connectionId}:`, data);
-      
-      if (data.type === 'ping') {
-        console.log(`[WebSocket] Received app-level ping from ${ws.connectionId}`);
-        ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
-        ws.isAlive = true;
-        return;
-      }
-      // ... rest of your message handling
-    } catch (error) {
-      console.error(`[WebSocket] Error processing message:`, error);
-    }
   });
 
   // Handle new WebSocket connections
@@ -762,6 +755,7 @@ let httpServer;
 
 async function startApp() {
   try {
+    // Connect to MongoDB with retry logic
     await pRetry(connectToDatabase, {
       retries: 5,
       minTimeout: 2000,
@@ -769,30 +763,86 @@ async function startApp() {
         console.log(`MongoDB connection attempt ${error.attemptNumber} failed. Retrying...`);
       }
     });
+    
     console.log('✅ MongoDB connected');
+    
+    // Clear database and ensure indexes
     await clearDatabaseOnce();
     await ensureIndexes();
     
     // Create HTTP server
     const httpServer = createServer(app);
     
-    // Initialize WebSocket server
+    // Initialize WebSocket server with the HTTP server
     const wss = setupWebSocketServer(httpServer);
     
-    // WebSocket connection handler for authenticated connections
-    wss.on('connection', (ws, req) => {
-      // Connection handling logic is in the upgrade handler
-      // This is kept for backward compatibility and future extensions
-      console.log(`[WebSocket] New connection established: ${ws.connectionId}`);
-    });
+    // Store server instances globally for cleanup
+    global.httpServer = httpServer;
+    global.wss = wss;
     
     // Get port from environment or use default 3420 for development
     const PORT = process.env.PORT || 3420;
     
-    // Start the HTTP server which will handle both HTTP and WebSocket connections
+    // Handle server errors
+    httpServer.on('error', (error) => {
+      console.error('HTTP server error:', error);
+      if (error.syscall !== 'listen') {
+        throw error;
+      }
+      
+      // Handle specific listen errors with friendly messages
+      switch (error.code) {
+        case 'EACCES':
+          console.error(`Port ${PORT} requires elevated privileges`);
+          process.exit(1);
+          break;
+        case 'EADDRINUSE':
+          console.error(`Port ${PORT} is already in use`);
+          process.exit(1);
+          break;
+        default:
+          throw error;
+      }
+    });
+    
+    // Handle process termination
+    const gracefulShutdown = () => {
+      console.log('\n🛑 Shutting down gracefully...');
+      
+      // Close WebSocket server
+      if (wss) {
+        console.log('Closing WebSocket server...');
+        wss.close(() => {
+          console.log('WebSocket server closed');
+        });
+      }
+      
+      // Close HTTP server
+      if (httpServer) {
+        console.log('Closing HTTP server...');
+        httpServer.close(() => {
+          console.log('HTTP server closed');
+          process.exit(0);
+        });
+      }
+      
+      // Force exit after timeout
+      setTimeout(() => {
+        console.error('Could not close connections in time, forcefully shutting down');
+        process.exit(1);
+      }, 10000);
+    };
+    
+    // Listen for process termination signals
+    process.on('SIGTERM', gracefulShutdown);
+    process.on('SIGINT', gracefulShutdown);
+    
+    // Start the server
     return new Promise((resolve) => {
       httpServer.listen(PORT, '0.0.0.0', () => {
-        // Cool colored robot and lab icons for logs
+        console.log(`\n🚀 Server running on port ${PORT}`);
+        console.log(`🌐 WebSocket available at ws://localhost:${PORT}/ws`);
+        console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}\n`);
 const ROBOT_ICON = '\u001b[38;5;39m🤖\u001b[0m'; // Bright blue robot
 const LAB_ICON = '\u001b[38;5;208m🧪\u001b[0m';   // Orange lab flask
 const GEAR_ICON = '\u001b[38;5;220m⚙️\u001b[0m';   // Yellow gear
@@ -1887,7 +1937,7 @@ async function sendWebSocketUpdate(userId, data) {
       const connectionInfo = {
         connectionIndex: index,
         readyState: ws.readyState,
-        isOpen: ws.readyState === WebSocket.OPEN,
+        isOpen: ws.readyState === WebSocket.OPEN, // Use WebSocket.OPEN constant
         connectionDuration: ws.connectedAt ? `${(new Date() - ws.connectedAt) / 1000}s` : 'unknown'
       };
 
