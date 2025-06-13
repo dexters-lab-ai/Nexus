@@ -1833,6 +1833,36 @@ puppeteerExtra.use(StealthPlugin());
 // ======================================
 // 12. HELPER FUNCTIONS
 // ======================================
+
+/**
+ * Get Puppeteer launch options based on environment
+ * @returns {Object} Puppeteer launch options
+ */
+function getPuppeteerLaunchOptions() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const launchOptions = {
+    headless: false,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-web-security',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+      '--disable-gpu'
+    ]
+  };
+
+  if (isProduction) {
+    // In production, use the system Chrome/Chromium
+    launchOptions.executablePath = process.env.CHROME_BIN || '/usr/bin/chromium-browser';
+  }
+
+  return launchOptions;
+}
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -3894,17 +3924,21 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
             logAction(`Creating new browser session and navigating to URL: ${effectiveUrl}`);
             release = await browserSemaphore.acquire();
             logAction("Acquired browser semaphore");
-            
-            browser = await puppeteerExtra.launch({ 
-              headless: false, 
-              args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-web-security"],
+
+            // Get appropriate launch options for the current environment
+            const launchOptions = {
+              ...getPuppeteerLaunchOptions(),
+              headless: false, // Keep non-headless for debugging
               defaultViewport: { width: 1280, height: 720 }
-            });
+            };
+
+            logAction(`Launching browser with options: ${JSON.stringify(launchOptions, null, 2)}`);
+            browser = await puppeteerExtra.launch(launchOptions);
             logAction("Browser launched successfully");
             page = await browser.newPage();
             logAction("New page created");
             await page.setDefaultNavigationTimeout(300000); // 5 minutes
-            
+
             // Set up listeners.
             page.on('console', msg => {
               debugLog(`Console: ${msg.text().substring(0, 150)}`);
@@ -3954,11 +3988,15 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       release = await browserSemaphore.acquire();
       logAction("Acquired browser semaphore");
       
-      browser = await puppeteerExtra.launch({ 
-        headless: false, 
-        args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-web-security"],
+      // Get appropriate launch options for the current environment
+      const launchOptions = {
+        ...getPuppeteerLaunchOptions(),
+        headless: false, // Keep non-headless for debugging
         defaultViewport: { width: 1280, height: 720 }
-      });
+      };
+      
+      logAction(`Launching browser with options: ${JSON.stringify(launchOptions, null, 2)}`);
+      browser = await puppeteerExtra.launch(launchOptions);
       logAction("Browser launched successfully");
       page = await browser.newPage();
       logAction("New page created");
@@ -4210,11 +4248,16 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       const session = activeBrowsers.get(taskKey);
       if (!session || !session.browser) {
         logQuery("Browser session not valid, creating a new one.");
-        browser = await puppeteerExtra.launch({ 
-          headless: false, 
-          args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-web-security"],
+        
+        // Get appropriate launch options for the current environment
+        const launchOptions = {
+          ...getPuppeteerLaunchOptions(),
+          headless: false, // Keep non-headless for debugging
           defaultViewport: { width: 1280, height: 720 }
-        });
+        };
+        
+        logQuery(`Launching browser with options: ${JSON.stringify(launchOptions, null, 2)}`);
+        browser = await puppeteerExtra.launch(launchOptions);
         logQuery("Browser launched successfully");
         page = await browser.newPage();
         logQuery("New page created");
@@ -4231,11 +4274,15 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       release = await browserSemaphore.acquire();
       logQuery("Acquired browser semaphore");
       
-      browser = await puppeteerExtra.launch({ 
-        headless: false,
-        args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-web-security"],
+      // Get appropriate launch options for the current environment
+      const launchOptions = {
+        ...getPuppeteerLaunchOptions(),
+        headless: false, // Keep non-headless for debugging
         defaultViewport: { width: 1280, height: 720 }
-      });
+      };
+      
+      logQuery(`Launching browser with options: ${JSON.stringify(launchOptions, null, 2)}`);
+      browser = await puppeteerExtra.launch(launchOptions);
       logQuery("Browser launched successfully");
       page = await browser.newPage();
       logQuery("New page created");
