@@ -346,30 +346,45 @@ export default defineConfig(({ mode }) => {
               // Find all files in src/styles
               const files = await glob('src/styles/**/*', { nodir: true });
               
-              for (const file of files) {
-                const content = await fs.readFile(file, 'utf-8');
-                const relativePath = path.relative('src/styles', file);
-                
-                // Only process CSS files that don't start with _ (Sass partials)
-                if (!file.endsWith('.css') || path.basename(file).startsWith('_')) {
-                  continue;
-                }
-                
-                // For component CSS, ensure they go to the components directory
-                let outputPath;
-                if (file.includes('src/styles/components/')) {
+              // Specific CSS files that need to be in the root css/ directory
+              const specificFiles = [
+                'src/styles/components/settings-advanced.css',
+                'src/styles/components/settings-modal-enhancements.css'
+              ];
+              
+              // Process all files
+              for (const file of [...files, ...specificFiles]) {
+                try {
+                  const content = await fs.readFile(file, 'utf-8');
                   const fileName = path.basename(file);
-                  outputPath = `css/components/${fileName}`;
-                } else {
-                  outputPath = `css/${path.basename(file)}`;
+                  
+                  // Only process CSS files that don't start with _ (Sass partials)
+                  if (!file.endsWith('.css') || path.basename(file).startsWith('_')) {
+                    continue;
+                  }
+                  
+                  // Determine output path based on file location
+                  let outputPath;
+                  if (specificFiles.includes(file)) {
+                    // Specific files go to root css/ directory
+                    outputPath = `css/${fileName}`;
+                  } else if (file.includes('src/styles/components/')) {
+                    // Component CSS goes to components subdirectory
+                    outputPath = `css/components/${fileName}`;
+                  } else {
+                    // Other CSS files go to root css/ directory
+                    outputPath = `css/${fileName}`;
+                  }
+                  
+                  // Add file to the bundle
+                  this.emitFile({
+                    type: 'asset',
+                    fileName: outputPath,
+                    source: content
+                  });
+                } catch (error) {
+                  console.warn(`[vite:copy-styles] Could not process ${file}:`, error.message);
                 }
-                
-                // Add file to the bundle
-                this.emitFile({
-                  type: 'asset',
-                  fileName: outputPath,
-                  source: content
-                });
               }
             }
           }
