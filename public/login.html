@@ -109,11 +109,11 @@
 
     // Get the base API URL based on the environment
     function getApiBaseUrl() {
-      // In development, use the Vite environment variable or default to localhost:3000
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        return 'http://localhost:3000';
+      // If we're in development (Vite dev server on port 3000 or 5173)
+      if (window.location.port === '3000' || window.location.port === '5173') {
+        return 'http://localhost:3420';
       }
-      // In production, use relative URLs
+      // In production or when served from the same domain as the API, use relative URLs
       return '';
     }
 
@@ -146,7 +146,6 @@
             'Cache': 'no-cache',
             'Pragma': 'no-cache'
           },
-          credentials: 'include',
           body: JSON.stringify({ email, password })
         });
         

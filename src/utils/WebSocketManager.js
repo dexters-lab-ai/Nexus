@@ -148,9 +148,14 @@ export const WebSocketManager = {
               return;
             }
             
-            // Send ping and update last ping time
-            this.ws.ping();
-            this.lastPingTime = Date.now();
+            // Send ping message and update last ping time
+            try {
+              this.ws.send(JSON.stringify({ type: 'ping' }));
+              this.lastPingTime = Date.now();
+            } catch (err) {
+              this.error('Error sending ping:', err);
+              this.handleDisconnect();
+            }
             
           } catch (error) {
             this.error('Error in ping interval:', error);
@@ -305,17 +310,33 @@ export const WebSocketManager = {
             // Set up message handler
             this.ws.onmessage = (event) => {
               try {
-                const data = JSON.parse(event.data);
-                
-                // Handle auth state acknowledgements
-                if (data.type === 'auth_state_updated') {
-                  this.log('Auth state updated on server:', data);
-                  this.isAuthenticated = data.isAuthenticated;
-                  this.currentUserId = data.userId;
+                // Handle binary pong messages (standard WebSocket pong)
+                if (typeof event.data === 'string') {
+                  const data = JSON.parse(event.data);
+                  
+                  // Handle ping requests from server
+                  if (data.type === 'ping') {
+                    this.log('Received ping from server, sending pong');
+                    this.ws.send(JSON.stringify({ type: 'pong' }));
+                    return;
+                  }
+                  
+                  // Handle pong responses to our pings
+                  if (data.type === 'pong') {
+                    this.lastPongTime = Date.now();
+                    return;
+                  }
+                  
+                  // Handle auth state acknowledgements
+                  if (data.type === 'auth_state_updated') {
+                    this.log('Auth state updated on server:', data);
+                    this.isAuthenticated = data.isAuthenticated;
+                    this.currentUserId = data.userId;
+                  }
+                  
+                  // Notify subscribers about the message
+                  this.notify(data);
                 }
-                
-                // Notify subscribers about the message
-                this.notify(data);
               } catch (error) {
                 this.error('Error parsing message:', error, event.data);
               }

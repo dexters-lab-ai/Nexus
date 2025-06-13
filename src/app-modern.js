@@ -248,10 +248,12 @@ async function loadAssets() {
     });
   };
   
-  // Group assets by priority
+  // Group assets by priority - use relative paths that work in both dev and prod
+  const isProduction = process.env.NODE_ENV === 'production';
+  const cssBasePath = isProduction ? '/css/' : '/src/styles/components/';
   const criticalAssets = [
-    loadCSS('/css/variables.css'),
-    loadCSS('/css/components.css')
+    loadCSS(`${cssBasePath}variables.css`),
+    loadCSS(`${cssBasePath}components.css`)
   ];
   
   // Non-critical assets that can be loaded later

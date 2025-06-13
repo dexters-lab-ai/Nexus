@@ -1,8 +1,16 @@
 // Export CORS configuration for middleware
 export const corsConfig = {
   origin: true, // Will be overridden by the middleware
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'Accept', 
+    'X-Requested-With',
+    'Cache',
+    'Pragma',
+    'X-CSRF-Token'
+  ],
   credentials: true,
   exposedHeaders: ['Content-Type', 'Authorization', 'Set-Cookie'],
   maxAge: 86400 // 24 hours

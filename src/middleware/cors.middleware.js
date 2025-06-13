@@ -11,19 +11,26 @@ export const corsMiddleware = (req, res, next) => {
   const allowedOrigins = [
     'https://operator-pjcgr.ondigitalocean.app',
     'http://localhost:3000',
-    'http://localhost:5173' // Vite dev server
+    'http://localhost:3420', // Backend port for direct API access
+    'http://localhost:5173'  // Vite dev server
   ];
 
   // Set the origin based on the request
   const requestOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
   
   // Set CORS headers
-  res.header('Access-Control-Allow-Origin', requestOrigin);
-  res.header('Access-Control-Allow-Methods', corsConfig.methods.join(', '));
-  res.header('Access-Control-Allow-Headers', corsConfig.allowedHeaders.join(', '));
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Expose-Headers', corsConfig.exposedHeaders.join(', '));
-  res.header('Access-Control-Max-Age', corsConfig.maxAge.toString());
+  res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+  res.setHeader('Access-Control-Allow-Methods', corsConfig.methods.join(', '));
+  res.setHeader('Access-Control-Allow-Headers', corsConfig.allowedHeaders.join(', '));
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Expose-Headers', corsConfig.exposedHeaders.join(', '));
+  res.setHeader('Access-Control-Max-Age', corsConfig.maxAge.toString());
+  
+  // Additional security headers
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
   
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
