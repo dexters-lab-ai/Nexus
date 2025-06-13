@@ -835,6 +835,29 @@ const sessionMiddleware = session({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Health check endpoint - must be before static file middleware
+app.get('/api/health', (req, res) => {
+  try {
+    res.set('Content-Type', 'application/json');
+    res.json({
+      status: 'ok',
+      serverReady: true,
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || 'development',
+      version: process.env.npm_package_version || '1.0.0'
+    });
+  } catch (error) {
+    res.set('Content-Type', 'application/json');
+    res.status(500).json({
+      status: 'error',
+      serverReady: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // 8.2 Session middleware
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1); // Trust first proxy
@@ -1243,26 +1266,6 @@ const guard = (req, res, next) => {
 // ======================================
 // 2. API ROUTES
 // =================================================
-
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  try {
-    res.json({
-      status: 'ok',
-      serverReady: true,
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      environment: process.env.NODE_ENV || 'development'
-    });
-  } catch (error) {
-    console.error('Health check failed:', error);
-    res.status(500).json({
-      status: 'error',
-      serverReady: false,
-      error: error.message
-    });
-  }
-});
 
 // Public API routes (no auth required)
 app.use('/api/auth', authRoutes);
