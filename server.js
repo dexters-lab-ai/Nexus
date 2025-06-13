@@ -199,12 +199,6 @@ function setupWebSocketServer(server) {
       unsentMessages.delete(ws.userId);
     }
     
-    // Handle pong messages for keep-alive
-    ws.on('pong', () => {
-      ws.lastPong = Date.now();
-      ws.isAlive = true;
-    });
-    
     // Handle incoming messages
     ws.on('message', (message) => {
       try {
@@ -215,13 +209,8 @@ function setupWebSocketServer(server) {
           console.log(`[WebSocket] Message from ${ws.connectionId} (${ws.userId}):`, data);
         }
         
-        // Handle ping/pong for keep-alive
+        // Handle ping messages (if any clients still use application-level ping)
         if (data.type === 'ping') {
-          ws.send(JSON.stringify({ 
-            type: 'pong', 
-            timestamp: Date.now(),
-            connectionId: ws.connectionId
-          }));
           ws.isAlive = true;
           ws.lastPong = Date.now();
           return;
@@ -431,12 +420,6 @@ function setupWebSocketServer(server) {
             timestamp: Date.now()
           }));
 
-          // Handle pings
-          ws.on('pong', () => {
-            ws.lastPong = Date.now();
-            ws.isAlive = true;
-          });
-
           // Handle messages
           ws.on('message', (message) => {
             try {
@@ -489,9 +472,9 @@ function setupWebSocketServer(server) {
     });
   });
   
-  // WebSocket keep-alive and health check
-  const PING_INTERVAL = 25000; // 25 seconds
-  const PONG_TIMEOUT = 10000;  // 10 seconds to wait for pong
+  // WebSocket keep-alive and health check - increased intervals to reduce noise
+  const PING_INTERVAL = 60000; // 60 seconds between pings
+  const PONG_TIMEOUT = 30000;  // 30 seconds to wait for pong before timeout
   
   const pingInterval = setInterval(() => {
     const now = Date.now();
@@ -519,9 +502,8 @@ function setupWebSocketServer(server) {
           }
         }, PONG_TIMEOUT);
         
-        // Send ping with timestamp
-        const pingData = { type: 'ping', timestamp: now };
-        ws.send(JSON.stringify(pingData));
+        // Use native WebSocket ping instead of application-level ping
+        ws.ping();
         
       } catch (error) {
         console.error(`[WebSocket] Error in keep-alive check for ${ws.connectionId}:`, error);

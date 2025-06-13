@@ -16,8 +16,10 @@ export const WebSocketManager = {
     reconnectTimeout: null,
     debug: process.env.NODE_ENV !== 'production',
     lastPingTime: null,
-    PING_INTERVAL: 25000, // 25 seconds
-    CONNECTION_TIMEOUT: 10000, // 10 seconds
+    PING_INTERVAL: 60000, // 60 seconds between pings
+    PONG_TIMEOUT: 30000,    // 30 seconds to wait for pong before reconnecting
+    CONNECTION_TIMEOUT: 10000, // 10 seconds connection timeout
+    lastPongTime: null,     // Track last pong received
     pendingAuthUpdates: [], // Queue for auth updates that need to be sent after connection
 
     log(...args) {
@@ -122,25 +124,48 @@ export const WebSocketManager = {
         this.pingInterval = null;
       }
       this.lastPingTime = null;
+      this.lastPongTime = null;
+      // Remove pong handler
+      if (this.ws) {
+        this.ws.onpong = null;
+      }
     },
     
     setupPing() {
       this.clearPingInterval();
       
       this.lastPingTime = Date.now();
+      this.lastPongTime = Date.now();
       
-      // Send ping every PING_INTERVAL ms
+      // Setup ping interval
       this.pingInterval = setInterval(() => {
         if (this.isConnected && this.ws && this.ws.readyState === WebSocket.OPEN) {
           try {
-            this.ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+            // Check if we've missed too many pongs
+            if (Date.now() - this.lastPongTime > (this.PING_INTERVAL + this.PONG_TIMEOUT)) {
+              this.log('No pong received, reconnecting...');
+              this.handleDisconnect();
+              return;
+            }
+            
+            // Send ping and update last ping time
+            this.ws.ping();
             this.lastPingTime = Date.now();
+            
           } catch (error) {
-            this.error('Error sending ping:', error);
+            this.error('Error in ping interval:', error);
             this.handleDisconnect();
           }
         }
       }, this.PING_INTERVAL);
+      
+      // Setup pong handler
+      if (this.ws) {
+        this.ws.onpong = () => {
+          this.lastPongTime = Date.now();
+          this.log('Pong received');
+        };
+      }
     },
     
     getWebSocketUrl(userId, isAuthenticated) {
@@ -288,12 +313,6 @@ export const WebSocketManager = {
                   this.isAuthenticated = data.isAuthenticated;
                   this.currentUserId = data.userId;
                 }
-                // Handle pong messages for keep-alive
-                else if (data.type === 'pong') {
-                  this.lastPingTime = Date.now();
-                  this.isAlive = true;
-                  return; // Don't notify about pong messages
-                }
                 
                 // Notify subscribers about the message
                 this.notify(data);
@@ -311,22 +330,6 @@ export const WebSocketManager = {
             });
             
             resolve();
-          };
-      
-          this.ws.onmessage = (event) => {
-            try {
-              const data = JSON.parse(event.data);
-              
-              // Handle pong messages
-              if (data.type === 'pong') {
-                this.lastPingTime = Date.now();
-                return;
-              }
-              
-              this.notify(data);
-            } catch (error) {
-              this.error('Error processing WebSocket message:', error, event.data);
-            }
           };
       
           this.ws.onclose = (event) => {
