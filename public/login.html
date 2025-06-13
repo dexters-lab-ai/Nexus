@@ -107,6 +107,16 @@
       document.getElementById('password').value = '';
     }
 
+    // Get the base API URL based on the environment
+    function getApiBaseUrl() {
+      // In development, use the Vite environment variable or default to localhost:3000
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return 'http://localhost:3000';
+      }
+      // In production, use relative URLs
+      return '';
+    }
+
     async function submitForm() {
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value.trim();
@@ -124,14 +134,19 @@
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<span class="spinner"></span> Processing...';
         
-        const url = isLogin ? '/api/auth/login' : '/api/auth/register';
+        const apiBaseUrl = getApiBaseUrl();
+        const url = `${apiBaseUrl}${isLogin ? '/api/auth/login' : '/api/auth/register'}`;
         const response = await fetch(url, {
           method: 'POST',
           credentials: 'include',
           headers: { 
             'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+            'Cache': 'no-cache',
+            'Pragma': 'no-cache'
           },
+          credentials: 'include',
           body: JSON.stringify({ email, password })
         });
         
