@@ -1,5 +1,7 @@
-// WebSocket Manager with enhanced reliability
+// WebSocket Manager with enhanced reliability and authentication support
 export const WebSocketManager = {
+    // Initialize with default values
+    _initialized: false,
     ws: null,
     subscribers: new Set(),
     isConnected: false,
@@ -16,10 +18,40 @@ export const WebSocketManager = {
     lastPingTime: null,
     PING_INTERVAL: 25000, // 25 seconds
     CONNECTION_TIMEOUT: 10000, // 10 seconds
+    pendingAuthUpdates: [], // Queue for auth updates that need to be sent after connection
 
     log(...args) {
       if (this.debug) {
         console.log('[WebSocket]', ...args);
+      }
+    },
+    
+    /**
+     * Sends an authentication update to the server
+     * @private
+     */
+    async sendAuthUpdate(userId, isAuthenticated) {
+      if (!this.isConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        this.log('Queueing auth update - not connected');
+        this.pendingAuthUpdates.push({ userId, isAuthenticated });
+        return false;
+      }
+      
+      try {
+        const message = {
+          type: 'update_auth_state',
+          userId,
+          isAuthenticated,
+          timestamp: Date.now()
+        };
+        
+        this.log('Sending auth update:', message);
+        this.ws.send(JSON.stringify(message));
+        return true;
+      } catch (error) {
+        this.error('Failed to send auth update:', error);
+        this.pendingAuthUpdates.push({ userId, isAuthenticated });
+        return false;
       }
     },
 
@@ -27,6 +59,30 @@ export const WebSocketManager = {
       console.error('[WebSocket]', ...args);
     },
 
+    /**
+     * Process any pending authentication updates
+     * @private
+     */
+    processPendingAuthUpdates() {
+      if (!this.pendingAuthUpdates.length) return;
+      
+      this.log(`Processing ${this.pendingAuthUpdates.length} pending auth updates`);
+      
+      // Process all pending updates
+      while (this.pendingAuthUpdates.length > 0) {
+        const update = this.pendingAuthUpdates.shift();
+        if (update) {
+          this.sendAuthUpdate(update.userId, update.isAuthenticated)
+            .catch(error => {
+              this.error('Error processing pending auth update:', error);
+              // Re-queue the failed update
+              this.pendingAuthUpdates.unshift(update);
+              return false;
+            });
+        }
+      }
+    },
+    
     cleanup() {
       this.log('Cleaning up WebSocket connection');
       this.clearTimeouts();
@@ -151,11 +207,24 @@ export const WebSocketManager = {
       }, delay);
     },
 
+    /**
+     * Initialize WebSocket connection with authentication
+     * @param {string} userId - The user ID to connect with
+     * @param {boolean} isAuthenticated - Whether the user is authenticated
+     * @returns {Promise} Resolves when connected, rejects on error
+     */
     async init(userId, isAuthenticated = false) {
       // If already connected with same auth state, do nothing
       if (this.ws && this.isConnected && this.isAuthenticated === isAuthenticated && this.currentUserId === userId) {
         this.log('Already connected with same auth state');
         return Promise.resolve();
+      }
+
+      // If we have a connection in progress with different auth state, queue the update
+      if (this.connectionPromise && (this.isAuthenticated !== isAuthenticated || this.currentUserId !== userId)) {
+        this.log('Queuing auth state update for after connection');
+        this.pendingAuthUpdates.push({ userId, isAuthenticated });
+        return this.connectionPromise;
       }
 
       // Clean up any existing connection
@@ -198,14 +267,49 @@ export const WebSocketManager = {
             this.clearTimeouts();
             this.isConnected = true;
             this.reconnectAttempts = 0;
+            
+            // Process any pending auth updates
+            this.processPendingAuthUpdates();
+            
+            // Send initial auth state if we have one
+            if (this.currentUserId) {
+              this.sendAuthUpdate(this.currentUserId, this.isAuthenticated);
+            }
             this.log(`${isAuthenticated ? 'Authenticated' : 'Guest'} connection established`);
             this.setupPing();
+            // Set up message handler
+            this.ws.onmessage = (event) => {
+              try {
+                const data = JSON.parse(event.data);
+                
+                // Handle auth state acknowledgements
+                if (data.type === 'auth_state_updated') {
+                  this.log('Auth state updated on server:', data);
+                  this.isAuthenticated = data.isAuthenticated;
+                  this.currentUserId = data.userId;
+                }
+                // Handle pong messages for keep-alive
+                else if (data.type === 'pong') {
+                  this.lastPingTime = Date.now();
+                  this.isAlive = true;
+                  return; // Don't notify about pong messages
+                }
+                
+                // Notify subscribers about the message
+                this.notify(data);
+              } catch (error) {
+                this.error('Error parsing message:', error, event.data);
+              }
+            };
+            
+            // Notify about successful connection
             this.notify({ 
               type: 'connection', 
-              status: 'connected', 
+              status: 'connected',
               isAuthenticated,
               timestamp: Date.now() 
             });
+            
             resolve();
           };
       
@@ -365,9 +469,45 @@ export const WebSocketManager = {
     }
   };
   
+  /**
+   * Initialize the WebSocket connection
+   * @param {Object} options - Configuration options
+   * @param {string} [options.userId] - Optional user ID for initial connection
+   * @param {boolean} [options.isAuthenticated=false] - Whether the user is authenticated
+   * @returns {Promise} Resolves when connected
+   */
+  WebSocketManager.initialize = async function(options = {}) {
+    if (this._initialized) {
+      this.log('WebSocketManager already initialized');
+      return Promise.resolve();
+    }
+    
+    this._initialized = true;
+    const { userId, isAuthenticated = false } = options;
+    
+    // If no userId provided, generate a guest ID
+    const connectionUserId = userId || `guest_${Math.random().toString(36).substr(2, 9)}`;
+    
+    this.log('Initializing WebSocket connection for user:', connectionUserId);
+    
+    try {
+      await this.init(connectionUserId, isAuthenticated);
+      this.log('WebSocket connection initialized successfully');
+      return Promise.resolve();
+    } catch (error) {
+      this.error('Failed to initialize WebSocket connection:', error);
+      return Promise.reject(error);
+    }
+  };
+  
   // Make available globally for backward compatibility
   if (typeof window !== 'undefined') {
     window.WebSocketManager = WebSocketManager;
+    
+    // Initialize with default guest connection
+    WebSocketManager.initialize().catch(error => {
+      console.error('Failed to initialize WebSocket connection:', error);
+    });
   }
 
   export default WebSocketManager;

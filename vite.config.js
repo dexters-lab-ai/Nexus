@@ -134,16 +134,6 @@ export default defineConfig(({ mode }) => {
     publicDir: 'public',
     base: '/',
     logLevel: 'warn',
-    plugins: [
-      react(),
-      copyUtilsPlugin(),
-      visualizer({
-        open: true,
-        gzipSize: true,
-        brotliSize: true,
-      }),
-    ],
-
     server: {
       host,
       port: 3000,
@@ -433,10 +423,14 @@ export default defineConfig(({ mode }) => {
       'process.env.FRONTEND_URL': JSON.stringify(env.FRONTEND_URL || ''),
       'process.env.APP_DOMAIN' : JSON.stringify(env.APP_DOMAIN || ''),
     },
-
     plugins: [
       react({ fastRefresh: true }),
-      visualizer({ open: false, gzipSize: true, brotliSize: true }),
+      copyUtilsPlugin(),
+      visualizer({
+        open: isDev,
+        gzipSize: true,
+        brotliSize: true,
+      }),
     ],
   };
 });

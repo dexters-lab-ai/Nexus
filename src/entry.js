@@ -109,10 +109,14 @@ eventBus.once('initialize-application', async () => {
     // Update message store with the user ID
     updateMessageStoreUserId(userId);
     
-    // Initialize WebSocket with the user ID
-    // Import WebSocketManager from utils directory
-    const { WebSocketManager } = await import('./utils/WebSocketManager.js');
-    WebSocketManager.init(userId);
+    // Update auth store with the user ID
+    if (window.stores?.auth) {
+      window.stores.auth.setState({
+        user: { _id: userId },
+        isAuthenticated: false, // Will be updated after login
+        initialized: true
+      });
+    }
     
     // Listen for authentication events
     eventBus.on('user-authenticated', (userData) => {
@@ -123,9 +127,13 @@ eventBus.once('initialize-application', async () => {
         sessionStorage.setItem('userId', newUserId);
         // Update message store
         updateMessageStoreUserId(newUserId);
-        // Reinitialize WebSocket with authentication
-        if (window.WebSocketManager) {
-          window.WebSocketManager.init(newUserId, true); // true = isAuthenticated
+        // Update auth store
+        if (window.stores?.auth) {
+          window.stores.auth.setState({
+            user: userData,
+            isAuthenticated: true,
+            initialized: true
+          });
         }
       }
     });

@@ -4,6 +4,8 @@
  * This will later be replaced with a more robust solution (like Zustand or Pinia)
  */
 
+import { initAuth } from '../utils/auth';
+
 /**
  * Create a simple reactive store
  * @param {Object} initialState - Initial state object
@@ -60,10 +62,21 @@ export function createStore(initialState = {}) {
 // Create application stores
 
 /**
+ * Auth State Store
+ */
+const authStore = createStore({
+  isAuthenticated: false,
+  user: null,
+  loading: false,
+  error: null,
+  initialized: false
+});
+
+/**
  * UI State Store
  * Manages UI-related state like active tabs, overlays, modals
  */
-export const uiStore = createStore({
+const uiStore = createStore({
   activeTab: 'nli',
   activeSubtab: 'active',
   overlays: {
@@ -76,14 +89,20 @@ export const uiStore = createStore({
       taskId: null
     }
   },
-  theme: 'dark'
+  theme: 'dark',
+  sidebarOpen: true,
+  currentView: 'dashboard',
+  notifications: [],
+  modals: {},
+  loading: false,
+  error: null
 });
 
 /**
  * Tasks Store
  * Manages active tasks state
  */
-export const tasksStore = createStore({
+const tasksStore = createStore({
   active: [],
   scheduled: [],
   repetitive: [],
@@ -215,11 +234,57 @@ export const historyStore = createStore({
 // Re-export messagesStore for legacy components
 export { messagesStore } from './messages.js';
 
+// Export individual stores for direct imports
+export { uiStore };
+export { tasksStore };
+
 // Export all stores as a single object
 export const stores = {
+  auth: authStore,
   ui: uiStore,
   tasks: tasksStore,
-  history: historyStore
+  history: historyStore,
+  
+  /**
+   * Initialize all stores
+   */
+  init() {
+    console.log('[Stores] Initializing stores...');
+    
+    // Initialize authentication
+    initAuth({
+      getState: () => ({
+        auth: authStore.getState()
+      }),
+      subscribe: (listener) => {
+        // Listen to auth store changes
+        return authStore.subscribe(() => {
+          listener({
+            auth: authStore.getState()
+          });
+        });
+      }
+    });
+    
+    console.log('[Stores] Initialization complete');
+  },
+  
+  /**
+   * Reset all stores to initial state
+   */
+  reset() {
+    // Reset all stores to initial state
+    Object.values(this).forEach(store => {
+      if (store && typeof store.reset === 'function') {
+        store.reset();
+      }
+    });
+  }
 };
+
+// Initialize stores when this module is loaded
+if (typeof window !== 'undefined') {
+  stores.init();
+}
 
 export default stores;

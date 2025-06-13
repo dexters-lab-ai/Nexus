@@ -27,9 +27,8 @@ import { AbortError } from 'p-retry';
 import jwt from 'jsonwebtoken';
 import cookie from 'cookie';
 
-// Create Express app and HTTP server
+// Create Express app
 const app = express();
-const server = createServer(app);
 
 // Track all active WebSocket connections
 const allConnections = new Set();
@@ -40,6 +39,46 @@ const connectionAttempts = new Map();
 // Track active connections and unsent messages
 const userConnections = new Map(); // Maps userId -> Set of WebSocket connections
 const unsentMessages = new Map(); // Maps userId -> Array of pending messages
+
+/**
+ * Update a WebSocket connection's user ID and authentication state
+ * @param {WebSocket} ws - WebSocket connection
+ * @param {string} newUserId - New user ID
+ * @param {boolean} isAuthenticated - Whether the user is authenticated
+ */
+function updateUserConnection(ws, newUserId, isAuthenticated) {
+  const oldUserId = ws.userId;
+  
+  // If user ID hasn't changed, just update auth status
+  if (oldUserId === newUserId) {
+    ws.isAuthenticated = isAuthenticated;
+    return;
+  }
+
+  // Remove from old user's connections
+  if (oldUserId && userConnections.has(oldUserId)) {
+    const oldUserWsSet = userConnections.get(oldUserId);
+    oldUserWsSet.delete(ws);
+    if (oldUserWsSet.size === 0) {
+      userConnections.delete(oldUserId);
+    }
+  }
+
+  // Add to new user's connections
+  if (!userConnections.has(newUserId)) {
+    userConnections.set(newUserId, new Set());
+  }
+  userConnections.get(newUserId).add(ws);
+
+  // Update connection properties
+  ws.userId = newUserId;
+  ws.isAuthenticated = isAuthenticated;
+
+  console.log(`[WebSocket] Updated connection ${ws.connectionId} from userId=${oldUserId} to userId=${newUserId}`, {
+    isAuthenticated,
+    timestamp: new Date().toISOString()
+  });
+}
 
 // Create WebSocket server and handle HTTP upgrade
 let wss;
@@ -171,8 +210,10 @@ function setupWebSocketServer(server) {
       try {
         const data = JSON.parse(message);
         
-        // Log message with connection details
-        console.log(`[WebSocket] Message from ${ws.connectionId} (${ws.userId}):`, data);
+        // Log message with connection details (filter out pings from logs)
+        if (data.type !== 'ping') {
+          console.log(`[WebSocket] Message from ${ws.connectionId} (${ws.userId}):`, data);
+        }
         
         // Handle ping/pong for keep-alive
         if (data.type === 'ping') {
@@ -182,50 +223,52 @@ function setupWebSocketServer(server) {
             connectionId: ws.connectionId
           }));
           ws.isAlive = true;
+          ws.lastPong = Date.now();
           return;
         }
         
         // Handle authentication state updates
         if (data.type === 'update_auth_state') {
-          const wasAuthenticated = ws.isAuthenticated;
-          const oldUserId = ws.userId;
+          const { userId, isAuthenticated } = data;
           
-          // Update connection state
-          ws.isAuthenticated = data.isAuthenticated;
-          ws.userId = data.userId || ws.userId;
-          
-          // Update user connections map if userId changed
-          if (oldUserId !== ws.userId) {
-            // Remove from old user's connections
-            if (userConnections.has(oldUserId)) {
-              const oldUserWsSet = userConnections.get(oldUserId);
-              oldUserWsSet.delete(ws);
-              if (oldUserWsSet.size === 0) {
-                userConnections.delete(oldUserId);
-              }
-            }
-            
-            // Add to new user's connections
-            if (!userConnections.has(ws.userId)) {
-              userConnections.set(ws.userId, new Set());
-            }
-            userConnections.get(ws.userId).add(ws);
+          // Validate input
+          if (typeof isAuthenticated !== 'boolean') {
+            console.error('[WebSocket] Invalid auth update - isAuthenticated must be boolean');
+            ws.send(JSON.stringify({
+              type: 'auth_error',
+              error: 'Invalid authentication data',
+              timestamp: Date.now()
+            }));
+            return;
           }
           
-          console.log(`[WebSocket] Updated auth state for ${ws.connectionId}:`, {
-            wasAuthenticated,
-            isNowAuthenticated: ws.isAuthenticated,
-            oldUserId,
-            newUserId: ws.userId
-          });
+          if (!userId) {
+            console.error('[WebSocket] Invalid auth update - userId is required');
+            ws.send(JSON.stringify({
+              type: 'auth_error',
+              error: 'User ID is required',
+              timestamp: Date.now()
+            }));
+            return;
+          }
           
-          // Notify client of successful auth state update
+          // Update the connection with new auth state
+          updateUserConnection(ws, userId, isAuthenticated);
+          
+          // Acknowledge the auth update
           ws.send(JSON.stringify({
             type: 'auth_state_updated',
-            isAuthenticated: ws.isAuthenticated,
+            success: true,
             userId: ws.userId,
+            isAuthenticated: ws.isAuthenticated,
             timestamp: Date.now()
           }));
+          
+          console.log(`[WebSocket] Auth state updated for ${ws.connectionId}:`, {
+            userId: ws.userId,
+            isAuthenticated: ws.isAuthenticated,
+            userConnections: userConnections.get(ws.userId)?.size || 0
+          });
           
           return;
         }
@@ -237,37 +280,83 @@ function setupWebSocketServer(server) {
       }
     });
     
-    // Clean up connection resources
+    /**
+     * Clean up WebSocket connection resources
+     */
     const cleanupConnection = () => {
-      console.log(`[WebSocket] Cleaning up connection: ${ws.connectionId} (${ws.userId || 'unknown'})`);
+      if (!ws || !ws.connectionId) return;
+      
+      const { connectionId, userId } = ws;
+      console.log(`[WebSocket] Cleaning up connection: ${connectionId} (${userId || 'unknown'})`);
       
       // Remove from global connections
       allConnections.delete(ws);
       
       // Remove from user connections
-      if (ws.userId && userConnections.has(ws.userId)) {
-        const userWsSet = userConnections.get(ws.userId);
+      if (userId && userConnections.has(userId)) {
+        const userWsSet = userConnections.get(userId);
         userWsSet.delete(ws);
         
         if (userWsSet.size === 0) {
-          userConnections.delete(ws.userId);
+          userConnections.delete(userId);
+          console.log(`[WebSocket] Removed last connection for user ${userId}`);
         }
       }
       
-      console.log(`[WebSocket] Connection cleanup complete for ${ws.connectionId}`);
+      // Clear any pending timeouts/intervals
+      if (ws.pingTimeout) {
+        clearTimeout(ws.pingTimeout);
+      }
+      
+      console.log(`[WebSocket] Connection cleanup complete for ${connectionId}`);
     };
     
     // Handle connection close
-    ws.on('close', () => {
-      console.log(`[WebSocket] Connection closed: ${ws.connectionId} (${ws.userId || 'unknown'})`);
+    ws.on('close', (code, reason) => {
+      const closeInfo = {
+        connectionId: ws.connectionId,
+        userId: ws.userId || 'unknown',
+        code,
+        reason: reason.toString() || 'No reason provided',
+        wasClean: ws.readyState === ws.CLOSED,
+        connectedAt: ws.connectedAt ? new Date(ws.connectedAt).toISOString() : 'unknown',
+        duration: ws.connectedAt ? `${((Date.now() - ws.connectedAt) / 1000).toFixed(2)}s` : 'unknown'
+      };
+      
+      console.log(`[WebSocket] Connection closed:`, closeInfo);
+      
+      // Clean up resources
       cleanupConnection();
+      
+      // Log connection statistics
+      const activeConnections = allConnections.size;
+      const activeUsers = userConnections.size;
+      console.log(`[WebSocket] Connection stats - Active: ${activeConnections}, Users: ${activeUsers}`);
     });
     
     // Handle errors
     ws.on('error', (error) => {
-      console.error(`[WebSocket] Error on connection ${ws.connectionId}:`, error);
+      const errorInfo = {
+        connectionId: ws.connectionId,
+        userId: ws.userId || 'unknown',
+        error: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
+      };
+      
+      console.error(`[WebSocket] Connection error:`, errorInfo);
+      
+      // Clean up resources
       cleanupConnection();
-      ws.terminate();
+      
+      // Force close the connection if not already closed
+      if (ws.readyState === ws.OPEN) {
+        try {
+          ws.terminate();
+        } catch (terminateError) {
+          console.error(`[WebSocket] Error terminating connection ${ws.connectionId}:`, terminateError);
+        }
+      }
     });
   });
   
@@ -293,22 +382,45 @@ function setupWebSocketServer(server) {
   });
   
   // WebSocket keep-alive and health check
+  const PING_INTERVAL = 25000; // 25 seconds
+  const PONG_TIMEOUT = 10000;  // 10 seconds to wait for pong
+  
   const pingInterval = setInterval(() => {
     const now = Date.now();
+    
     wss.clients.forEach((ws) => {
-      if (ws.isAlive === false) {
-        console.log(`Terminating unresponsive connection: ${ws.connectionId}`);
-        return ws.terminate();
-      }
-      ws.isAlive = true;
       try {
-        ws.ping();
-        ws.send(JSON.stringify({ type: 'ping', timestamp: now }));
+        // Check if last pong was received within expected time
+        if (ws.lastPong && (now - ws.lastPong) > (PING_INTERVAL + PONG_TIMEOUT)) {
+          console.log(`[WebSocket] Terminating unresponsive connection (no recent pong): ${ws.connectionId}`);
+          return ws.terminate();
+        }
+        
+        // Mark as not alive until next pong is received
+        ws.isAlive = false;
+        
+        // Set up ping timeout
+        if (ws.pingTimeout) {
+          clearTimeout(ws.pingTimeout);
+        }
+        
+        ws.pingTimeout = setTimeout(() => {
+          if (!ws.isAlive) {
+            console.log(`[WebSocket] No pong received, terminating connection: ${ws.connectionId}`);
+            ws.terminate();
+          }
+        }, PONG_TIMEOUT);
+        
+        // Send ping with timestamp
+        const pingData = { type: 'ping', timestamp: now };
+        ws.send(JSON.stringify(pingData));
+        
       } catch (error) {
-        console.error('Error in keep-alive check:', error);
+        console.error(`[WebSocket] Error in keep-alive check for ${ws.connectionId}:`, error);
+        ws.terminate();
       }
     });
-  }, 30000);
+  }, PING_INTERVAL);
   
   // Clean up interval on server close
   server.on('close', () => {
@@ -771,7 +883,7 @@ async function startApp() {
     await ensureIndexes();
     
     // Create HTTP server
-    const httpServer = createServer(app);
+    httpServer = createServer(app);
     
     // Initialize WebSocket server with the HTTP server
     const wss = setupWebSocketServer(httpServer);

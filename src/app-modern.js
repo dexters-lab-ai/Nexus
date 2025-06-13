@@ -45,9 +45,6 @@ const initializeApp = async () => {
   try {
     console.log('Initializing modern OPERATOR application...');
     
-    // NOTE: init-modern-operator event moved to Settings.jsx
-    // This ensures wormhole only hides after all components are fully loaded
-    
     // Show splash screen during initialization
     const splashScreen = document.getElementById('splash-screen');
     const loadingProgress = document.getElementById('loading-progress');
@@ -59,6 +56,18 @@ const initializeApp = async () => {
     // Initialize stores with data from API
     await initializeStores();
     updateLoadingProgress(40, loadingProgress);
+    
+    // Initialize WebSocket connection after stores are ready
+    if (typeof WebSocketManager !== 'undefined' && WebSocketManager.initialize) {
+      try {
+        await WebSocketManager.initialize();
+        console.log('WebSocket connection initialized');
+      } catch (error) {
+        console.error('Failed to initialize WebSocket connection:', error);
+      }
+    } else {
+      console.warn('WebSocketManager not available for initialization');
+    }
     
     // Load required assets and styles
     await loadAssets();
