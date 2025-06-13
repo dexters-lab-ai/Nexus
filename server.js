@@ -362,51 +362,63 @@ function setupWebSocketServer(server) {
   
   // Handle HTTP server upgrade for WebSocket connections
   server.on('upgrade', (request, socket, head) => {
-    // Verify session before upgrading
-    sessionMiddleware(request, {}, async () => {
+    // Set a connection timeout
+    socket.setTimeout(5000, () => {
+      if (!socket.destroyed) {
+        socket.destroy();
+      }
+    });
+
+    // Verify session
+    sessionMiddleware(request, null, (error) => {
       try {
-        // Get session from request
+        if (error) {
+          console.error('[WebSocket] Session middleware error:', error);
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+          return socket.destroy();
+        }
+
         const session = request.session;
-        
-        // Check if user is authenticated
-        const isAuthenticated = session.user ? true : false;
-        const userId = session.user || `guest_${crypto.randomBytes(8).toString('hex')}`;
+        const isAuthenticated = !!session?.user;
+        const userId = session?.user || `guest_${randomBytes(8).toString('hex')}`;
         
         // Verify origin
         const origin = request.headers.origin;
         if (!isOriginAllowed(origin)) {
           console.error(`[WebSocket] Origin not allowed: ${origin}`);
-          socket.destroy();
-          return;
+          socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+          return socket.destroy();
         }
-        
-        // Handle the upgrade
+
+        // Proceed with upgrade
         wss.handleUpgrade(request, socket, head, (ws) => {
-          // Store user info in the WebSocket connection
+          // Clear the timeout as we've successfully upgraded
+          socket.setTimeout(0);
+          
+          // Connection metadata
+          const connectionId = `${Date.now()}-${randomBytes(4).toString('hex')}`;
+          const clientIp = request.socket.remoteAddress;
+          
+          // Store connection info
           ws.userId = userId;
           ws.isAuthenticated = isAuthenticated;
           ws.connectedAt = Date.now();
           ws.lastPong = Date.now();
           ws.isAlive = true;
-          
-          // Generate a connection ID
-          const connectionId = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
           ws.connectionId = connectionId;
-          
-          // Add to connections
+
+          // Add to connection tracking
           allConnections.add(ws);
-          
-          // Add to user connections
           if (!userConnections.has(userId)) {
             userConnections.set(userId, new Set());
           }
           userConnections.get(userId).add(ws);
-          
+
           console.log(`[WebSocket] New ${isAuthenticated ? 'authenticated' : 'guest'} connection`, {
             connectionId,
             userId,
             isAuthenticated,
-            ip: request.socket.remoteAddress
+            ip: clientIp
           });
           
           // Send welcome message
@@ -417,13 +429,13 @@ function setupWebSocketServer(server) {
             isAuthenticated,
             timestamp: Date.now()
           }));
-          
+
           // Handle pings
           ws.on('pong', () => {
             ws.lastPong = Date.now();
             ws.isAlive = true;
           });
-          
+
           // Handle messages
           ws.on('message', (message) => {
             try {
@@ -431,13 +443,13 @@ function setupWebSocketServer(server) {
               
               // Handle authentication updates
               if (data.type === 'auth_update') {
-                // Only allow updates if the session is valid
-                if (session.user) {
+                if (session?.user) {
+                  const oldUserId = ws.userId;
                   ws.userId = session.user;
                   ws.isAuthenticated = true;
                   
                   // Update connection in user connections
-                  userConnections.get(userId)?.delete(ws);
+                  userConnections.get(oldUserId)?.delete(ws);
                   if (!userConnections.has(session.user)) {
                     userConnections.set(session.user, new Set());
                   }
@@ -450,14 +462,13 @@ function setupWebSocketServer(server) {
                   }));
                 }
               }
-              
-              // Handle other message types...
+              // Handle other message types here...
               
             } catch (error) {
               console.error('[WebSocket] Error processing message:', error);
             }
           });
-          
+
           // Handle close
           ws.on('close', () => {
             allConnections.delete(ws);
@@ -469,7 +480,10 @@ function setupWebSocketServer(server) {
         });
       } catch (error) {
         console.error('[WebSocket] Upgrade error:', error);
-        socket.destroy();
+        if (!socket.destroyed) {
+          socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
+          socket.destroy();
+        }
       }
     });
   });
