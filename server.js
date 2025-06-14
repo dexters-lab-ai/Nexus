@@ -1018,91 +1018,63 @@ app.use((req, res, next) => {
 
 // 8.4 Enhanced CORS Middleware for all environments
 app.use((req, res, next) => {
-  // Environment detection
-  const isProduction = process.env.NODE_ENV === 'production';
-  const isDocker = process.env.IS_DOCKER === 'true';
-  
-  // Get request origin and host
   const origin = req.headers.origin || '';
-  const host = req.headers.host || '';
+  const isProduction = process.env.NODE_ENV === 'production';
   
-  // Define allowed origins for different environments
-  const productionOrigins = [
-    'https://operator-pjcgr.ondigitalocean.app',
-    'https://operator-io236.ondigitalocean.app',
-    // Add other production domains as needed
-  ];
+  // Always allow requests with no origin (like mobile apps or curl requests)
+  if (!origin) return next();
   
-  const developmentOrigins = [
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://localhost:3420',
-    // Add other development origins as needed
-  ];
-  
-  // For Docker environments, add container hostnames
-  const dockerOrigins = [
-    ...developmentOrigins,
-    'http://host.docker.internal:3000',
-    'http://host.docker.internal:5173',
-    'http://host.docker.internal:3420',
-    `http://${host}`,
-    `https://${host}`,
-  ];
-  
-  // Determine allowed origins based on environment
-  let allowedOrigins = [];
+  // In production, allow any *.ondigitalocean.app subdomain
   if (isProduction) {
-    allowedOrigins = productionOrigins;
-  } else if (isDocker) {
-    allowedOrigins = [...new Set([...developmentOrigins, ...dockerOrigins])];
-  } else {
-    allowedOrigins = developmentOrigins;
+    if (origin.endsWith('.ondigitalocean.app')) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Request-ID');
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Range, X-Total-Count, X-Request-ID');
+      res.setHeader('Vary', 'Origin');
+      
+      if (req.method === 'OPTIONS') {
+        return res.status(204).end();
+      }
+      return next();
+    }
+  } 
+  // In development, allow common localhost origins
+  else {
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:3420',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:3420',
+      `http://${req.headers.host}`,
+      `https://${req.headers.host}`
+    ];
+    
+    if (allowedOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Request-ID');
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Range, X-Total-Count, X-Request-ID');
+      res.setHeader('Vary', 'Origin');
+      
+      if (req.method === 'OPTIONS') {
+        return res.status(204).end();
+      }
+      return next();
+    }
   }
   
-  // Add the request origin if it's not already included and we're not in production
-  if (!isProduction && origin && !allowedOrigins.includes(origin)) {
-    allowedOrigins.push(origin);
-  }
-  
-  // Check if the current origin is allowed
-  const isAllowedOrigin = (() => {
-    if (!origin) return false;
-    try {
-      const originHostname = new URL(origin).hostname;
-      return allowedOrigins.some(allowed => {
-        try {
-          return origin === allowed || originHostname === new URL(allowed).hostname;
-        } catch {
-          return origin === allowed;
-        }
-      });
-    } catch {
-      return allowedOrigins.includes(origin);
-    }
-  })();
-  
-  // Set CORS headers
-  if (isAllowedOrigin) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Request-ID');
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Range, X-Total-Count, X-Request-ID');
-    
-    // Handle preflight requests
-    if (req.method === 'OPTIONS') {
-      return res.status(204).end();
-    }
-    
-    // Set Vary header to avoid caching issues with different origins
-    res.setHeader('Vary', 'Origin');
-  } else if (isProduction) {
+  // If we get here, the origin is not allowed
+  if (isProduction) {
     // In production, block unauthorized origins
     return res.status(403).json({ 
       error: 'Not allowed by CORS',
       message: 'The origin is not allowed to access this resource',
-      allowedOrigins: productionOrigins
+      allowedOrigins: []
     });
   }
   
