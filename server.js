@@ -1066,10 +1066,21 @@ app.use((req, res, next) => {
   }
   
   // Check if the current origin is allowed
-  const isAllowedOrigin = origin && allowedOrigins.some(allowed => 
-    origin === allowed || 
-    new URL(origin).hostname === new URL(allowed).hostname
-  );
+  const isAllowedOrigin = (() => {
+    if (!origin) return false;
+    try {
+      const originHostname = new URL(origin).hostname;
+      return allowedOrigins.some(allowed => {
+        try {
+          return origin === allowed || originHostname === new URL(allowed).hostname;
+        } catch {
+          return origin === allowed;
+        }
+      });
+    } catch {
+      return allowedOrigins.includes(origin);
+    }
+  })();
   
   // Set CORS headers
   if (isAllowedOrigin) {
