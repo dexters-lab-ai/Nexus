@@ -624,6 +624,16 @@ export default function Sidebar(props = {}) {
     });
   }
   
+  // Function to get API base URL (same pattern as other components)
+  const getApiBaseUrl = () => {
+    if (import.meta.env.VITE_API_URL) {
+      return import.meta.env.VITE_API_URL;
+    } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return `http://${window.location.hostname}:3420`;
+    }
+    return window.location.origin;
+  };
+
   // Helper function to fetch community maps (public maps from all users)
   function fetchCommunityMaps(container, searchQuery = '', page = 1, pageSize = 12) {
     const loadingEl = container.querySelector('.yaml-maps-loading');
@@ -664,7 +674,8 @@ export default function Sidebar(props = {}) {
     }
     
     // Build the query URL with proper encoding
-    let url = '/api/yaml-maps?public=true';
+    const apiBase = getApiBaseUrl();
+    let url = `${apiBase}/api/yaml-maps?public=true`;
     if (searchQuery) {
       url += `&q=${encodeURIComponent(searchQuery)}`;
     }
@@ -674,8 +685,15 @@ export default function Sidebar(props = {}) {
     
     console.log(`[YAML Maps] Fetching community maps with URL: ${url}`);
     
-    // Fetch community maps - use cache busting to avoid stale results
-    fetch(`${url}&_=${Date.now()}`)
+    // Fetch community maps with proper CORS headers
+    fetch(`${url}&_=${Date.now()}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    })
       .then(response => {
         if (!response.ok) {
           throw new Error(`Error fetching community maps: ${response.status}`);

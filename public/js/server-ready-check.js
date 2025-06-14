@@ -48,14 +48,17 @@
   // Intercept all fetch requests
   const originalFetch = window.fetch;
   window.fetch = function(resource, options) {
-    // Allow health check fetches to pass through
-    if (resource === '/api/health') {
+    // Allow health check and other critical endpoints to pass through
+    const url = typeof resource === 'string' ? resource : resource.url;
+    const criticalEndpoints = ['/api/health', '/sockjs-node', '/@vite/client'];
+    
+    if (criticalEndpoints.some(endpoint => url && url.includes(endpoint))) {
       return originalFetch.apply(this, arguments);
     }
     
-    // Block other fetches until server is ready
+    // Block non-critical fetches until server is ready
     if (!window.serverIsReady) {
-      console.log('🔄 Blocking fetch until server is ready:', resource);
+      console.log('🔄 Blocking fetch until server is ready:', url || resource);
       return new Promise((resolve, reject) => {
         // Store the fetch request to retry later
         window.pendingFetches = window.pendingFetches || [];
@@ -252,35 +255,78 @@
     }
   }
 
-  // Check if the server is ready
-  function checkServerReady() {
-    return fetch('/api/health', {
-      headers: {
-        'Accept': 'application/json',
-        'Cache-Control': 'no-cache'
-      }
-    })
-      .then(async response => {
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error(`Server responded with status: ${response.status} - ${text}`);
-        }
-        try {
-          const data = await response.json();
-          // Handle different response formats
-          if (typeof data === 'object' && data !== null) {
-            return data.serverReady === true || data.status === 'ok';
-          }
-          return false;
-        } catch (e) {
-          console.warn('Invalid JSON response from server, retrying...');
-          return false;
-        }
-      })
-      .catch(error => {
-        console.log('Server not ready yet:', error.message);
-        return false;
+  // Check if the server is ready by querying the health endpoint
+  async function checkServerReady() {
+    const startTime = Date.now();
+    const requestId = `health-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    
+    console.log(`[${requestId}] Starting health check at ${new Date().toISOString()}`);
+    
+    try {
+      // Add a timestamp to prevent caching
+      const timestamp = new Date().getTime();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
+      const response = await fetch(`/api/health?_=${timestamp}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'X-Request-ID': requestId
+        },
+        credentials: 'include', // Include cookies for authenticated endpoints
+        signal: controller.signal,
+        mode: 'cors'
       });
+      
+      clearTimeout(timeoutId);
+      
+      const responseTime = Date.now() - startTime;
+      console.log(`[${requestId}] Response received in ${responseTime}ms`);
+
+      // First check the content type to ensure it's JSON
+      const contentType = response.headers.get('content-type') || '';
+      const isJson = contentType.includes('application/json');
+      
+      if (!isJson) {
+        const responseText = await response.text();
+        console.warn(`[${requestId}] Non-JSON response from server. Status: ${response.status} ${response.statusText}, Content-Type: ${contentType}, Response:`, responseText.substring(0, 200));
+        throw new Error(`Expected JSON response but got: ${contentType}`);
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.warn(`[${requestId}] Server error: ${response.status} ${response.statusText}`, errorData);
+        throw new Error(`Server error: ${response.status} ${response.statusText}`, { cause: errorData });
+      }
+      
+      const data = await response.json();
+      const isReady = data.serverReady === true || data.status === 'ok';
+      
+      if (!isReady) {
+        console.warn(`[${requestId}] Server not ready:`, data);
+      } else {
+        console.log(`[${requestId}] Server is ready:`, {
+          status: data.status,
+          serverReady: data.serverReady,
+          environment: data.environment,
+          version: data.version,
+          responseTime: responseTime + 'ms'
+        });
+      }
+      
+      return isReady;
+    } catch (error) {
+      const errorMessage = error.name === 'AbortError' 
+        ? 'Health check timed out after 5 seconds' 
+        : error.message;
+        
+      console.warn(`[${requestId}] Error checking server status:`, errorMessage, error.name === 'AbortError' ? '' : error);
+      return false;
+    }
   }
 
   // Main function to poll the server until it's ready
@@ -297,65 +343,99 @@
       console.warn('Failsafe cleanup: Removing server overlay after 60 seconds');
       forceCleanupOverlay();
     }, 60000); // 60 seconds max
-
-    function pollServer() {
-      retryCount++;
-      updateLoadingMessage(null, null); // Just update the retry counter
-      
-      checkServerReady()
-        .then(isReady => {
-          if (isReady) {
-            // Server is ready!
-            updateLoadingMessage('Server is ready!', 'Loading application...');
+    
+    // Start the connection attempt loop
+    attemptConnection();
+    
+    // Function to attempt connecting to the server with exponential backoff
+    async function attemptConnection() {
+      try {
+        updateLoadingMessage(
+          'Connecting to server...',
+          `Attempt ${retryCount + 1} of ${MAX_RETRIES}`
+        );
+        
+        const isReady = await checkServerReady();
+        
+        if (isReady) {
+          // Server is ready, continue with app initialization
+          window.serverIsReady = true;
+          console.log('✅ Server is ready, initializing application...');
+          
+          // Clear the failsafe timeout since we're handling it properly
+          clearTimeout(failsafeTimeout);
+          
+          // Update UI to show server is ready
+          updateLoadingMessage('Server is ready!', 'Loading application...');
+          
+          // Execute the unlock immediately but delay the overlay removal slightly
+          unlockPendingScripts();
+          
+          // Dispatch an event that the application can listen for
+          window.dispatchEvent(new Event('serverReady'));
+          
+          // Hide the overlay with slight delay
+          setTimeout(() => {
+            hideLoadingOverlay();
             
-            // Clear the failsafe timeout since we're handling it properly
-            clearTimeout(failsafeTimeout);
-            
-            // First, mark the server as ready to unblock scripts
-            window.serverIsReady = true;
-            
-            // Execute the unlock immediately but delay the overlay removal slightly
-            unlockPendingScripts();
-            
-            // Dispatch an event that the application can listen for
-            window.dispatchEvent(new Event('serverReady'));
-            
-            // Hide the overlay with slight delay
-            setTimeout(() => {
-              hideLoadingOverlay();
-              
-              // Double-check that the overlay is gone after hiding
-              setTimeout(forceCleanupOverlay, 1000);
-            }, 500);
-          } else if (retryCount < MAX_RETRIES) {
-            // Try again after delay
-            setTimeout(pollServer, RETRY_DELAY);
-          } else {
-            // Max retries reached
-            updateLoadingMessage(
-              'Server not responding',
-              'The backend server is taking too long to start. You may need to restart the application.'
-            );
-            
-            // Add a button to force continue anyway
-            const retryCounterEl = document.getElementById('server-retry-counter');
-            if (retryCounterEl) {
-              const continueButton = document.createElement('button');
-              continueButton.textContent = 'Continue Anyway';
-              continueButton.style.cssText = `
-                padding: 8px 16px;
-                margin-top: 15px;
-                background: #2a3b8f;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                cursor: pointer;
-              `;
-              continueButton.onclick = forceCleanupOverlay;
-              retryCounterEl.parentNode.insertBefore(continueButton, retryCounterEl.nextSibling);
-            }
+            // Double-check that the overlay is gone after hiding
+            setTimeout(forceCleanupOverlay, 1000);
+          }, 500);
+          
+          return;
+        }
+        
+        // If we get here, server is not ready yet
+        if (retryCount < MAX_RETRIES - 1) {
+          retryCount++;
+          const delay = Math.min(1000 * Math.pow(2, retryCount), 10000); // Cap at 10s
+          console.log(`Server not ready, retrying in ${delay}ms...`);
+          setTimeout(attemptConnection, delay);
+        } else {
+          // Max retries reached
+          updateLoadingMessage(
+            'Server is taking too long to start',
+            'Please refresh the page or check your server logs'
+          );
+          
+          // Add a button to force continue anyway
+          const retryCounterEl = document.getElementById('server-retry-counter');
+          if (retryCounterEl && !document.getElementById('continue-button')) {
+            const continueButton = document.createElement('button');
+            continueButton.id = 'continue-button';
+            continueButton.textContent = 'Continue Anyway';
+            continueButton.style.cssText = `
+              padding: 8px 16px;
+              margin-top: 15px;
+              background: #2a3b8f;
+              color: white;
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+              display: block;
+              margin: 10px auto 0;
+            `;
+            continueButton.onclick = forceCleanupOverlay;
+            retryCounterEl.after(continueButton);
           }
-        });
+          
+          clearTimeout(failsafeTimeout);
+        }
+      } catch (error) {
+        console.error('Error during server connection attempt:', error);
+        if (retryCount < MAX_RETRIES - 1) {
+          retryCount++;
+          const delay = Math.min(1000 * Math.pow(2, retryCount), 10000);
+          console.log(`Retrying after error in ${delay}ms...`);
+          setTimeout(attemptConnection, delay);
+        } else {
+          updateLoadingMessage(
+            'Failed to connect to server',
+            'Please check your connection and refresh the page'
+          );
+          clearTimeout(failsafeTimeout);
+        }
+      }
     }
     
     // Force cleanup function for when all else fails
@@ -368,21 +448,12 @@
       // Unlock all pending scripts
       unlockPendingScripts();
       
-      // Find and remove the overlay directly
-      const overlay = document.getElementById('server-loading-overlay');
-      if (overlay && overlay.parentNode) {
-        overlay.parentNode.removeChild(overlay);
-      }
-      
-      // Clean up reference
-      loadingOverlay = null;
+      // Hide the overlay
+      hideLoadingOverlay();
       
       // Dispatch an event that the application can listen for
       window.dispatchEvent(new Event('serverReady'));
     }
-
-    // Start polling
-    pollServer();
   }
 
   // Start the process

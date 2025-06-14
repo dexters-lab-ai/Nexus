@@ -440,6 +440,29 @@ export function CommandCenter(props = {}) {
   console.log('Using WebSocketManager:', !!window.WebSocketManager);
   console.log('===============================');
 
+  // Subscribe to WebSocket messages
+  const subscribeToWebSocket = () => {
+    if (!window.WebSocketManager) {
+      console.warn('[CommandCenter] WebSocketManager not available');
+      return;
+    }
+    
+    // Clean up any existing subscription
+    if (unsubscribeFromWebSocket) {
+      console.debug('[CommandCenter] Cleaning up previous WebSocket subscription');
+      unsubscribeFromWebSocket();
+      unsubscribeFromWebSocket = null;
+    }
+    
+    // Subscribe to WebSocket messages
+    try {
+      unsubscribeFromWebSocket = window.WebSocketManager.subscribe(handleWebSocketMessage);
+      console.log('[CommandCenter] Subscribed to WebSocket messages');
+    } catch (error) {
+      console.error('[CommandCenter] Failed to subscribe to WebSocket messages:', error);
+    }
+  };
+
   // --- User ID Management Helper with /api/whoami sync and force sync on load ---
   async function syncUserIdWithBackend() {
     try {
@@ -450,8 +473,8 @@ export function CommandCenter(props = {}) {
         localStorage.setItem('userId', data.userId);
         sessionStorage.setItem('userId', data.userId);
         console.debug('[DEBUG] syncUserIdWithBackend: Synced userId from /api/whoami:', data.userId);
-        // Initialize WebSocket through WebSocketManager
-        initWebSocket(data.userId);
+        // Subscribe to WebSocket messages
+        subscribeToWebSocket();
         return data.userId;
       }
     } catch (err) {
@@ -468,12 +491,12 @@ export function CommandCenter(props = {}) {
       const userId = await syncUserIdWithBackend();
       console.debug('[DEBUG] App load: userId after sync', userId);
       
-      // If we have a userId but sync didn't complete, ensure WebSocket is initialized
+      // If we have a userId but sync didn't complete, ensure WebSocket is subscribed
       if (!userId) {
         const localUserId = localStorage.getItem('userId');
-        if (localUserId && window.handleUserAuthentication) {
-          console.debug('[DEBUG] Using local userId for WebSocket init:', localUserId);
-          window.handleUserAuthentication(localUserId);
+        if (localUserId) {
+          console.debug('[DEBUG] Using local userId for WebSocket subscription:', localUserId);
+          subscribeToWebSocket();
         }
       }
     } catch (error) {
@@ -540,57 +563,9 @@ export function CommandCenter(props = {}) {
 
   /* ===============================================
   
-    | WebSocket Functions
+    | WebSocket Message Handling
 
   =============================================== */
-  
-  // Initialize WebSocket connection when user is authenticated
-  const initWebSocket = (currentUserId) => {
-    console.log('[CommandCenter] Initializing WebSocket message handling');
-    
-    // Store the userId for message handling
-    userId = currentUserId;
-    
-    // Clean up any existing subscription
-    if (unsubscribeFromWebSocket) {
-      console.log('[CommandCenter] Cleaning up previous WebSocket subscription');
-      unsubscribeFromWebSocket();
-      unsubscribeFromWebSocket = null;
-    }
-    
-    // Check if WebSocketManager is available
-    if (!window.WebSocketManager) {
-      console.error('[CommandCenter] WebSocketManager is not available');
-      return;
-    }
-    
-    try {
-      // Subscribe to WebSocket messages
-      unsubscribeFromWebSocket = window.WebSocketManager.subscribe(handleWebSocketMessage);
-      console.log('[CommandCenter] Successfully subscribed to WebSocket messages');
-      
-      // Initialize the WebSocket connection if not already connected
-      if (!window.WebSocketManager.isConnected) {
-        console.log('[CommandCenter] Initializing WebSocket connection...');
-        window.WebSocketManager.init(currentUserId);
-      }
-    } catch (error) {
-      console.error('[CommandCenter] Failed to subscribe to WebSocket messages:', error);
-    }
-
-    // Set up a ping-pong mechanism to ensure the connection stays alive
-    const pingInterval = setInterval(() => {
-      if (window.WebSocketManager && window.WebSocketManager.isConnected) {
-        window.WebSocketManager.send({ type: 'ping', timestamp: Date.now() });
-      }
-    }, 30000);
-    
-    // Clean up on unmount
-    return () => {
-      if (pingInterval) clearInterval(pingInterval);
-      if (unsubscribeFromWebSocket) unsubscribeFromWebSocket();
-    };
-  };
 
   // Handle WebSocket messages from WebSocketManager
   const handleWebSocketMessage = (message) => {
@@ -622,6 +597,8 @@ export function CommandCenter(props = {}) {
   
   // Process WebSocket message (extracted from the original handler)
   const processWebSocketMessage = (message) => {
+    let eventHandled = false; // Track if the event has been handled
+    
     if (!message) {
       console.error('[WebSocket] Invalid message data');
       return;
@@ -2119,9 +2096,30 @@ export function CommandCenter(props = {}) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
       
-      const response = await fetch('/api/user/available-engines', {
-        credentials: 'include', // Include credentials for auth
-        signal: controller.signal
+      // Dynamic API base URL resolution
+      const getApiBaseUrl = () => {
+        if (import.meta.env.VITE_API_URL) {
+          return import.meta.env.VITE_API_URL;
+        } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          return `http://${window.location.hostname}:3420`; // Development port
+        }
+        return window.location.origin; // Production
+      };
+      
+      const apiBase = getApiBaseUrl();
+      const apiUrl = `${apiBase}/api/user/available-engines`;
+      
+      console.log('Fetching engines from:', apiUrl);
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        credentials: 'include',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        }
       });
       
       clearTimeout(timeoutId);
@@ -2558,8 +2556,18 @@ export function CommandCenter(props = {}) {
       });
     }
     
-    // Build SSE URL with YAML map ID if available
-    let sseUrl = `/api/nli?prompt=${encodeURIComponent(finalContent)}`;
+    // Dynamic API base URL resolution
+    const getApiBaseUrl = () => {
+      if (import.meta.env.VITE_API_URL) {
+        return import.meta.env.VITE_API_URL;
+      } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return `http://${window.location.hostname}:3420`; // Development port
+      }
+      return window.location.origin; // Production
+    };
+    
+    const apiBase = getApiBaseUrl();
+    let sseUrl = `${apiBase}/api/nli?prompt=${encodeURIComponent(finalContent)}`;
     if (yamlMapId) {
       sseUrl += `&yamlMapId=${encodeURIComponent(yamlMapId)}`;
     }
@@ -2582,7 +2590,9 @@ export function CommandCenter(props = {}) {
     }
 
     // Stream thought updates via SSE
-    const es = new EventSource(sseUrl);
+    const es = new EventSource(sseUrl, { 
+      withCredentials: true 
+    });
     es.onopen = () => console.debug('[DEBUG] SSE connection opened');
     es.onerror = err => console.error('[DEBUG] SSE error', err);
     es.onmessage = e => {

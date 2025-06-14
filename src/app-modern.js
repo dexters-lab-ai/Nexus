@@ -29,7 +29,7 @@ import './styles/components/timeline.css';
 // App Initialization
 import { eventBus } from './utils/events.js';
 // Import WebSocketManager from utils directory
-import { WebSocketManager } from './utils/WebSocketManager.js';
+import WebSocketManager from './utils/WebSocketManager.js';
 import { initializeModernUI } from './app-modern-integration.js';
 import { stores } from './store/index.js';
 import ErrorBoundary from './components/base/ErrorBoundary.jsx';

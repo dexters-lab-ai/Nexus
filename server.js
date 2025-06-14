@@ -19,6 +19,7 @@ import winston from 'winston';
 import pRetry from 'p-retry';
 import { v4 as uuidv4 } from 'uuid';
 import { Semaphore } from 'async-mutex';
+import puppeteer from 'puppeteer';
 import puppeteerExtra from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { PuppeteerAgent } from '@midscene/web/puppeteer';
@@ -29,6 +30,53 @@ import cookie from 'cookie';
 
 // Create Express app
 const app = express();
+
+// ======================================
+// 0.1 HEALTH CHECK ENDPOINT
+// ======================================
+// Health check endpoint - must be the first route to ensure it's never overridden
+app.get('/health', (req, res) => {
+  try {
+    // Set CORS headers
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Credentials', true);
+    
+    // Handle preflight
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+    
+    // Set response headers
+    res.set('Content-Type', 'application/json');
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    res.set('Surrogate-Control', 'no-store');
+    
+    // Send health check response
+    res.json({
+      status: 'ok',
+      serverReady: true,
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || 'development',
+      version: process.env.npm_package_version || '1.0.0',
+      nodeVersion: process.version
+    });
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.set('Content-Type', 'application/json');
+    res.status(500).json({
+      status: 'error',
+      serverReady: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
 
 // Track all active WebSocket connections
 const allConnections = new Set();
@@ -120,246 +168,12 @@ function setupWebSocketServer(server) {
     console.error('[WebSocket] Server error:', error);
   });
 
-  // Handle new WebSocket connections
-  wss.on('connection', (ws, req) => {
-    const clientIp = req.socket.remoteAddress;
-    const connectionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Parse URL to get query parameters
-    let userId = 'guest';
-    let isAuthenticated = false;
-    
-    try {
-      const url = new URL(req.url, `http://${req.headers.host}`);
-      const params = new URLSearchParams(url.search);
-      userId = params.get('userId') || userId;
-      isAuthenticated = params.get('authenticated') === 'true';
-    } catch (error) {
-      console.error('[WebSocket] Error parsing URL:', error);
-    }
-    
-    // Initialize connection properties
-    ws.connectionId = connectionId;
-    ws.connectedAt = Date.now();
-    ws.clientIp = clientIp;
-    ws.isAlive = true;
-    ws.lastPong = Date.now();
-    ws.userId = userId;
-    ws.isAuthenticated = isAuthenticated;
-    
-    // Add to global connections set
-    allConnections.add(ws);
-    
-    // Initialize user connections map if needed
-    if (!userConnections.has(userId)) {
-      userConnections.set(userId, new Set());
-    }
-    
-    // Add connection to user's connection set
-    const userWsSet = userConnections.get(userId);
-    userWsSet.add(ws);
-    
-    console.log(`[WebSocket] New ${isAuthenticated ? 'authenticated' : 'guest'} connection established`, {
-      connectionId: ws.connectionId,
-      clientIp: ws.clientIp,
-      userId: ws.userId,
-      isAuthenticated: ws.isAuthenticated,
-      totalConnections: allConnections.size,
-      userConnections: userWsSet.size
-    });
-    
-    // Send connection established message
-    ws.send(JSON.stringify({
-      type: 'connection_established',
-      connectionId: ws.connectionId,
-      isAuthenticated: ws.isAuthenticated,
-      userId: ws.userId,
-      timestamp: Date.now()
-    }));
-    
-    // Send connection ack with user info (required by frontend)
-    ws.send(JSON.stringify({
-      event: 'connection_ack',
-      timestamp: new Date().toISOString(),
-      userId: ws.userId,
-      connectionCount: userWsSet.size
-    }));
-    
-    // Send any queued messages for this user
-    if (unsentMessages.has(ws.userId)) {
-      const queued = unsentMessages.get(ws.userId);
-      console.log(`[WebSocket] Sending ${queued.length} queued messages to user ${ws.userId}`);
-      queued.forEach(msg => {
-        try {
-          ws.send(JSON.stringify(msg));
-        } catch (error) {
-          console.error(`[WebSocket] Error sending queued message to user ${ws.userId}:`, error);
-        }
-      });
-      unsentMessages.delete(ws.userId);
-    }
-    
-    // Handle incoming messages
-    ws.on('message', (message) => {
-      try {
-        const data = JSON.parse(message);
-        
-        // Log message with connection details (filter out pings from logs)
-        if (data.type !== 'ping') {
-          console.log(`[WebSocket] Message from ${ws.connectionId} (${ws.userId}):`, data);
-        }
-        
-        // Handle ping messages (if any clients still use application-level ping)
-        if (data.type === 'ping') {
-          ws.isAlive = true;
-          ws.lastPong = Date.now();
-          // Send pong response to client
-          try {
-            ws.send(JSON.stringify({ type: 'pong' }));
-          } catch (error) {
-            console.error(`[WebSocket] Error sending pong to ${ws.connectionId}:`, error);
-          }
-          return;
-        }
-        
-        // Handle authentication state updates
-        if (data.type === 'update_auth_state') {
-          const { userId, isAuthenticated } = data;
-          
-          // Validate input
-          if (typeof isAuthenticated !== 'boolean') {
-            console.error('[WebSocket] Invalid auth update - isAuthenticated must be boolean');
-            ws.send(JSON.stringify({
-              type: 'auth_error',
-              error: 'Invalid authentication data',
-              timestamp: Date.now()
-            }));
-            return;
-          }
-          
-          if (!userId) {
-            console.error('[WebSocket] Invalid auth update - userId is required');
-            ws.send(JSON.stringify({
-              type: 'auth_error',
-              error: 'User ID is required',
-              timestamp: Date.now()
-            }));
-            return;
-          }
-          
-          // Update the connection with new auth state
-          updateUserConnection(ws, userId, isAuthenticated);
-          
-          // Acknowledge the auth update
-          ws.send(JSON.stringify({
-            type: 'auth_state_updated',
-            success: true,
-            userId: ws.userId,
-            isAuthenticated: ws.isAuthenticated,
-            timestamp: Date.now()
-          }));
-          
-          console.log(`[WebSocket] Auth state updated for ${ws.connectionId}:`, {
-            userId: ws.userId,
-            isAuthenticated: ws.isAuthenticated,
-            userConnections: userConnections.get(ws.userId)?.size || 0
-          });
-          
-          return;
-        }
-        
-        // Handle other message types here
-        
-      } catch (error) {
-        console.error(`[WebSocket] Error processing message from ${ws.connectionId}:`, error);
-      }
-    });
-    
-    /**
-     * Clean up WebSocket connection resources
-     */
-    const cleanupConnection = () => {
-      if (!ws || !ws.connectionId) return;
-      
-      const { connectionId, userId } = ws;
-      console.log(`[WebSocket] Cleaning up connection: ${connectionId} (${userId || 'unknown'})`);
-      
-      // Remove from global connections
-      allConnections.delete(ws);
-      
-      // Remove from user connections
-      if (userId && userConnections.has(userId)) {
-        const userWsSet = userConnections.get(userId);
-        userWsSet.delete(ws);
-        
-        if (userWsSet.size === 0) {
-          userConnections.delete(userId);
-          console.log(`[WebSocket] Removed last connection for user ${userId}`);
-        }
-      }
-      
-      // Clear any pending timeouts/intervals
-      if (ws.pingTimeout) {
-        clearTimeout(ws.pingTimeout);
-      }
-      
-      console.log(`[WebSocket] Connection cleanup complete for ${connectionId}`);
-    };
-    
-    // Handle connection close
-    ws.on('close', (code, reason) => {
-      const closeInfo = {
-        connectionId: ws.connectionId,
-        userId: ws.userId || 'unknown',
-        code,
-        reason: reason.toString() || 'No reason provided',
-        wasClean: ws.readyState === ws.CLOSED,
-        connectedAt: ws.connectedAt ? new Date(ws.connectedAt).toISOString() : 'unknown',
-        duration: ws.connectedAt ? `${((Date.now() - ws.connectedAt) / 1000).toFixed(2)}s` : 'unknown'
-      };
-      
-      console.log(`[WebSocket] Connection closed:`, closeInfo);
-      
-      // Clean up resources
-      cleanupConnection();
-      
-      // Log connection statistics
-      const activeConnections = allConnections.size;
-      const activeUsers = userConnections.size;
-      console.log(`[WebSocket] Connection stats - Active: ${activeConnections}, Users: ${activeUsers}`);
-    });
-    
-    // Handle errors
-    ws.on('error', (error) => {
-      const errorInfo = {
-        connectionId: ws.connectionId,
-        userId: ws.userId || 'unknown',
-        error: error.message,
-        stack: error.stack,
-        timestamp: new Date().toISOString()
-      };
-      
-      console.error(`[WebSocket] Connection error:`, errorInfo);
-      
-      // Clean up resources
-      cleanupConnection();
-      
-      // Force close the connection if not already closed
-      if (ws.readyState === ws.OPEN) {
-        try {
-          ws.terminate();
-        } catch (terminateError) {
-          console.error(`[WebSocket] Error terminating connection ${ws.connectionId}:`, terminateError);
-        }
-      }
-    });
-  });
-  
   // Handle HTTP server upgrade for WebSocket connections
   server.on('upgrade', (request, socket, head) => {
     // Set a connection timeout
     socket.setTimeout(5000, () => {
       if (!socket.destroyed) {
+        console.log('[WebSocket] Connection upgrade timed out');
         socket.destroy();
       }
     });
@@ -402,6 +216,48 @@ function setupWebSocketServer(server) {
           ws.lastPong = Date.now();
           ws.isAlive = true;
           ws.connectionId = connectionId;
+          
+          // Set up pong handler for this connection (for native WebSocket pings)
+          const handlePong = (data) => {
+            const now = Date.now();
+            ws.isAlive = true;
+            ws.lastPong = now;
+            ws.lastActivity = now;
+            ws.waitingForPong = false;
+            
+            // Clear any pending ping timeout
+            if (ws.pingTimeout) {
+              clearTimeout(ws.pingTimeout);
+              ws.pingTimeout = null;
+            }
+            
+            if (process.env.NODE_ENV !== 'production' && ws.lastPingTime) {
+              const rtt = now - ws.lastPingTime;
+              console.log(`[${connectionId}] Received native pong (RTT: ${rtt}ms)`);
+            }
+            
+            // For native pings, send a pong response
+            try {
+              if (data && data.length > 0) {
+                // If there was data with the ping, include it in the pong
+                ws.pong(data);
+              } else {
+                // Otherwise just send an empty pong
+                ws.pong();
+              }
+            } catch (e) {
+              console.error(`[${connectionId}] Error sending pong:`, e);
+            }
+          };
+          
+          // Set up event listeners
+          ws.on('pong', handlePong);
+          
+          // Set up ping interval for this connection
+          setupPingInterval(ws);
+          
+          // Send initial ping to start the keepalive
+          ws.ping(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
 
           // Add to connection tracking
           allConnections.add(ws);
@@ -414,59 +270,312 @@ function setupWebSocketServer(server) {
             connectionId,
             userId,
             isAuthenticated,
-            ip: clientIp
+            ip: clientIp,
+            totalConnections: allConnections.size,
+            userConnections: userConnections.get(userId).size
           });
           
           // Send welcome message
-          ws.send(JSON.stringify({
+          const welcomeMsg = {
             type: 'connection_established',
             connectionId,
             userId,
             isAuthenticated,
             timestamp: Date.now()
+          };
+          
+          ws.send(JSON.stringify(welcomeMsg));
+          
+          // Send connection ack with user info (required by frontend)
+          ws.send(JSON.stringify({
+            event: 'connection_ack',
+            timestamp: new Date().toISOString(),
+            userId: userId,
+            connectionCount: userConnections.get(userId).size
           }));
-
-          // Handle messages
-          ws.on('message', (message) => {
-            try {
-              const data = JSON.parse(message);
-              
-              // Handle authentication updates
-              if (data.type === 'auth_update') {
-                if (session?.user) {
-                  const oldUserId = ws.userId;
-                  ws.userId = session.user;
-                  ws.isAuthenticated = true;
-                  
-                  // Update connection in user connections
-                  userConnections.get(oldUserId)?.delete(ws);
-                  if (!userConnections.has(session.user)) {
-                    userConnections.set(session.user, new Set());
-                  }
-                  userConnections.get(session.user).add(ws);
-                  
-                  ws.send(JSON.stringify({
-                    type: 'auth_updated',
-                    userId: session.user,
-                    isAuthenticated: true
-                  }));
-                }
+          
+          // Send any queued messages for this user
+          if (unsentMessages.has(userId)) {
+            const queued = unsentMessages.get(userId);
+            console.log(`[WebSocket] Sending ${queued.length} queued messages to user ${userId}`);
+            queued.forEach(msg => {
+              try {
+                ws.send(JSON.stringify(msg));
+              } catch (error) {
+                console.error(`[WebSocket] Error sending queued message to user ${userId}:`, error);
               }
+            });
+            unsentMessages.delete(userId);
+          }
+          
+          // Handle incoming messages
+          const handleMessage = (message) => {
+            try {
+              const now = Date.now();
+              ws.lastActivity = now; // Update last activity timestamp
+              
+              // Parse message if it's JSON
+              let data;
+              try {
+                data = JSON.parse(message);
+              } catch (e) {
+                // Not a JSON message, ignore
+                return;
+              }
+              
+              // Log message with connection details (filter out pings from logs)
+              if (data.type !== 'ping' && data.type !== 'pong') {
+                console.log(`[WebSocket] Message from ${connectionId} (${userId}):`, data);
+              }
+              
+              // Handle application-level ping (client-initiated)
+              if (data.type === 'ping') {
+                // Update connection timestamp
+                ws.lastPong = now;
+                ws.isAlive = true;
+                
+                // Clear any pending ping timeout
+                if (ws.pingTimeout) {
+                  clearTimeout(ws.pingTimeout);
+                  ws.pingTimeout = null;
+                }
+                
+                // Clear waitingForPong flag if set
+                ws.waitingForPong = false;
+                
+                // Send pong response
+                try {
+                  ws.send(JSON.stringify({
+                    type: 'pong',
+                    timestamp: now,
+                    originalTimestamp: data.timestamp || now
+                  }));
+                } catch (error) {
+                  console.error(`[${connectionId}] Error sending pong:`, error);
+                }
+                return;
+              }
+              
+              // Handle application-level pong (response to our ping)
+              if (data.type === 'pong') {
+                ws.waitingForPong = false;
+                ws.lastPong = now;
+                ws.isAlive = true;
+                
+                // Clear any pending ping timeout
+                if (ws.pingTimeout) {
+                  clearTimeout(ws.pingTimeout);
+                  ws.pingTimeout = null;
+                }
+                
+                // Log RTT if we have the original timestamp
+                if (data.originalTimestamp) {
+                  const rtt = now - data.originalTimestamp;
+                  if (process.env.NODE_ENV !== 'production') {
+                    console.log(`[${connectionId}] Received pong (RTT: ${rtt}ms)`);
+                  }
+                }
+                return;
+              }
+              
+              // Handle authentication state updates
+              if (data.type === 'update_auth_state') {
+                const { userId: newUserId, isAuthenticated: newAuthState } = data;
+                
+                // Validate input
+                if (typeof newAuthState !== 'boolean') {
+                  console.error('[WebSocket] Invalid auth update - isAuthenticated must be boolean');
+                  ws.send(JSON.stringify({
+                    type: 'auth_error',
+                    error: 'Invalid authentication data',
+                    timestamp: Date.now()
+                  }));
+                  return;
+                }
+                
+                if (!newUserId) {
+                  console.error('[WebSocket] Invalid auth update - userId is required');
+                  ws.send(JSON.stringify({
+                    type: 'auth_error',
+                    error: 'User ID is required',
+                    timestamp: Date.now()
+                  }));
+                  return;
+                }
+                
+                // Update the connection with new auth state
+                updateUserConnection(ws, newUserId, newAuthState);
+                
+                // Acknowledge the auth update
+                ws.send(JSON.stringify({
+                  type: 'auth_state_updated',
+                  success: true,
+                  userId: ws.userId,
+                  isAuthenticated: ws.isAuthenticated,
+                  timestamp: Date.now()
+                }));
+                
+                console.log(`[WebSocket] Auth state updated for ${connectionId}:`, {
+                  userId: ws.userId,
+                  isAuthenticated: ws.isAuthenticated,
+                  userConnections: userConnections.get(ws.userId)?.size || 0
+                });
+                
+                return;
+              }
+              
               // Handle other message types here...
               
             } catch (error) {
-              console.error('[WebSocket] Error processing message:', error);
+              console.error(`[WebSocket] Error processing message from ${connectionId}:`, error);
             }
-          });
-
-          // Handle close
-          ws.on('close', () => {
+          };
+          
+          // Set up message handler
+          ws.on('message', handleMessage);
+          
+          /**
+           * Clean up WebSocket connection resources
+           */
+          const cleanupConnection = () => {
+            if (!ws || !connectionId) return;
+            
+            console.log(`[WebSocket] Cleaning up connection: ${connectionId} (${userId || 'unknown'})`);
+            
+            // Clear ping interval if it exists
+            if (ws.pingInterval) {
+              clearInterval(ws.pingInterval);
+              ws.pingInterval = null;
+            }
+            
+            // Clear ping timeout if it exists
+            if (ws.pingTimeout) {
+              clearTimeout(ws.pingTimeout);
+              ws.pingTimeout = null;
+            }
+            
+            // Remove from global connections
             allConnections.delete(ws);
-            userConnections.get(userId)?.delete(ws);
-            if (userConnections.get(userId)?.size === 0) {
-              userConnections.delete(userId);
+            
+            // Remove from user connections
+            if (userId && userConnections.has(userId)) {
+              const userWsSet = userConnections.get(userId);
+              if (userWsSet) {
+                userWsSet.delete(ws);
+                
+                if (userWsSet.size === 0) {
+                  userConnections.delete(userId);
+                  console.log(`[WebSocket] Removed last connection for user ${userId}`);
+                }
+              }
             }
-          });
+            
+            // Clean up any message queue if it exists
+            if (ws.messageQueue) {
+              ws.messageQueue = null;
+            }
+            
+            // Clear any event listeners to prevent memory leaks
+            ws.removeAllListeners('pong');
+            ws.removeAllListeners('ping');
+            ws.removeAllListeners('message');
+            ws.removeAllListeners('close');
+            ws.removeAllListeners('error');
+            
+            // Force close the connection if it's still open
+            if (ws.readyState === WebSocket.OPEN) {
+              try {
+                ws.terminate();
+              } catch (e) {
+                console.error(`[${connectionId}] Error terminating connection:`, e);
+              }
+            }
+            
+            console.log(`[WebSocket] Connection cleanup complete for ${connectionId}`);
+          };
+          
+          // Handle connection close
+          const handleClose = (code, reason) => {
+            const closeInfo = {
+              connectionId,
+              userId,
+              code,
+              reason: reason?.toString() || 'No reason provided',
+              wasClean: ws.readyState === ws.CLOSED,
+              connectedAt: ws.connectedAt ? new Date(ws.connectedAt).toISOString() : 'unknown',
+              duration: ws.connectedAt ? `${((Date.now() - ws.connectedAt) / 1000).toFixed(2)}s` : 'unknown'
+            };
+            
+            console.log(`[WebSocket] Connection closed:`, closeInfo);
+            
+            // Clean up resources
+            cleanupConnection();
+            
+            // Log connection statistics
+            const activeConnections = allConnections.size;
+            const activeUsers = userConnections.size;
+            console.log(`[WebSocket] Connection stats - Active: ${activeConnections}, Users: ${activeUsers}`);
+          };
+          
+          // Handle errors
+          const handleError = (error) => {
+            const errorInfo = {
+              connectionId,
+              userId,
+              error: error.message,
+              stack: error.stack,
+              timestamp: new Date().toISOString()
+            };
+            
+            console.error(`[WebSocket] Connection error:`, errorInfo);
+            
+            // Clean up resources
+            cleanupConnection();
+            
+            // Force close the connection if not already closed
+            if (ws.readyState === ws.OPEN) {
+              try {
+                ws.terminate();
+              } catch (terminateError) {
+                console.error(`[WebSocket] Error terminating connection ${connectionId}:`, terminateError);
+              }
+            }
+          };
+          
+          // Set up close and error handlers
+          ws.on('close', handleClose);
+          ws.on('error', handleError);
+          
+          // Set up ping interval for this connection
+          const pingInterval = setInterval(() => {
+            if (ws.readyState === ws.OPEN) {
+              try {
+                ws.ping();
+                console.log(`[${connectionId}] Sent ping`);
+              } catch (error) {
+                console.error(`[${connectionId}] Error sending ping:`, error);
+                ws.terminate();
+              }
+            }
+          }, 30000); // Send a ping every 30 seconds
+          
+          // Store the interval ID for cleanup
+          ws.pingInterval = pingInterval;
+          
+          // Set up a one-time handler for when the connection is closed
+          const onClose = () => {
+            clearInterval(pingInterval);
+            ws.off('close', onClose);
+            ws.off('error', onClose);
+            ws.off('pong', handlePong);
+            ws.off('ping', handlePing);
+            ws.off('message', handleMessage);
+            ws.off('close', handleClose);
+            ws.off('error', handleError);
+          };
+          
+          ws.once('close', onClose);
+          ws.once('error', onClose);
         });
       } catch (error) {
         console.error('[WebSocket] Upgrade error:', error);
@@ -478,50 +587,88 @@ function setupWebSocketServer(server) {
     });
   });
   
-  // WebSocket keep-alive and health check - increased intervals to reduce noise
-  const PING_INTERVAL = 60000; // 60 seconds between pings
-  const PONG_TIMEOUT = 30000;  // 30 seconds to wait for pong before timeout
+  // Constants for ping/pong timing
+  const PING_INTERVAL = 30000; // 30 seconds between pings
+  const PONG_TIMEOUT = 45000;  // 45 seconds to wait for pong before timeout
   
-  const pingInterval = setInterval(() => {
-    const now = Date.now();
-    
-    wss.clients.forEach((ws) => {
-      try {
-        // Check if last pong was received within expected time
-        if (ws.lastPong && (now - ws.lastPong) > (PING_INTERVAL + PONG_TIMEOUT)) {
-          console.log(`[WebSocket] Terminating unresponsive connection (no recent pong): ${ws.connectionId}`);
-          return ws.terminate();
-        }
-        
-        // Mark as not alive until next pong is received
-        ws.isAlive = false;
-        
-        // Set up ping timeout
-        if (ws.pingTimeout) {
-          clearTimeout(ws.pingTimeout);
-        }
-        
-        ws.pingTimeout = setTimeout(() => {
-          if (!ws.isAlive) {
-            console.log(`[WebSocket] No pong received, terminating connection: ${ws.connectionId}`);
-            ws.terminate();
-          }
-        }, PONG_TIMEOUT);
-        
-        // Use native WebSocket ping instead of application-level ping
-        ws.ping();
-        
-      } catch (error) {
-        console.error(`[WebSocket] Error in keep-alive check for ${ws.connectionId}:`, error);
-        ws.terminate();
-      }
-    });
-  }, PING_INTERVAL);
+  // Track all ping intervals for cleanup
+  const pingIntervals = new Map();
   
-  // Clean up interval on server close
-  server.on('close', () => {
-    clearInterval(pingInterval);
+  // Clean up all intervals when server closes
+  wss.on('close', () => {
+    console.log('WebSocket server closing, cleaning up intervals...');
+    for (const [connectionId, interval] of pingIntervals.entries()) {
+      clearInterval(interval);
+      pingIntervals.delete(connectionId);
+    }
   });
+  
+  // Helper function to setup ping interval for a connection
+  function setupPingInterval(ws) {
+    // Clear any existing interval
+    if (ws.pingInterval) {
+      clearInterval(ws.pingInterval);
+    }
+    
+    // Set up new interval for checking connection health
+    ws.pingInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          // Check if we've received any activity recently
+          const now = Date.now();
+          const timeSinceLastActivity = now - (ws.lastActivity || 0);
+          
+          // If no activity for too long, terminate the connection
+          if (timeSinceLastActivity > 60000) { // 60 seconds of no activity
+            console.log(`[${ws.connectionId}] No activity for ${Math.floor(timeSinceLastActivity/1000)}s, disconnecting`);
+            ws.terminate();
+            return;
+          }
+          
+          // If we're waiting for a pong and it's been too long, terminate
+          if (ws.waitingForPong && ws.lastPingTime && (now - ws.lastPingTime > 10000)) {
+            console.log(`[${ws.connectionId}] No pong received in ${now - ws.lastPingTime}ms, disconnecting`);
+            ws.terminate();
+            return;
+          }
+          
+          // Only send a new ping if we're not already waiting for a pong
+          if (!ws.waitingForPong) {
+            ws.waitingForPong = true;
+            ws.lastPingTime = now;
+            
+            // Send a simple ping (no data to minimize traffic)
+            ws.ping(null, (err) => {
+              if (err) {
+                console.error(`[${ws.connectionId}] Error sending ping:`, err);
+                ws.waitingForPong = false;
+              }
+            });
+          }
+          
+        } catch (error) {
+          console.error(`[${ws.connectionId}] Error in connection check:`, error);
+        }
+      }
+    }, 30000); // Check connection every 30 seconds
+    
+    // Store interval for cleanup
+    pingIntervals.set(ws.connectionId, ws.pingInterval);
+    
+    // Clean up interval when connection closes
+    const cleanup = () => {
+      if (ws.pingInterval) {
+        clearInterval(ws.pingInterval);
+        pingIntervals.delete(ws.connectionId);
+      }
+      if (ws.pingTimeout) {
+        clearTimeout(ws.pingTimeout);
+      }
+    };
+    
+    ws.once('close', cleanup);
+    ws.once('error', cleanup);
+  };
   
   return wss;
 }
@@ -832,31 +979,8 @@ const sessionMiddleware = session({
 });
 
 // 8.1 Body parsers
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-// Health check endpoint - must be before static file middleware
-app.get('/api/health', (req, res) => {
-  try {
-    res.set('Content-Type', 'application/json');
-    res.json({
-      status: 'ok',
-      serverReady: true,
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      environment: process.env.NODE_ENV || 'development',
-      version: process.env.npm_package_version || '1.0.0'
-    });
-  } catch (error) {
-    res.set('Content-Type', 'application/json');
-    res.status(500).json({
-      status: 'error',
-      serverReady: false,
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // 8.2 Session middleware
 if (process.env.NODE_ENV === 'production') {
@@ -892,47 +1016,115 @@ app.use((req, res, next) => {
   next();
 });
 
-// 8.4 CORS Middleware ** before routes **
-import { corsMiddleware } from './src/middleware/cors.middleware.js';
-app.use(corsMiddleware);
-
-// 8.5 CSP Middleware - Configured to work with CORS and session configurations
+// 8.4 Enhanced CORS Middleware for all environments
 app.use((req, res, next) => {
-  // Get the origin of the request
+  // Environment detection
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isDocker = process.env.IS_DOCKER === 'true';
+  
+  // Get request origin and host
   const origin = req.headers.origin || '';
-  const allowedOrigins = [
+  const host = req.headers.host || '';
+  
+  // Define allowed origins for different environments
+  const productionOrigins = [
     'https://operator-pjcgr.ondigitalocean.app',
-    'http://localhost:3000',
-    'http://localhost:5173' // Vite dev server
+    'https://operator-io236.ondigitalocean.app',
+    // Add other production domains as needed
   ];
   
-  // Check if the origin is allowed
-  const requestOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+  const developmentOrigins = [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:3420',
+    // Add other development origins as needed
+  ];
   
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', requestOrigin);
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  // For Docker environments, add container hostnames
+  const dockerOrigins = [
+    ...developmentOrigins,
+    'http://host.docker.internal:3000',
+    'http://host.docker.internal:5173',
+    'http://host.docker.internal:3420',
+    `http://${host}`,
+    `https://${host}`,
+  ];
   
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.status(204).end();
+  // Determine allowed origins based on environment
+  let allowedOrigins = [];
+  if (isProduction) {
+    allowedOrigins = productionOrigins;
+  } else if (isDocker) {
+    allowedOrigins = [...new Set([...developmentOrigins, ...dockerOrigins])];
+  } else {
+    allowedOrigins = developmentOrigins;
   }
   
-  // Set Content Security Policy headers
+  // Add the request origin if it's not already included and we're not in production
+  if (!isProduction && origin && !allowedOrigins.includes(origin)) {
+    allowedOrigins.push(origin);
+  }
+  
+  // Check if the current origin is allowed
+  const isAllowedOrigin = origin && allowedOrigins.some(allowed => 
+    origin === allowed || 
+    new URL(origin).hostname === new URL(allowed).hostname
+  );
+  
+  // Set CORS headers
+  if (isAllowedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Request-ID');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Range, X-Total-Count, X-Request-ID');
+    
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
+    
+    // Set Vary header to avoid caching issues with different origins
+    res.setHeader('Vary', 'Origin');
+  } else if (isProduction) {
+    // In production, block unauthorized origins
+    return res.status(403).json({ 
+      error: 'Not allowed by CORS',
+      message: 'The origin is not allowed to access this resource',
+      allowedOrigins: productionOrigins
+    });
+  }
+  
+  // 8.5 CSP Middleware - Configured to work with CORS and session configurations
   const cspDirectives = [
-    "default-src 'self' data: blob:;",
-    `connect-src 'self' ${requestOrigin} ws: wss: data: blob:;`,
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:;",
-    "style-src 'self' 'unsafe-inline' data: blob:;",
-    "img-src 'self' data: blob: *;",
-    "font-src 'self' data: *;",
-    "media-src 'self' data: blob: *;",
-    "worker-src 'self' blob: data: *;",
-    "child-src 'self' blob: data: *;",
-    "frame-src 'self' * data: blob:;"
-  ].join(' ');
+    `default-src 'self' data: blob:`,
+    `connect-src 'self' ${isAllowedOrigin ? origin : ''} ws: wss: data: blob: ${isProduction ? '' : 'http://localhost:*'}`,
+    // Allow WebGL and WebAssembly
+    `script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' data: blob: https:`,
+    // Allow inline styles and external stylesheets
+    `style-src 'self' 'unsafe-inline' data: blob: https:`,
+    // Allow images and media from any source
+    `img-src 'self' data: blob: https: *`,
+    // Allow fonts from any source
+    `font-src 'self' data: blob: https: *`,
+    // Allow media from any source
+    `media-src 'self' data: blob: https: *`,
+    // Allow WebWorkers
+    `worker-src 'self' blob: data: https:`,
+    // Allow WebGL and WebGPU contexts
+    `child-src 'self' blob: data: https:`,
+    // Allow iframes
+    `frame-src 'self' data: blob: https:`,
+    // Required for WebGL and WebGPU
+    `script-src-elem 'self' 'unsafe-inline' 'unsafe-eval' https:`,
+    `style-src-elem 'self' 'unsafe-inline' https:`,
+    // Allow WebGL and WebGPU
+    `worker-src 'self' blob: data:`,
+    // Allow WebAssembly
+    `wasm-unsafe-eval 'self'`,
+    // Allow WebGL and WebGPU
+    `require-trusted-types-for 'script'`
+  ].join('; ') + ';';
   
   // Set security headers
   res.setHeader('Content-Security-Policy', cspDirectives);
@@ -1063,20 +1255,34 @@ async function startApp() {
         process.exit(1);
       }, 10000);
     };
-    
-    // Listen for process termination signals
-    process.on('SIGTERM', gracefulShutdown);
-    process.on('SIGINT', gracefulShutdown);
-    
     // Start the server
-    return new Promise((resolve) => {
-      httpServer.listen(PORT, '0.0.0.0', () => {
+    return new Promise((resolve, reject) => {
+      const HOST = process.env.HOST || '0.0.0.0';  // Default to all interfaces
+      
+      // Handle server errors
+      httpServer.on('error', (error) => {
+        if (error.code === 'EADDRINUSE') {
+          console.error(`❌ Port ${PORT} is already in use. Please check for other running instances.`);
+          // Try to find and list processes using the port
+          require('child_process').exec(`netstat -ano | findstr :${PORT}`, (err, stdout) => {
+            if (stdout) {
+              console.log('Processes using port:', stdout);
+            }
+          });
+        }
+        reject(error);
+      });
+
+      httpServer.listen(PORT, HOST, () => {
         const protocol = process.env.NODE_ENV === 'production' ? 'wss' : 'ws';
         const host = process.env.NODE_ENV === 'production' 
-          ? process.env.DOMAIN || 'operator-io236.ondigitalocean.app'
+          ? process.env.APP_DOMAIN || 'operator-io236.ondigitalocean.app'
           : 'localhost';
-        const wsUrl = `${protocol}://${host}${process.env.NODE_ENV === 'production' ? '' : `:${PORT}`}/ws`;
         
+        // To:
+        const wsPath = '/ws';
+        const wsUrl = `${protocol}://${host}${process.env.NODE_ENV === 'production' ? '' : `:${PORT}`}${wsPath}`;
+
         console.log(`\n🚀 Server running on port ${PORT}`);
         console.log(`🌐 WebSocket available at ${wsUrl}`);
         console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}\n`);
@@ -1105,6 +1311,16 @@ async function startApp() {
         
         resolve(httpServer);
       });
+    }).catch(error => {
+      console.error('Failed to start server:', error.message);
+      if (error.code === 'EADDRINUSE') {
+        console.log('\nTo fix this issue, try one of these commands in a new terminal:');
+        console.log('1. Kill all Node.js processes: taskkill /F /IM node.exe');
+        console.log('2. Or find and kill the specific process using port 3420:');
+        console.log('   netstat -ano | findstr :3420');
+        console.log('   taskkill /F /PID <PID> (replace <PID> with the process ID from above)');
+      }
+      process.exit(1);
     });
   } catch (err) {
     console.error('Failed to start application:', err);
@@ -1231,6 +1447,7 @@ if (process.env.NODE_ENV !== 'development') {
 }
 
 // Authentication guard middleware
+/*
 const guard = (req, res, next) => {
   // Skip authentication for static files and login page
   if (
@@ -1262,6 +1479,7 @@ const guard = (req, res, next) => {
   }
   next();
 };
+*/
 
 // ======================================
 // 2. API ROUTES
@@ -1691,7 +1909,7 @@ if (NODE_ENV !== 'production') {
 // ======================================
 
 // Serve index.html for root route with authentication check
-app.get('/', guard, (req, res) => {
+app.get('/', (req, res) => {
   // In development, if we're in a container with Vite running on port 3000
   if (process.env.NODE_ENV === 'development' && process.env.DOCKER === 'true') {
     // In container, Vite is on the same host but different port
@@ -1733,7 +1951,7 @@ app.get('/logout', (req, res) => {
 // Serve other HTML pages with authentication
 const pages = ['history', 'guide', 'settings'];
 pages.forEach(page => {
-  app.get(`/${page}.html`, guard, (req, res) => {
+  app.get(`/${page}.html`, (req, res) => {
     res.sendFile(path.join(__dirname, 'dist', `${page}.html`));
   });
 });
@@ -2074,30 +2292,80 @@ puppeteerExtra.use(StealthPlugin());
 // ======================================
 
 /**
- * Get Puppeteer launch options based on environment
+ * Get simplified Puppeteer launch options
  * @returns {Object} Puppeteer launch options
  */
 function getPuppeteerLaunchOptions() {
   const isProduction = process.env.NODE_ENV === 'production';
+  
+  // Optimized launch options for fast loading and consistent behavior
   const launchOptions = {
+    // Always use non-headless mode for better debugging
     headless: false,
+    // Use Puppeteer's bundled Chromium for consistency
+    executablePath: puppeteer.executablePath(),
+    // Essential options for stability and performance
+    ignoreHTTPSErrors: true,
+    defaultViewport: {
+      width: 1280,
+      height: 720,
+      deviceScaleFactor: 1
+    },
+    // Minimal set of flags for optimal performance
     args: [
+      // Basic security and stability
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-web-security',
+      '--disable-dev-shm-usage',
+      
+      // Performance optimizations
+      '--disable-extensions',
+      '--window-size=1280,720',
+      '--disable-gpu',
+      '--disable-software-rasterizer',
       '--disable-dev-shm-usage',
       '--disable-accelerated-2d-canvas',
       '--no-first-run',
       '--no-zygote',
-      '--single-process',
-      '--disable-gpu'
+      
+      // Disable unnecessary features
+      '--disable-background-networking',
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-breakpad',
+      '--disable-client-side-phishing-detection',
+      '--disable-component-extensions-with-background-pages',
+      '--disable-default-apps',
+      '--disable-hang-monitor',
+      '--disable-ipc-flooding-protection',
+      '--disable-popup-blocking',
+      '--disable-prompt-on-repost',
+      '--disable-renderer-backgrounding',
+      '--disable-sync',
+      '--metrics-recording-only',
+      '--no-default-browser-check',
+      '--password-store=basic',
+      '--use-mock-keychain',
+      
+      // Security
+      '--disable-features=IsolateOrigins,site-per-process',
+      '--disable-site-isolation-trials',
+      '--disable-web-security'
     ]
   };
-
-  if (isProduction) {
-    // In production, use the system Chrome/Chromium
-    launchOptions.executablePath = process.env.CHROME_BIN || '/usr/bin/chromium-browser';
+  
+  console.log(`Using bundled Chromium at: ${launchOptions.executablePath}`);
+  
+  // Enable better debugging in development
+  if (!isProduction) {
+    launchOptions.dumpio = true; // Pipe browser process stdout and stderr
+    launchOptions.timeout = 30000; // Increase timeout for development
   }
+
+  console.log('Launching browser with options:', {
+    headless: launchOptions.headless,
+    executablePath: launchOptions.executablePath || 'puppeteer-bundled-chromium'
+  });
 
   return launchOptions;
 }

@@ -89,20 +89,25 @@ export default defineConfig(({ mode }) => {
     ...process.env,
     ...loadEnv(mode, process.cwd(), ''),
   };
-
+  
   const isDev = mode === 'development';
   const isDocker = env.DOCKER === 'true';
-  const host = '0.0.0.0';
-  const hmrHost = isDocker ? '0.0.0.0' : 'localhost';
+  const isProduction = mode === 'production';
 
-  // API and WebSocket URLs
-  const apiUrl = isDocker
-    ? 'http://localhost:3420'
-    : (env.VITE_API_URL || (isDev ? 'http://localhost:3420' : ''));
-  const wsUrl = isDocker
-    ? 'ws://localhost:3420'
-    : (env.VITE_WS_URL || (isDev ? 'ws://localhost:3420' : `wss://${env.VITE_APP_DOMAIN || 'operator-io236.ondigitalocean.app'}`));
+  // Network configuration
+  const host = '0.0.0.0';  // Keep this as 0.0.0.0 for development
+  const hmrHost = 'localhost';  // Keep HMR on localhost for reliability
+  const protocol = isProduction ? 'https' : 'http';
+  const wsProtocol = isProduction ? 'wss' : 'ws';
 
+  // Base URL configuration
+  const appDomain = env.VITE_APP_DOMAIN || 'localhost';
+  const port = 3000;  // Explicitly set Vite's port
+
+  // API and WebSocket URLs - simplified
+  const apiUrl = env.VITE_API_URL || (isDev ? 'http://localhost:3420' : `${protocol}://${appDomain}`);
+  const wsUrl = env.VITE_WS_URL || (isDev ? 'ws://localhost:3420' : `${wsProtocol}://${appDomain}/ws`);
+        
   // Define global constants for the client
   const define = {
     'process.env.NODE_ENV': JSON.stringify(mode),
@@ -136,7 +141,7 @@ export default defineConfig(({ mode }) => {
     logLevel: 'warn',
     server: {
       host,
-      port: 3000,
+      port,
       strictPort: true,
       open: !isDocker,
       cors: {

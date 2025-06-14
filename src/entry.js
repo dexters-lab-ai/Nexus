@@ -112,7 +112,7 @@ eventBus.once('initialize-application', async () => {
     // Initialize WebSocket with user context
     const isAuthenticated = !userId.startsWith('guest_');
     try {
-      const { WebSocketManager } = await import('./utils/WebSocketManager.js');
+      const WebSocketManager = (await import('./utils/WebSocketManager.js')).default;
       await WebSocketManager.initialize({
         userId,
         isAuthenticated
@@ -136,7 +136,7 @@ eventBus.once('initialize-application', async () => {
     eventBus.on('user-logged-out', async () => {
       // Update WebSocket authentication state
       try {
-        const { WebSocketManager } = await import('./utils/WebSocketManager.js');
+        const WebSocketManager = (await import('./utils/WebSocketManager.js')).default;
         await WebSocketManager.updateAuthState(null, false);
         console.log('WebSocket authentication reset after logout');
       } catch (error) {
@@ -151,7 +151,7 @@ eventBus.once('initialize-application', async () => {
         
         // Update WebSocket authentication state
         try {
-          const { WebSocketManager } = await import('./utils/WebSocketManager.js');
+          const WebSocketManager = (await import('./utils/WebSocketManager.js')).default;
           await WebSocketManager.updateAuthState(newUserId, true);
           console.log('WebSocket authentication updated for user:', newUserId);
         } catch (error) {

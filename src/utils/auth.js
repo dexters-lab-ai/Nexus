@@ -1,7 +1,7 @@
 /**
  * Authentication state management for WebSocket connections
  */
-import { WebSocketManager } from './WebSocketManager';
+import WebSocketManager from './WebSocketManager';
 import { stores } from '../store';
 
 // Track the current user ID and authentication state

@@ -8,18 +8,39 @@ const isProduction = import.meta.env.PROD;
 const isLocalhost = window.location.hostname === 'localhost' || 
                    window.location.hostname === '127.0.0.1';
 
+// Debug logging for environment
+console.log('[API Config]', {
+  env: import.meta.env.MODE,
+  isProduction,
+  isLocalhost,
+  hostname: window.location.hostname,
+  port: window.location.port,
+  VITE_API_URL: import.meta.env.VITE_API_URL
+});
+
 // Determine the base API URL
 let API_BASE = '';
+
+// 1. Check for explicit API URL from environment first
 if (import.meta.env.VITE_API_URL) {
-  // Use explicit API URL from environment if set
   API_BASE = import.meta.env.VITE_API_URL;
-} else if (isLocalhost) {
-  // For local development, use the Vite dev server proxy
-  API_BASE = ''; // Relative URLs will be used
-} else {
-  // For production, use the current origin
+  console.log('[API] Using VITE_API_URL from environment:', API_BASE);
+} 
+// 2. For local development
+else if (isLocalhost) {
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+  API_BASE = `${protocol}//${hostname}:3420`;
+  console.log('[API] Using local development URL:', API_BASE);
+} 
+// 3. For production
+else {
   API_BASE = window.location.origin;
+  console.log('[API] Using production URL:', API_BASE);
 }
+
+// Ensure API_BASE doesn't have a trailing slash
+API_BASE = API_BASE.replace(/\/+$/, '');
 
 // Common headers for all requests
 const DEFAULT_HEADERS = {
@@ -65,10 +86,22 @@ if (!isProduction) {
 export async function fetchAPI(url, options = {}) {
   try {
     // Ensure URL is properly formatted
-    let endpoint = url.startsWith('/api') ? url : `/api${url}`;
+    let endpoint = url.startsWith('/') ? url : `/${url}`;
+    if (!endpoint.startsWith('/api/')) {
+      endpoint = `/api${endpoint}`;
+    }
     
-    // In development, use relative paths to avoid CORS issues with the Vite dev server
-    const fullUrl = isProduction ? `${API_BASE}${endpoint}` : endpoint;
+    // Always use the full URL with API_BASE in development and production
+    const fullUrl = `${API_BASE}${endpoint}`;
+    
+    console.log('[API] Request:', {
+      method: options.method || 'GET',
+      url: fullUrl,
+      isProduction,
+      isLocalhost,
+      API_BASE,
+      endpoint
+    });
     
     // Merge options with defaults
     const fetchOptions = {

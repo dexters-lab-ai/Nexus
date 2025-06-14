@@ -215,13 +215,26 @@ export function NavigationBar(props = {}) {
   if (storedEmail) userEmail = storedEmail;
   if (storedName) displayName = storedName;
   
+  // Function to get API base URL (reuse the same function we defined earlier)
+  const getApiBaseUrl = () => {
+    if (import.meta.env.VITE_API_URL) {
+      return import.meta.env.VITE_API_URL;
+    } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return `http://${window.location.hostname}:3420`;
+    }
+    return window.location.origin;
+  };
+
   // Fetch latest user data from the server
   const fetchUserData = async () => {
     try {
-      const response = await fetch('/api/user/me', {
-        credentials: 'include', // Include cookies for session
+      const apiBase = getApiBaseUrl();
+      const response = await fetch(`${apiBase}/api/user/me`, {
+        method: 'GET',
+        credentials: 'include',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         }
       });
       
@@ -636,17 +649,46 @@ export function NavigationBar(props = {}) {
       }
     });
     
-    // Try to get user data
-    fetch('/api/auth/user')
-      .then(response => response.json())
-      .then(data => {
-        if (data.success && data.user) {
+    // Function to get API base URL (same logic as in api.js)
+    const getApiBaseUrl = () => {
+      if (import.meta.env.VITE_API_URL) {
+        return import.meta.env.VITE_API_URL;
+      } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return `http://${window.location.hostname}:3420`;
+      }
+      return window.location.origin;
+    };
+
+    // Try to get user data using the API utility
+    const fetchUserData = async () => {
+      try {
+        const apiBase = getApiBaseUrl();
+        const response = await fetch(`${apiBase}/api/auth/user`, {
+          method: 'GET',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data && data.user) {
           updateUserInfo(data.user);
         }
-      })
-      .catch(error => {
+      } catch (error) {
         console.error('Failed to fetch user data:', error);
-      });
+        console.debug('Current origin:', window.location.origin);
+        console.debug('API Base URL:', getApiBaseUrl());
+      }
+    };
+
+    // Initial fetch
+    fetchUserData();
     
     // Return cleanup function
     return () => {
