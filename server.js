@@ -2337,43 +2337,37 @@ puppeteerExtra.use(StealthPlugin());
 // ======================================
 // 12. HELPER FUNCTIONS
 // ======================================
-
 /**
  * Get simplified Puppeteer launch options
  * @returns {Object} Puppeteer launch options
  */
-function getPuppeteerLaunchOptions() {
+async function getPuppeteerLaunchOptions() {
   const isProduction = process.env.NODE_ENV === 'production';
   
-  // Optimized launch options for fast loading and consistent behavior
+  // Common launch options for all environments
   const launchOptions = {
-    // Always use non-headless mode for better debugging
-    headless: false,
-    // Use Puppeteer's bundled Chromium for consistency
-    executablePath: puppeteer.executablePath(),
-    // Essential options for stability and performance
+    headless: isProduction ? 'new' : false, // Use 'new' headless mode in production
     ignoreHTTPSErrors: true,
     defaultViewport: {
       width: 1280,
       height: 720,
       deviceScaleFactor: 1
     },
-    // Minimal set of flags for optimal performance
     args: [
-      // Basic security and stability
+      // Security and stability
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-software-rasterizer',
       
       // Performance optimizations
       '--disable-extensions',
       '--window-size=1280,720',
-      '--disable-gpu',
-      '--disable-software-rasterizer',
-      '--disable-dev-shm-usage',
       '--disable-accelerated-2d-canvas',
       '--no-first-run',
       '--no-zygote',
+      '--single-process',
       
       // Disable unnecessary features
       '--disable-background-networking',
@@ -2393,26 +2387,64 @@ function getPuppeteerLaunchOptions() {
       '--no-default-browser-check',
       '--password-store=basic',
       '--use-mock-keychain',
-      
-      // Security
       '--disable-features=IsolateOrigins,site-per-process',
       '--disable-site-isolation-trials',
       '--disable-web-security'
     ]
   };
   
-  console.log(`Using bundled Chromium at: ${launchOptions.executablePath}`);
-  
-  // Enable better debugging in development
-  if (!isProduction) {
-    launchOptions.dumpio = true; // Pipe browser process stdout and stderr
-    launchOptions.timeout = 30000; // Increase timeout for development
+  try {
+    if (isProduction) {
+      // In production, use the path from environment variable or default Docker path
+      const possiblePaths = [
+        process.env.CHROME_BIN,                  // From Dockerfile ENV
+        process.env.PUPPETEER_EXECUTABLE_PATH,   // Explicit override
+        '/usr/bin/chromium-browser',             // Debian/Ubuntu
+        '/usr/bin/chromium',                     // Other distros
+        '/usr/bin/google-chrome-stable',         // Google Chrome
+        await puppeteer.executablePath()         // Fallback to Puppeteer's bundled
+      ].filter(Boolean);
+      
+      // Try each path until we find one that exists
+      for (const execPath of possiblePaths) {
+        try {
+          if (fs.existsSync(execPath)) {
+            launchOptions.executablePath = execPath;
+            console.log(`[Puppeteer] Using Chromium at: ${execPath}`);
+            break;
+          } else {
+            console.log(`[Puppeteer] Chromium not found at: ${execPath}`);
+          }
+        } catch (e) {
+          console.warn(`[Puppeteer] Error checking path ${execPath}:`, e.message);
+        }
+      }
+      
+      if (!launchOptions.executablePath) {
+        console.warn('[Puppeteer] No valid Chromium executable found in any standard location');
+      }
+    } else {
+      // In development, use Puppeteer's bundled Chromium
+      launchOptions.executablePath = await puppeteer.executablePath();
+      console.log(`[Puppeteer] Using bundled Chromium at: ${launchOptions.executablePath}`);
+    }
+  } catch (error) {
+    console.error('[Puppeteer] Error resolving Chromium path:', error);
+    // Continue with default path resolution
   }
 
-  console.log('Launching browser with options:', {
+  // Log the final configuration
+  console.log('[Puppeteer] Launching browser with options:', {
     headless: launchOptions.headless,
-    executablePath: launchOptions.executablePath || 'puppeteer-bundled-chromium'
+    executablePath: launchOptions.executablePath || 'puppeteer-default',
+    argsCount: launchOptions.args?.length || 0
   });
+
+  // Debug settings for development
+  if (!isProduction) {
+    launchOptions.dumpio = true;
+    launchOptions.timeout = 30000;
+  }
 
   return launchOptions;
 }
@@ -4481,7 +4513,7 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
 
             // Get appropriate launch options for the current environment
             const launchOptions = {
-              ...getPuppeteerLaunchOptions(),
+              ...(await getPuppeteerLaunchOptions()),
               headless: false, // Keep non-headless for debugging
               defaultViewport: { width: 1280, height: 720 }
             };
@@ -4544,7 +4576,7 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       
       // Get appropriate launch options for the current environment
       const launchOptions = {
-        ...getPuppeteerLaunchOptions(),
+        ...(await getPuppeteerLaunchOptions()),
         headless: false, // Keep non-headless for debugging
         defaultViewport: { width: 1280, height: 720 }
       };
