@@ -6,20 +6,30 @@
  */
 import { corsConfig } from '../config/server.config.js';
 
-export const corsMiddleware = (req, res, next) => {
-  const origin = req.headers.origin;
-  const allowedOrigins = [
-    'https://operator-pjcgr.ondigitalocean.app',
-    'http://localhost:3000',
-    'http://localhost:3420', // Backend port for direct API access
-    'http://localhost:5173'  // Vite dev server
-  ];
+// Define allowed origins based on environment
+const isProduction = process.env.NODE_ENV === 'production';
+const isDevelopment = process.env.NODE_ENV === 'development';
 
-  // Set the origin based on the request
-  const requestOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+// Base allowed origins for development
+const developmentOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3420', // Backend port for direct API access
+  'http://localhost:5173'  // Vite dev server
+];
+
+export const corsMiddleware = (req, res, next) => {
+  const origin = req.headers.origin || '';
+  
+  // In production, allow any *.ondigitalocean.app subdomain
+  if (isProduction && origin.endsWith('.ondigitalocean.app')) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } 
+  // In development, allow specific localhost origins
+  else if (isDevelopment && developmentOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
   
   // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', requestOrigin);
   res.setHeader('Access-Control-Allow-Methods', corsConfig.methods.join(', '));
   res.setHeader('Access-Control-Allow-Headers', corsConfig.allowedHeaders.join(', '));
   res.setHeader('Access-Control-Allow-Credentials', 'true');
