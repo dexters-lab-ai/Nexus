@@ -35,17 +35,47 @@ const app = express();
 // 0.1 HEALTH CHECK ENDPOINT
 // ======================================
 // Health check endpoint - must be the first route to ensure it's never overridden
-app.get('/health', (req, res) => {
-  try {
-    // Set CORS headers
-    res.header('Access-Control-Allow-Origin', '*');
+// CORS preflight handler for /api/health
+app.options('/api/health', (req, res) => {
+  const origin = req.headers.origin || '';
+  const isAllowedOrigin = origin.endsWith('.ondigitalocean.app') || 
+                       origin.includes('localhost:') || 
+                       origin.includes('127.0.0.1:');
+  
+  if (isAllowedOrigin) {
+    // Always set CORS headers for preflight
+    res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.header('Access-Control-Allow-Credentials', true);
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Request-ID, Cache-Control, Pragma');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Expose-Headers', 'Content-Type, Authorization, X-Request-ID, Cache-Control, Pragma, X-Requested-With');
+    res.header('Access-Control-Max-Age', '86400'); // 24 hours
+    res.header('Vary', 'Origin');
     
-    // Handle preflight
+    // For preflight requests, respond with 204 No Content
     if (req.method === 'OPTIONS') {
-      return res.status(200).end();
+      return res.status(204).end();
+    }
+  }
+  
+  return res.status(204).end();
+});
+
+app.get('/api/health', (req, res) => {
+  try {
+    const origin = req.headers.origin || '';
+    const isAllowedOrigin = origin.endsWith('.ondigitalocean.app') || 
+                         origin.includes('localhost:') || 
+                         origin.includes('127.0.0.1:');
+    
+    // Set CORS headers
+    if (isAllowedOrigin) {
+      res.header('Access-Control-Allow-Origin', origin);
+      res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Request-ID, Cache-Control, Pragma');
+      res.header('Access-Control-Allow-Credentials', 'true');
+      res.header('Access-Control-Expose-Headers', 'Content-Type, Authorization, X-Request-ID, Cache-Control, Pragma, X-Requested-With');
+      res.header('Vary', 'Origin');
     }
     
     // Set response headers
@@ -55,26 +85,54 @@ app.get('/health', (req, res) => {
     res.set('Expires', '0');
     res.set('Surrogate-Control', 'no-store');
     
-    // Send health check response
-    res.json({
+    // Basic health check data
+    const healthData = {
       status: 'ok',
       serverReady: true,
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       environment: process.env.NODE_ENV || 'development',
       version: process.env.npm_package_version || '1.0.0',
-      nodeVersion: process.version
-    });
+      nodeVersion: process.version,
+      requestId: uuidv4(),
+      headers: process.env.NODE_ENV === 'development' ? {
+        origin: req.headers.origin,
+        host: req.headers.host,
+        'user-agent': req.headers['user-agent']
+      } : undefined
+    };
+    
+    return res.status(200).json(healthData);
   } catch (error) {
     console.error('Health check error:', error);
-    res.set('Content-Type', 'application/json');
-    res.status(500).json({
-      status: 'error',
-      serverReady: false,
-      error: error.message,
-      timestamp: new Date().toISOString(),
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    
+    // Ensure we can still set headers
+    if (!res.headersSent) {
+      res.set('Content-Type', 'application/json');
+      
+      // Set CORS headers even in error case
+      const origin = req.headers.origin || '';
+      if (origin.endsWith('.ondigitalocean.app') || 
+          origin.includes('localhost:') || 
+          origin.includes('127.0.0.1:')) {
+        res.header('Access-Control-Allow-Origin', origin);
+        res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Request-ID');
+        res.header('Access-Control-Allow-Credentials', 'true');
+        res.header('Vary', 'Origin');
+      }
+      
+      res.status(500).json({
+        status: 'error',
+        serverReady: false,
+        error: error.message,
+        timestamp: new Date().toISOString(),
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    } else {
+      // If headers were already sent, log the error but don't try to send another response
+      console.error('Headers already sent when trying to send error response');
+    }
   }
 });
 
@@ -1024,16 +1082,22 @@ app.use((req, res, next) => {
   // Always allow requests with no origin (like mobile apps or curl requests)
   if (!origin) return next();
   
+  // Allow localhost and 127.0.0.1 in development
+  const isLocalhost = origin.includes('localhost:') || origin.includes('127.0.0.1:');
+  
   // In production, allow any *.ondigitalocean.app subdomain
-  if (isProduction) {
-    if (origin.endsWith('.ondigitalocean.app')) {
+  if (isProduction || isLocalhost) {
+    if (isProduction ? origin.endsWith('.ondigitalocean.app') : true) {
+      // Set CORS headers
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Request-ID');
-      res.setHeader('Access-Control-Expose-Headers', 'Content-Range, X-Total-Count, X-Request-ID');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Request-ID, Cache-Control, Pragma');
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Type, Authorization, X-Requested-With, X-Request-ID, Cache-Control, Pragma, Content-Range, X-Total-Count');
+      res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
       res.setHeader('Vary', 'Origin');
       
+      // Handle preflight requests
       if (req.method === 'OPTIONS') {
         return res.status(204).end();
       }

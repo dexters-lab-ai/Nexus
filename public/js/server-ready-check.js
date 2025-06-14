@@ -268,16 +268,30 @@
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
       
-      const response = await fetch(`/api/health?_=${timestamp}`, {
+      // Construct the API URL based on the current environment
+      const getApiBaseUrl = () => {
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          return 'http://localhost:3420'; // Development port
+        }
+        return window.location.origin; // Production
+      };
+      
+      const apiBase = getApiBaseUrl();
+      const healthUrl = `${apiBase}/api/health?_=${timestamp}`;
+      
+      console.log(`[${requestId}] Fetching health check from:`, healthUrl);
+      
+      const response = await fetch(healthUrl, {
         method: 'GET',
+        credentials: 'include',  // Important for cookies if using sessions
+        mode: 'cors',  // Enable CORS mode
         headers: {
           'Accept': 'application/json',
+          'X-Request-ID': requestId,  // Include the request ID
           'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-          'X-Request-ID': requestId
+          'Pragma': 'no-cache'
         },
-        credentials: 'include', // Include cookies for authenticated endpoints
+        credentials: 'include',
         signal: controller.signal,
         mode: 'cors'
       });
