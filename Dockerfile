@@ -122,41 +122,42 @@ WORKDIR /usr/src/app
 
 # Install system dependencies including Chromium
 RUN apt-get update && \
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
     curl \
     build-essential \
     python3 \
     make \
     g++ \
-    chromium \
-    fonts-liberation \
+    # Install specific version of Chromium that's known to work with Puppeteer
+    chromium=90.0.4430.212-1~deb11u5 \
+    # Required dependencies
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
-    libc6 \
-    libcairo2 \
+    libatspi2.0-0 \
     libcups2 \
     libdbus-1-3 \
     libdrm2 \
-    libexpat1 \
     libgbm1 \
-    libgcc1 \
-    libglib2.0-0 \
-    libgtk-3-0 \
     libnspr4 \
     libnss3 \
-    libpango-1.0-0 \
     libx11-6 \
     libxcb1 \
     libxcomposite1 \
     libxdamage1 \
     libxext6 \
     libxfixes3 \
+    libxkbcommon0 \
     libxrandr2 \
     xdg-utils \
-    --no-install-recommends \
+    # Clean up
     && rm -rf /var/lib/apt/lists/* \
-    && ln -s /usr/bin/chromium /usr/bin/chromium-browser
+    # Create necessary symlinks
+    && ln -s /usr/bin/chromium /usr/bin/chromium-browser \
+    && ln -s /usr/bin/chromium /usr/bin/google-chrome-stable \
+    # Create Chrome user data directory
+    && mkdir -p /home/node/.config/chromium/Default \
+    && chown -R node:node /home/node/.config
 
 # Set environment to production
 ENV NODE_ENV=production

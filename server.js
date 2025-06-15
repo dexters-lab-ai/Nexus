@@ -2419,7 +2419,28 @@ async function getPuppeteerLaunchOptions() {
             console.log(`[Production] Using Chromium at: ${execPath}`);
             
             // Production-specific settings
-            launchOptions.dumpio = false; // Disable verbose logging in production
+            launchOptions.dumpio = true; // Enable for debugging
+            launchOptions.pipe = true;   // Use pipe instead of WebSocket
+            
+            // Set environment variables for Chromium
+            process.env.CHROME_DEVEL_SANDBOX = '/tmp/chrome-sandbox';
+            
+            // Ensure proper permissions for Chrome sandbox
+            if (fs.existsSync(launchOptions.executablePath)) {
+              try {
+                await fs.promises.chmod(launchOptions.executablePath, 0o755);
+                // Create Chrome sandbox wrapper if needed
+                if (!fs.existsSync(process.env.CHROME_DEVEL_SANDBOX)) {
+                  await fs.promises.writeFile(
+                    process.env.CHROME_DEVEL_SANDBOX,
+                    '#!/bin/sh\nexec "$@" --no-sandbox',
+                    { mode: 0o755 }
+                  );
+                }
+              } catch (err) {
+                console.error('Error setting up Chrome sandbox:', err);
+              }
+            }
             launchOptions.pipe = true;    // Use pipe mode for better Docker support
             
             // Add production-specific arguments only once
