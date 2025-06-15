@@ -2397,28 +2397,99 @@ async function getPuppeteerLaunchOptions() {
   
   try {
     if (isProduction) {
-      // In production, use the path from environment variable or default Docker path
+      // In production, use the path from environment variable or default path
       const possiblePaths = [
         process.env.CHROME_BIN,                  // From Dockerfile ENV
         process.env.PUPPETEER_EXECUTABLE_PATH,   // Explicit override
         '/usr/bin/chromium-browser',             // Debian/Ubuntu
         '/usr/bin/chromium',                     // Other distros
-        '/usr/bin/google-chrome-stable',         // Google Chrome
-        await puppeteer.executablePath()         // Fallback to Puppeteer's bundled
+        '/usr/bin/google-chrome-stable'          // Google Chrome
       ].filter(Boolean);
+      
+      // Add fallback to Puppeteer's bundled Chromium last
+      possiblePaths.push(await puppeteer.executablePath());
       
       // Try each path until we find one that exists
       for (const execPath of possiblePaths) {
+        if (!execPath) continue;
+        
         try {
           if (fs.existsSync(execPath)) {
             launchOptions.executablePath = execPath;
-            console.log(`[Puppeteer] Using Chromium at: ${execPath}`);
+            console.log(`[Production] Using Chromium at: ${execPath}`);
+            
+            // Production-specific settings
+            launchOptions.dumpio = false; // Disable verbose logging in production
+            launchOptions.pipe = true;    // Use pipe mode for better Docker support
+            
+            // Add production-specific arguments only once
+            const productionArgs = [
+              // Performance optimizations
+              '--disable-background-networking',
+              '--disable-sync',
+              '--metrics-recording-only',
+              '--disable-default-apps',
+              '--mute-audio',
+              '--no-first-run',
+              '--safebrowsing-disable-auto-update',
+              '--disable-component-extensions-with-background-pages',
+              '--disable-background-timer-throttling',
+              '--disable-backgrounding-occluded-windows',
+              '--disable-ipc-flooding-protection',
+              '--disable-renderer-backgrounding',
+              '--disable-dev-shm-usage',
+              '--single-process',
+              '--disable-webgl',
+              '--disable-threaded-animation',
+              '--disable-threaded-scrolling',
+              '--disable-in-process-stack-traces',
+              '--disable-logging',
+              '--output=/dev/null',
+              '--disable-3d-apis',
+              '--disable-d3d11',
+              '--disable-d3d12',
+              '--disable-direct-composition',
+              '--disable-direct-dwrite',
+              
+              // Disable features
+              '--disable-features=AudioServiceOutOfProcess,TranslateUI,Translate,ImprovedCookieControls,' +
+              'LazyFrameLoading,GlobalMediaControls,MediaRouter,NetworkService,OutOfBlinkCors,' +
+              'OutOfProcessPdf,OverlayScrollbar,PasswordGeneration,RendererCodeIntegrity,' +
+              'SpareRendererForSitePerProcess,TopChromeTouchUi,VizDisplayCompositor,IsolateOrigins,site-per-process',
+              
+              // Security
+              '--disable-site-isolation-trials',
+              '--disable-web-security',
+              '--disable-blink-features=AutomationControlled',
+              
+              // Window settings
+              '--window-size=1280,720',
+              '--window-position=0,0',
+              '--start-maximized',
+              '--hide-scrollbars'
+            ];
+            
+            // Add production args, avoiding duplicates
+            productionArgs.forEach(arg => {
+              if (!launchOptions.args.includes(arg)) {
+                launchOptions.args.push(arg);
+              }
+            });
+            
+            // Set the user data directory to a writable location
+            const userDataDir = path.join(process.cwd(), 'chrome-profile');
+            if (!fs.existsSync(userDataDir)) {
+              fs.mkdirSync(userDataDir, { recursive: true });
+            }
+            launchOptions.userDataDir = userDataDir;
+            
+            console.log('[Production] Configured Chromium with optimized settings for Docker');
             break;
           } else {
             console.log(`[Puppeteer] Chromium not found at: ${execPath}`);
           }
-        } catch (e) {
-          console.warn(`[Puppeteer] Error checking path ${execPath}:`, e.message);
+        } catch (error) {
+          console.error(`[Puppeteer] Error checking path ${execPath}:`, error.message);
         }
       }
       

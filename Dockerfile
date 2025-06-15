@@ -135,6 +135,11 @@ ENV NODE_ENV=production
 ENV PORT=3420
 ENV NEXUS_RUN_DIR=/usr/src/app/nexus_run
 
+# Set Puppeteer environment variables
+ENV CHROME_BIN=/usr/bin/chromium-browser
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 # Install production dependencies
 COPY package*.json ./
 # Clean npm cache and install production deps
