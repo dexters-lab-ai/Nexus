@@ -235,14 +235,14 @@ HEALTHCHECK --interval=30s --timeout=3s \
 USER node
 
 # Create a startup script to initialize Xvfb and start the application
-RUN echo '#!/bin/bash\n\
-# Start Xvfb in the background\nXvfb :99 -screen 0 1280x720x16 -ac -nolisten tcp -nolisten unix &\n\
-# Set DISPLAY environment variable\nexport DISPLAY=:99\n\
-# Start the Node.js application with increased memory limit\nexec node --max-old-space-size=4096 server.js' > /usr/local/bin/startup.sh && \
+RUN echo '#!/bin/sh' > /usr/local/bin/startup.sh && \
+    echo 'Xvfb :99 -screen 0 1280x720x16 -ac -nolisten tcp -nolisten unix &' >> /usr/local/bin/startup.sh && \
+    echo 'export DISPLAY=:99' >> /usr/local/bin/startup.sh && \
+    echo 'exec node --max-old-space-size=4096 server.js' >> /usr/local/bin/startup.sh && \
     chmod +x /usr/local/bin/startup.sh
 
 # Start the application using the startup script
-CMD ["/usr/local/bin/startup.sh"]
+CMD ["/bin/sh", "/usr/local/bin/startup.sh"]
 
 # Production stage is the default target (last stage in the file) did this for DigitalOcean deployment
 # To build a specific stage, use: docker build --target <stage> -t <image> .
