@@ -2346,15 +2346,10 @@ async function getPuppeteerLaunchOptions() {
   
   // Common launch options for all environments
   const launchOptions = {
-    headless: isProduction ? 'new' : false, // Use 'new' headless mode in production
+    headless: isProduction ? 'new' : false,
     ignoreHTTPSErrors: true,
-    defaultViewport: {
-      width: 1280,
-      height: 720,
-      deviceScaleFactor: 1
-    },
+    defaultViewport: { width: 1280, height: 720, deviceScaleFactor: 1 },
     args: [
-      // Basic security and stability
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
@@ -2422,9 +2417,6 @@ async function getPuppeteerLaunchOptions() {
             launchOptions.dumpio = true; // Enable for debugging
             launchOptions.pipe = true;   // Use pipe instead of WebSocket
             
-            // Set environment variables for Chromium
-            process.env.CHROME_DEVEL_SANDBOX = '/tmp/chrome-sandbox';
-            
             // Ensure proper permissions for Chrome sandbox
             if (fs.existsSync(launchOptions.executablePath)) {
               try {
@@ -2437,11 +2429,35 @@ async function getPuppeteerLaunchOptions() {
                     { mode: 0o755 }
                   );
                 }
+                
+                // Ensure the sandbox wrapper is executable
+                await fs.promises.chmod(process.env.CHROME_DEVEL_SANDBOX, 0o755);
+                
+                // Set environment variable for the sandbox
+                process.env.CHROME_DEVEL_SANDBOX = process.env.CHROME_DEVEL_SANDBOX;
               } catch (err) {
                 console.error('Error setting up Chrome sandbox:', err);
               }
             }
+            
+            // Additional production settings
             launchOptions.pipe = true;    // Use pipe mode for better Docker support
+            launchOptions.env = {
+              ...process.env,
+              CHROME_DEVEL_SANDBOX: process.env.CHROME_DEVEL_SANDBOX,
+              DISPLAY: ':99',
+              NO_AT_BRIDGE: '1',
+              DBUS_SESSION_BUS_ADDRESS: '/dev/null',
+              XDG_RUNTIME_DIR: '/tmp/chrome'
+            };
+            
+            // Create necessary directories
+            try {
+              await fs.promises.mkdir('/tmp/chrome-user-data', { recursive: true });
+              await fs.promises.mkdir('/tmp/chrome', { recursive: true });
+            } catch (err) {
+              console.error('Error creating temp directories:', err);
+            }
             
             // Add production-specific arguments only once
             const productionArgs = [
