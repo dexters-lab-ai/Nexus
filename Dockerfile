@@ -128,8 +128,8 @@ RUN apt-get update && \
     python3 \
     make \
     g++ \
-    # Install specific version of Chromium that's known to work with Puppeteer
-    chromium=90.0.4430.212-1~deb11u5 \
+    # Install latest Chromium from Debian Bullseye
+    chromium \
     # Required dependencies
     libasound2 \
     libatk-bridge2.0-0 \
