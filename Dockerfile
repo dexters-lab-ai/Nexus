@@ -134,34 +134,55 @@ ENV CHROME_BIN=/usr/bin/chromium-browser \
 COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/package*.json ./
 
-# Install Chromium and dependencies with pinned versions for stability
+# Install Chromium and all its dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    # Build tools
-    curl \
-    build-essential \
-    python3 \
-    make \
-    g++ \
-    libx11-xcb1 \
-    libxcb-dri3-0 \
-    libxtst6 \
-    libnss3-tools \
-    libgbm-dev \
-    libglu1-mesa \
-    libegl1-mesa \
-    libgles2-mesa \
+    # Core dependencies
+    ca-certificates \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libatspi2.0-0 \
+    libcairo2 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libx11-6 \
+    libxcb1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxkbcommon0 \
+    libxrandr2 \
+    libxshmfence1 \
+    wget \
+    xdg-utils \
     # Virtual framebuffer and windowing
-    x11vnc \
     xvfb \
+    x11vnc \
     x11-xkb-utils \
     xfonts-100dpi \
     xfonts-75dpi \
     xfonts-scalable \
     xfonts-cyrillic \
     x11-apps \
+    # Additional fonts
+    fonts-ipafont-gothic \
+    fonts-wqy-zenhei \
+    fonts-thai-tlwg \
+    fonts-kacst \
     # Clean up
     && rm -rf /var/lib/apt/lists/* \
+    # Install latest stable Chromium
+    && apt-get update && apt-get install -y --no-install-recommends chromium \
     # Create necessary symlinks
     && ln -s /usr/bin/chromium /usr/bin/chromium-browser \
     && ln -s /usr/bin/chromium /usr/bin/google-chrome-stable \
@@ -170,7 +191,7 @@ RUN apt-get update && \
     && mkdir -p /tmp/chrome-user-data \
     && mkdir -p /tmp/chrome \
     # Create Chrome sandbox wrapper
-    && echo '#!/bin/sh\nexec "$@" --no-sandbox' > /tmp/chrome-sandbox \
+    && echo '#!/bin/sh\nexec "$@" --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage' > /tmp/chrome-sandbox \
     && chmod 755 /tmp/chrome-sandbox \
     # Set permissions
     && chown -R node:node /home/node/.config \
@@ -182,10 +203,13 @@ ENV NODE_ENV=production
 ENV PORT=3420
 ENV NEXUS_RUN_DIR=/usr/src/app/nexus_run
 
-# Set Puppeteer environment variables
-ENV CHROME_BIN=/usr/bin/chromium-browser
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+# Set Puppeteer environment variables to use the installed Chrome
+ENV CHROME_BIN=/usr/src/app/node_modules/puppeteer/.local-chromium/linux-*/chrome-linux/chrome
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/src/app/node_modules/puppeteer/.local-chromium/linux-*/chrome-linux/chrome
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
+
+# Ensure the Chrome binary is executable
+RUN chmod +x ${CHROME_BIN} || true
 
 # Install production dependencies
 COPY package*.json ./
@@ -232,10 +256,37 @@ HEALTHCHECK --interval=30s --timeout=3s \
   CMD curl -f http://localhost:3420/api/health || exit 1
 
 # Create a startup script to initialize Xvfb and start the application
-RUN echo '#!/bin/sh' > /usr/local/bin/startup.sh && \
+RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
+    echo 'set -e' >> /usr/local/bin/startup.sh && \
+    echo '' >> /usr/local/bin/startup.sh && \
+    echo '# Start Xvfb in the background' >> /usr/local/bin/startup.sh && \
     echo 'Xvfb :99 -screen 0 1280x720x16 -ac -nolisten tcp -nolisten unix &' >> /usr/local/bin/startup.sh && \
     echo 'export DISPLAY=:99' >> /usr/local/bin/startup.sh && \
-    echo 'exec node --max-old-space-size=4096 server.js' >> /usr/local/bin/startup.sh && \
+    echo '' >> /usr/local/bin/startup.sh && \
+    echo '# Set environment variables for Chromium' >> /usr/local/bin/startup.sh && \
+    echo 'export CHROME_DEVEL_SANDBOX=/tmp/chrome-sandbox' >> /usr/local/bin/startup.sh && \
+    echo 'export DBUS_SESSION_BUS_ADDRESS=/dev/null' >> /usr/local/bin/startup.sh && \
+    echo 'export NO_AT_BRIDGE=1' >> /usr/local/bin/startup.sh && \
+    echo 'export XDG_RUNTIME_DIR=/tmp/chrome' >> /usr/local/bin/startup.sh && \
+    echo '' >> /usr/local/bin/startup.sh && \
+    echo '# Create necessary directories' >> /usr/local/bin/startup.sh && \
+    echo 'mkdir -p /tmp/chrome-user-data' >> /usr/local/bin/startup.sh && \
+    echo 'chmod -R 777 /tmp/chrome-user-data' >> /usr/local/bin/startup.sh && \
+    echo 'chown -R node:node /tmp/chrome-user-data' >> /usr/local/bin/startup.sh && \
+    echo '' >> /usr/local/bin/startup.sh && \
+    echo '# Set permissions for Chrome sandbox' >> /usr/local/bin/startup.sh && \
+    echo 'chmod 4755 /tmp/chrome-sandbox' >> /usr/local/bin/startup.sh && \
+    echo '' >> /usr/local/bin/startup.sh && \
+    echo '# Debug information' >> /usr/local/bin/startup.sh && \
+    echo 'echo "=== Environment Variables ==="' >> /usr/local/bin/startup.sh && \
+    echo 'env | grep -E "CHROME|PUPPETEER|DISPLAY"' >> /usr/local/bin/startup.sh && \
+    echo '' >> /usr/local/bin/startup.sh && \
+    echo 'echo "=== Chromium Version ==="' >> /usr/local/bin/startup.sh && \
+    echo '/usr/bin/chromium-browser --version || echo "Chromium not found"' >> /usr/local/bin/startup.sh && \
+    echo '' >> /usr/local/bin/startup.sh && \
+    echo '# Start the application' >> /usr/local/bin/startup.sh && \
+    echo 'echo "Starting application..."' >> /usr/local/bin/startup.sh && \
+    echo 'exec node --max-old-space-size=4096 server.js "$@"' >> /usr/local/bin/startup.sh && \
     chmod +x /usr/local/bin/startup.sh && \
     chown node:node /usr/local/bin/startup.sh
 
