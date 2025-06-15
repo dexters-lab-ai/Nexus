@@ -231,15 +231,16 @@ EXPOSE 3420
 HEALTHCHECK --interval=30s --timeout=3s \
   CMD curl -f http://localhost:3420/api/health || exit 1
 
-# Switch to non-root user
-USER node
-
 # Create a startup script to initialize Xvfb and start the application
 RUN echo '#!/bin/sh' > /usr/local/bin/startup.sh && \
     echo 'Xvfb :99 -screen 0 1280x720x16 -ac -nolisten tcp -nolisten unix &' >> /usr/local/bin/startup.sh && \
     echo 'export DISPLAY=:99' >> /usr/local/bin/startup.sh && \
     echo 'exec node --max-old-space-size=4096 server.js' >> /usr/local/bin/startup.sh && \
-    chmod +x /usr/local/bin/startup.sh
+    chmod +x /usr/local/bin/startup.sh && \
+    chown node:node /usr/local/bin/startup.sh
+
+# Switch to non-root user
+USER node
 
 # Start the application using the startup script
 CMD ["/bin/sh", "/usr/local/bin/startup.sh"]
