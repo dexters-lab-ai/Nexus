@@ -238,8 +238,8 @@ USER node
 RUN echo '#!/bin/bash\n\
 # Start Xvfb in the background\nXvfb :99 -screen 0 1280x720x16 -ac -nolisten tcp -nolisten unix &\n\
 # Set DISPLAY environment variable\nexport DISPLAY=:99\n\
-# Start the Node.js application with increased memory limit\nexec node --max-old-space-size=4096 server.js\n' > /usr/local/bin/startup.sh \
-    && chmod +x /usr/local/bin/startup.sh
+# Start the Node.js application with increased memory limit\nexec node --max-old-space-size=4096 server.js' > /usr/local/bin/startup.sh && \
+    chmod +x /usr/local/bin/startup.sh
 
 # Start the application using the startup script
 CMD ["/usr/local/bin/startup.sh"]
