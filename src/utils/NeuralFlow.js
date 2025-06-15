@@ -12,54 +12,62 @@ if (typeof window !== 'undefined' && !window.eventBus) {
 
 export default class NeuralFlow {
   constructor(container) {
-    // Ensure container exists and is properly set up
-    if (!container) {
-      console.error('[NeuralFlow] Container element is required');
-      return;
+    try {
+      // Ensure container exists and is properly set up
+      if (!container) {
+        console.error('[NeuralFlow] Container element is required');
+        return;
+      }
+      
+      console.log('[NeuralFlow] Initializing with container:', container);
+      
+      // Clear any existing content in the container
+      container.innerHTML = '';
+      
+      this.container = container;
+      this.nodes = [];
+      this.branches = []; // Store branch connections between main and sub-steps
+      this.animationFrameId = null;
+      this.hoveredNodeIdx = -1;
+      this.lastFrameTime = 0;
+      this.particleTime = 0;
+      this.planNodeCreated = false; // Flag to identify if we have a plan node already
+      this.autoScrollEnabled = true; // Enable auto-scrolling by default
+      this.cameraY = 0; // Track camera vertical position
+      this.targetCameraY = 0; // Target camera position for smooth panning
+      this.cameraSpeed = 0.1; // Camera movement speed
+      this.isDragging = false;
+      this.lastMouseY = 0;
+      this.topPadding = 40; // 40px padding from top for first node
+      this.isDisposed = false; // Flag to track if disposed
+      this.resizeObserver = null; // For tracking container size changes
+      this.resizeThrottle = null; // For throttling resize events
+      
+      // Bind methods
+      this.handleTaskComplete = this.handleTaskComplete.bind(this);
+      this.handleMouseMove = this.handleMouseMove.bind(this);
+      this.handleClick = this.handleClick.bind(this);
+      this.animate = this.animate.bind(this);
+      this.handleResize = this.handleResize.bind(this);
+      
+      // Create high-res canvas for crisp rendering
+      this.initCanvas();
+      
+      // Set up event listeners
+      this.setupEventListeners();
+      
+      // Listen for task completion events
+      if (window.eventBus) {
+        window.eventBus.on('taskComplete', this.handleTaskComplete);
+      }
+      
+      // Start animation loop
+      this.animationFrameId = requestAnimationFrame(this.animate);
+      
+      console.log('[NeuralFlow] Initialization complete');
+    } catch (error) {
+      console.error('[NeuralFlow] Error during initialization:', error);
     }
-    
-    // Clear any existing content in the container
-    container.innerHTML = '';
-    
-    this.container = container;
-    this.nodes = [];
-    this.branches = []; // Store branch connections between main and sub-steps
-    this.animationFrameId = null;
-    this.hoveredNodeIdx = -1;
-    this.lastFrameTime = 0;
-    this.particleTime = 0;
-    this.planNodeCreated = false; // Flag to identify if we have a plan node already
-    this.autoScrollEnabled = true; // Enable auto-scrolling by default
-    this.cameraY = 0; // Track camera vertical position
-    this.targetCameraY = 0; // Target camera position for smooth panning
-    this.cameraSpeed = 0.1; // Camera movement speed
-    this.isDragging = false;
-    this.lastMouseY = 0;
-    this.topPadding = 40; // 40px padding from top for first node
-    this.isDisposed = false; // Flag to track if disposed
-    
-    // Bind methods
-    this.handleTaskComplete = this.handleTaskComplete.bind(this);
-    
-    // Create high-res canvas for crisp rendering
-    this.initCanvas();
-    
-    // Start animation loop
-    this.animate = this.animate.bind(this);
-    this.handleMouseMove = this.handleMouseMove.bind(this);
-    this.handleClick = this.handleClick.bind(this);
-    this.handleTaskComplete = this.handleTaskComplete.bind(this);
-    
-    // Set up event listeners
-    this.canvas.addEventListener('mousemove', this.handleMouseMove);
-    this.canvas.addEventListener('click', this.handleClick);
-    
-    // Listen for task completion events
-    if (window.eventBus) {
-      window.eventBus.on('taskComplete', this.handleTaskComplete);
-    }
-    
-    this.animationFrameId = requestAnimationFrame(this.animate);
   }
   
   /**
@@ -77,22 +85,177 @@ export default class NeuralFlow {
     this.lastFrameTime = 0;
   }
 
+  /**
+   * Set up all event listeners for the canvas
+   */
+  setupEventListeners() {
+    if (!this.canvas) {
+      console.error('[NeuralFlow] Cannot set up event listeners: canvas not initialized');
+      return;
+    }
+    
+    console.log('[NeuralFlow] Setting up event listeners');
+    
+    // Remove any existing listeners first to prevent duplicates
+    this.removeEventListeners();
+    
+    // Add new listeners with passive: false to ensure preventDefault() works
+    const options = { passive: false };
+    
+    // Mouse events
+    this.canvas.addEventListener('mousemove', this.handleMouseMove, options);
+    this.canvas.addEventListener('mouseenter', this.handleMouseEnter, options);
+    this.canvas.addEventListener('mouseleave', this.handleMouseLeave, options);
+    this.canvas.addEventListener('click', this.handleClick, options);
+    
+    // Touch events for mobile
+    this.canvas.addEventListener('touchstart', this.handleTouchStart, options);
+    this.canvas.addEventListener('touchmove', this.handleTouchMove, options);
+    this.canvas.addEventListener('touchend', this.handleTouchEnd, options);
+    
+    // Prevent context menu on canvas
+    this.canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      return false;
+    }, { passive: false });
+    
+    console.log('[NeuralFlow] Event listeners set up');
+  }
+  
+  /**
+   * Hides all tooltips in the container
+   */
+  hideAllTooltips() {
+    // Remove the main tooltip
+    if (this.tooltip && this.tooltip.parentNode) {
+      this.tooltip.parentNode.removeChild(this.tooltip);
+      this.tooltip = null;
+    }
+    
+    // Remove any other tooltips that might be in the container
+    const tooltips = this.container.querySelectorAll('.tooltip, .neural-flow-tooltip');
+    tooltips.forEach(tooltip => {
+      if (tooltip.parentNode) {
+        tooltip.parentNode.removeChild(tooltip);
+      }
+    });
+  }
+
+  /**
+   * Remove all event listeners
+   */
+  removeEventListeners() {
+    if (!this.canvas) return;
+    
+    const options = { passive: false };
+    
+    // Remove mouse event listeners
+    this.canvas.removeEventListener('mousemove', this.handleMouseMove, options);
+    this.canvas.removeEventListener('mouseenter', this.handleMouseEnter, options);
+    this.canvas.removeEventListener('mouseleave', this.handleMouseLeave, options);
+    this.canvas.removeEventListener('click', this.handleClick, options);
+    
+    // Remove touch event listeners
+    this.canvas.removeEventListener('touchstart', this.handleTouchStart, options);
+    this.canvas.removeEventListener('touchmove', this.handleTouchMove, options);
+    this.canvas.removeEventListener('touchend', this.handleTouchEnd, options);
+  }
+  
+  handleMouseEnter(e) {
+    console.log('[NeuralFlow] Mouse entered canvas');
+    this.canvas.style.cursor = 'default';
+  }
+  
+  handleMouseLeave(e) {
+    console.log('[NeuralFlow] Mouse left canvas');
+    this.hoveredNodeIdx = -1;
+    this.canvas.style.cursor = 'default';
+  }
+  
+  handleTouchStart(e) {
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      const mouseEvent = new MouseEvent('mousedown', {
+        clientX: touch.clientX,
+        clientY: touch.clientY
+      });
+      this.canvas.dispatchEvent(mouseEvent);
+    }
+  }
+  
+  handleTouchMove(e) {
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      const mouseEvent = new MouseEvent('mousemove', {
+        clientX: touch.clientX,
+        clientY: touch.clientY
+      });
+      this.canvas.dispatchEvent(mouseEvent);
+    }
+  }
+  
+  handleTouchEnd(e) {
+    if (e.changedTouches.length === 1) {
+      const touch = e.changedTouches[0];
+      const mouseEvent = new MouseEvent('click', {
+        clientX: touch.clientX,
+        clientY: touch.clientY
+      });
+      this.canvas.dispatchEvent(mouseEvent);
+    }
+  }
+  
   dispose() {
+    console.log('[NeuralFlow] Disposing instance');
+    
+    // Hide all tooltips first
+    this.hideAllTooltips();
+    
     // Cancel any pending animation frames
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
     }
     
-    // Remove event listeners
-    if (this.canvas) {
-      this.canvas.removeEventListener('mousemove', this.handleMouseMove);
-      this.canvas.removeEventListener('click', this.handleClick);
+    // Clear any pending resize throttles
+    if (this.resizeThrottle) {
+      clearTimeout(this.resizeThrottle);
+      this.resizeThrottle = null;
     }
+    
+    // Disconnect resize observer if it exists
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+    
+    // Remove window resize listener
+    window.removeEventListener('resize', this.handleResize);
+    
+    // Remove all event listeners
+    this.removeEventListeners();
     
     // Remove task complete listener
     if (window.eventBus) {
       window.eventBus.off('taskComplete', this.handleTaskComplete);
+    }
+    
+    // Clean up DOM elements
+    if (this.controls && this.controls.parentNode) {
+      this.controls.parentNode.removeChild(this.controls);
+      this.controls = null;
+    }
+    
+    // Remove global click handler
+    if (this._globalClickHandler) {
+      document.removeEventListener('click', this._globalClickHandler);
+      this._globalClickHandler = null;
+    }
+    
+    // Remove any injected styles
+    const styleElement = document.getElementById('neural-flow-control-style');
+    if (styleElement && styleElement.parentNode) {
+      styleElement.parentNode.removeChild(styleElement);
     }
     
     // Clear canvas
@@ -105,156 +268,268 @@ export default class NeuralFlow {
   }
   
   initCanvas() {
-    // Set initial container styles
-    this.container.style.position = 'relative';
-    this.container.style.overflow = 'hidden';
-    this.container.style.width = '100%';
-    this.container.style.maxWidth = '100%';
-    this.container.style.height = '100%';
-    this.container.style.maxHeight = '100%';
-    this.container.style.boxSizing = 'border-box';
-    
-    // Ensure proper padding and margins
-    this.container.style.padding = '0';
-    this.container.style.margin = '0';
-    
-    // Set minimum height if not specified
-    if (!this.container.style.height && !this.container.style.minHeight) {
-      this.container.style.minHeight = '300px';
-    }
-    
-    // Force dark background with rich gradient regardless of theme
-    // This ensures consistent appearance in both light and dark modes
-    this.container.style.setProperty('background-color', '#0a0f20', 'important');
-    this.container.style.setProperty('background-image', 'linear-gradient(to bottom, #0a0f20 0%, #111b30 40%, #162042 100%)', 'important');
-    this.container.style.setProperty('color', '#ffffff', 'important'); // Force white text
-    
-    // Add explicit class for additional CSS targeting
-    this.container.classList.add('neural-flow-container');
-    
-    // Create high-DPI canvas for sharp rendering
-    this.canvas = document.createElement('canvas');
-    this.ctx = this.canvas.getContext('2d');
-    this.canvas.style.position = 'absolute';
-    this.canvas.style.top = '0';
-    this.canvas.style.left = '0';
-    this.canvas.style.width = '100%';
-    this.canvas.style.height = '100%';
-    this.canvas.style.maxHeight = '100%';
-    this.canvas.style.maxWidth = '100%';
-    
-    // Add resize observer to handle container size changes
-    const resizeObserver = new ResizeObserver(() => {
+    try {
+      console.log('[NeuralFlow] Initializing canvas');
+      
+      // Set initial container styles
+      this.container.style.position = 'relative';
+      this.container.style.overflow = 'auto';
+      this.container.style.width = '100%';
+      this.container.style.maxWidth = '100%';
+      this.container.style.height = '100%';
+      this.container.style.maxHeight = '100%';
+      this.container.style.boxSizing = 'border-box';
+      
+      // Ensure proper padding and margins
+      this.container.style.padding = '0';
+      this.container.style.margin = '0';
+      
+      // Set minimum height if not specified
+      if (!this.container.style.height && !this.container.style.minHeight) {
+        this.container.style.minHeight = '300px';
+      }
+      
+      // Make sure container is visible and can receive events
+      this.container.style.pointerEvents = 'auto';
+      this.container.style.userSelect = 'none'; // Prevent text selection during drag
+      
+      // Force dark background with rich gradient regardless of theme
+      this.container.style.setProperty('background-color', '#0a0f20', 'important');
+      this.container.style.setProperty('background-image', 'linear-gradient(to bottom, #0a0f20 0%, #111b30 40%, #162042 100%)', 'important');
+      this.container.style.setProperty('color', '#ffffff', 'important');
+      
+      // Add explicit class for additional CSS targeting
+      this.container.classList.add('neural-flow-container');
+      
+      // Create canvas if it doesn't exist
+      if (!this.canvas) {
+        // Create high-DPI canvas for sharp rendering
+        this.canvas = document.createElement('canvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.canvas.style.position = 'absolute';
+        this.canvas.style.top = '0';
+        this.canvas.style.left = '0';
+        this.canvas.style.width = '100%';
+        this.canvas.style.height = '100%';
+        this.canvas.style.maxHeight = '100%';
+        this.canvas.style.maxWidth = '100%';
+        this.canvas.style.pointerEvents = 'auto'; // Ensure canvas receives events
+        
+        // Add canvas to container
+        this.container.appendChild(this.canvas);
+      }
+      
+      // Set up resize observer if not already done
+      if (!this.resizeObserver && 'ResizeObserver' in window) {
+        this.resizeObserver = new ResizeObserver(entries => {
+          if (!this.resizeThrottle) {
+            this.resizeThrottle = setTimeout(() => {
+              this.resizeThrottle = null;
+              this.resize();
+            }, 100); // Throttle resize events
+          }
+        });
+        
+        // Start observing the container for size changes
+        this.resizeObserver.observe(this.container);
+      }
+      
+      // Create controls container if it doesn't exist
+      if (!this.controls) {
+        this.controls = document.createElement('div');
+        this.controls.className = 'neural-flow-controls';
+        this.controls.innerHTML = `
+          <button class="control-btn" id="neural-flow-up" title="Scroll Up">
+            <i class="fas fa-arrow-up"></i>
+          </button>
+          <button class="control-btn" id="neural-flow-down" title="Scroll Down">
+            <i class="fas fa-arrow-down"></i>
+          </button>
+          <button class="control-btn" id="neural-flow-follow" title="Auto-follow New Content" data-active="true">
+            <i class="fas fa-map-marked-alt"></i>
+          </button>
+        `;
+        
+        // Style controls with unique ID for cleanup
+        const style = document.createElement('style');
+        style.id = 'neural-flow-control-style';
+        style.textContent = `
+          .neural-flow-controls {
+            position: absolute;
+            right: 20px;
+            bottom: 20px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: rgba(20, 25, 40, 0.9);
+            padding: 10px 8px;
+            border-radius: 12px;
+            border: 1px solid rgba(100, 120, 255, 0.2);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(5px);
+          }
+          .control-btn {
+            background: rgba(30, 35, 60, 0.7);
+            border: 1px solid rgba(100, 120, 255, 0.2);
+            color: #a0a0c0;
+            border-radius: 8px;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 14px;
+          }
+          .control-btn:hover {
+            background: rgba(100, 120, 255, 0.4);
+            color: #fff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+          }
+          .control-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          .control-btn[data-active="true"] {
+            background: var(--primary, #4a6cf7);
+            color: white;
+            border-color: var(--primary, #4a6cf7);
+            box-shadow: 0 0 0 2px rgba(74, 108, 247, 0.3);
+          }
+          #neural-flow-follow i::before {
+            content: '\\f5a0'; /* Map marked with location icon */
+          }
+        `;
+        document.head.appendChild(style);
+        
+        // Add controls to NeuralFlow container with proper z-index
+        this.controls.style.zIndex = '1000'; // Ensure controls are above canvas
+        this.container.appendChild(this.controls);
+        this.container.style.position = 'relative'; // Ensure container is positioned for absolute children
+        
+        // Add global click handler to hide tooltips when clicking outside
+        if (!this._globalClickHandler) {
+          this._globalClickHandler = (e) => {
+            // If click is outside the container, hide tooltips
+            if (!this.container.contains(e.target)) {
+              this.hideAllTooltips();
+            }
+          };
+          document.addEventListener('click', this._globalClickHandler);
+        }
+      }
+      
+      // Set initial size
       this.resize();
-    });
-    resizeObserver.observe(this.container);
-    
-    // Create controls container
-    this.controls = document.createElement('div');
-    this.controls.className = 'neural-flow-controls';
-    this.controls.innerHTML = `
-      <button class="control-btn" id="neural-flow-up" title="Scroll Up">
-        <i class="fas fa-arrow-up"></i>
-      </button>
-      <button class="control-btn" id="neural-flow-down" title="Scroll Down">
-        <i class="fas fa-arrow-down"></i>
-      </button>
-      <button class="control-btn" id="neural-flow-follow" title="Auto-follow New Content" data-active="true">
-        <i class="fas fa-map-marked-alt"></i>
-      </button>
-    `;
-    
-    // Style controls
-    const style = document.createElement('style');
-    style.textContent = `
-      .neural-flow-controls {
-        position: absolute;
-        right: 15px;
-        top: 50%;
-        transform: translateY(-50%);
-        z-index: 100;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        background: rgba(20, 25, 40, 0.85);
-        padding: 8px 6px;
-        border-radius: 12px;
-        border: 1px solid rgba(100, 120, 255, 0.15);
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-      }
-      .control-btn {
-        background: rgba(30, 35, 60, 0.7);
-        border: 1px solid rgba(100, 120, 255, 0.1);
-        color: #a0a0c0;
-        border-radius: 6px;
-        width: 32px;
-        height: 32px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: all 0.2s ease;
-      }
-      .control-btn:hover {
-        background: rgba(100, 120, 255, 0.3);
-        color: #fff;
-        transform: translateY(-1px);
-      }
-      .control-btn[data-active="true"] {
-        background: var(--primary);
-        color: white;
-        border-color: var(--primary);
-      }
-      #neural-flow-follow i::before {
-        content: '\\f5a0'; /* Map marked with location icon */
-      }
-    `;
-    document.head.appendChild(style);
-    
-    this.container.appendChild(this.canvas);
-    this.container.appendChild(this.controls);
-    
-    // Set actual canvas dimensions for high resolution
-    this.resize();
-    
-    // Handle resize events
-    window.addEventListener('resize', () => this.resize());
-    
-    // Setup control buttons
-    this.setupControls();
+      
+      // Setup control buttons
+      this.setupControls();
+      
+      console.log('[NeuralFlow] Canvas initialization complete');
+    } catch (error) {
+      console.error('[NeuralFlow] Error initializing canvas:', error);
+    }
   }
   
+  /**
+   * Handle window resize events with throttling
+   */
+  handleResize() {
+    if (this.resizeThrottle) {
+      clearTimeout(this.resizeThrottle);
+    }
+    
+    this.resizeThrottle = setTimeout(() => {
+      this.resizeThrottle = null;
+      this.resize();
+    }, 100); // Throttle to once every 100ms
+  }
+  
+  /**
+   * Resize the canvas while preserving content and event listeners
+   */
   resize() {
-    // Get actual container dimensions
-    const rect = this.container.getBoundingClientRect();
-    const width = rect.width;
+    if (!this.container || !this.canvas) {
+      console.warn('[NeuralFlow] Cannot resize: container or canvas not available');
+      return;
+    }
     
-    // Keep a consistent height of 300px as requested
-    const minHeight = 300; // Fixed height of 300px
+    console.log('[NeuralFlow] Resizing canvas');
     
-    // Set canvas dimensions to match container
+    // Store the current scroll position
+    const wasScrolledToBottom = this.isAtBottom();
+    
+    // Get the computed style to account for any padding/border
+    const style = window.getComputedStyle(this.container);
+    const width = this.container.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const height = this.container.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    
+    // Only proceed if we have valid dimensions
+    if (width <= 0 || height <= 0) {
+      console.warn('[NeuralFlow] Invalid container dimensions during resize');
+      return;
+    }
+    
+    // Store the current canvas content if it exists
+    let imageData = null;
+    if (this.ctx && this.canvas.width > 0 && this.canvas.height > 0) {
+      try {
+        imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+      } catch (e) {
+        console.warn('[NeuralFlow] Could not preserve canvas content during resize:', e);
+      }
+    }
+    
+    // Set the display size (CSS pixels)
+    this.canvas.style.width = `${width}px`;
+    this.canvas.style.height = `${height}px`;
+    
+    // Set the actual size in memory (scaled for device resolution)
     const dpr = window.devicePixelRatio || 1;
-    this.canvas.width = rect.width * dpr;
-    this.canvas.height = rect.height * dpr;
-    this.canvas.style.width = `${rect.width}px`;
-    this.canvas.style.height = `${rect.height}px`;
+    this.canvas.width = Math.floor(width * dpr);
+    this.canvas.height = Math.floor(height * dpr);
+    
+    // Scale the context to ensure correct drawing operations
     this.ctx.scale(dpr, dpr);
     
-    this.width = rect.width;
-    this.height = rect.height;
+    // Store dimensions for later use
+    this.width = width;
+    this.height = height;
     
-    // Update node positions if we have nodes
+    // Restore the content if we had any
+    if (imageData) {
+      try {
+        // Create a temporary canvas to hold the image data
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = imageData.width;
+        tempCanvas.height = imageData.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.putImageData(imageData, 0, 0);
+        
+        // Draw the temp canvas onto our resized canvas
+        this.ctx.save();
+        this.ctx.scale(1/dpr, 1/dpr); // Temporarily remove the DPR scale
+        this.ctx.drawImage(tempCanvas, 0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.restore();
+      } catch (e) {
+        console.warn('[NeuralFlow] Could not restore canvas content after resize:', e);
+      }
+    }
+    
+    // Update node positions based on new dimensions
     if (this.nodes.length > 0) {
       this.updateNodePositions();
     }
     
-    // Ensure the container has a minimum height to display all nodes
-    this.container.style.minHeight = `${rect.height}px`;
-    
-    // Auto-scroll to the latest content
-    if (this.nodes.length > 0 && this.autoScrollEnabled) {
-      this.scrollToLatest();
+    // Restore scroll position if needed
+    if (wasScrolledToBottom) {
+      this.scrollToLatest(true);
     }
+    
+    console.log(`[NeuralFlow] Canvas resized to ${width}x${height} (${dpr}x DPI)`);
   }
   
   updateNodePositions() {
@@ -754,7 +1029,7 @@ moveCamera(dy) {
   this.targetCameraY = this.cameraY;
   
   // Clamp camera position to valid range based on content and viewport
-  const maxY = Math.max(0, this.getContentHeight() - this.container.clientHeight);
+  const maxY = Math.max(0, this.getContentHeight() - this.height);
   this.cameraY = Math.max(0, Math.min(this.cameraY, maxY));
   this.targetCameraY = this.cameraY;
   }
@@ -785,117 +1060,306 @@ moveCamera(dy) {
   }
   
   handleMouseMove(e) {
-    const rect = this.canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    
-    // Get accurate mouse coordinates accounting for DPI scaling and camera position
-    const mouseX = (e.clientX - rect.left);
-    const mouseY = (e.clientY - rect.top);
-    
-    // Check for node hover - applying camera offset
-    this.hoveredNodeIdx = -1;
-    
-    // Loop backwards to prioritize newer nodes (on top) for click detection
-    for (let i = this.nodes.length - 1; i >= 0; i--) {
-      const node = this.nodes[i];
-      
-      // Calculate distance from mouse to node, accounting for camera position
-      const nodeScreenY = node.y - this.cameraY;
-      const dx = mouseX - node.x;
-      const dy = mouseY - nodeScreenY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      
-      // Update hovered state with slightly larger detection area
-      const wasHovered = node.hovered;
-      node.hovered = dist < node.radius * 2.0; // Increased detection radius for better UX
-      
-      // If found a hovered node, store its index and exit loop (top node priority)
-      if (node.hovered) {
-        this.hoveredNodeIdx = i;
-        
-        // If just started hovering, create "ripple" effect
-        if (!wasHovered) {
-          this.createRipple(node);
-        }
-        
-        break; // Stop checking nodes once we find one that's hovered
+    try {
+      if (!this.canvas) {
+        console.error('[NeuralFlow] Canvas not available for mousemove handling');
+        return;
       }
+      
+      const rect = this.canvas.getBoundingClientRect();
+      
+      // Get accurate mouse coordinates accounting for DPI scaling and camera position
+      const mouseX = (e.clientX - rect.left);
+      const mouseY = (e.clientY - rect.top);
+      
+      // Convert to canvas coordinates with camera offset
+      const canvasX = mouseX;
+      const canvasY = mouseY + this.cameraY;
+      
+      // Check for node hover - applying camera offset
+      let newHoveredNodeIdx = -1;
+      
+      // Loop backwards to prioritize newer nodes (on top) for hover detection
+      for (let i = this.nodes.length - 1; i >= 0; i--) {
+        const node = this.nodes[i];
+        if (!node) continue;
+        
+        // Calculate distance from mouse to node center, accounting for camera position
+        const dx = canvasX - node.x;
+        const dy = canvasY - node.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        // Update hovered state with slightly larger detection area
+        const wasHovered = node.hovered;
+        node.hovered = dist < node.radius * 2.0; // Increased detection radius for better UX
+        
+        // If found a hovered node, store its index and exit loop (top node priority)
+        if (node.hovered) {
+          newHoveredNodeIdx = i;
+          
+          // If just started hovering, create "ripple" effect
+          if (!wasHovered) {
+            console.log(`[NeuralFlow] Node ${i} hovered at (${node.x.toFixed(1)}, ${node.y.toFixed(1)})`);
+            this.createRipple(node);
+          }
+          
+          break; // Stop checking nodes once we find one that's hovered
+        }
+      }
+      
+      // Update cursor if hover state changed
+      if (newHoveredNodeIdx !== this.hoveredNodeIdx) {
+        this.hoveredNodeIdx = newHoveredNodeIdx;
+        this.canvas.style.cursor = newHoveredNodeIdx >= 0 ? 'pointer' : 'default';
+        
+        // Force a redraw to update hover states
+        this.lastFrameTime = 0;
+      }
+      
+      // Handle dragging if needed
+      if (this.isDragging) {
+        const dy = e.clientY - this.lastMouseY;
+        this.lastMouseY = e.clientY;
+        this.moveCamera(-dy);
+      }
+    } catch (error) {
+      console.error('[NeuralFlow] Error in handleMouseMove:', error);
     }
-    
-    // Update cursor
-    this.canvas.style.cursor = this.hoveredNodeIdx >= 0 ? 'pointer' : 'default';
   }
   
   handleClick(e) {
-    const rect = this.canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    
-    // Get accurate mouse coordinates
-    const mouseX = (e.clientX - rect.left);
-    const mouseY = (e.clientY - rect.top);
-    
-    // Convert screen coordinates to canvas coordinates with camera offset
-    // Don't multiply by pixel ratio here, as coordinates are already in canvas space
-    const canvasX = mouseX;
-    const canvasY = mouseY + this.cameraY; // Add camera offset for world coordinates
-    
-    console.log(`[NeuralFlow] Click at screen (${mouseX.toFixed(4)}, ${mouseY.toFixed(4)}), canvas (${canvasX.toFixed(4)}, ${canvasY.toFixed(4)}), camera offset ${this.cameraY.toFixed(4)}`);
-    
-    // Track if we found and processed a node
-    let nodeFound = false;
-    
-    // Loop in reverse to prioritize top nodes when overlapping (better UX)
-    for (let i = this.nodes.length - 1; i >= 0; i--) {
-      const node = this.nodes[i];
+    try {
+      // Prevent default to avoid any unwanted behavior
+      e.preventDefault();
+      e.stopPropagation();
       
-      // Increase clickable area substantially for better touch targets
-      const dx = canvasX - node.x;
-      const dy = canvasY - node.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      const clickThreshold = node.radius * 1.5; // 50% larger clickable area
+      console.log('[NeuralFlow] Click event received', e);
       
-      // Debug each node check
-      if (i % 5 === 0) { // Log only every 5th node to avoid console spam
-        console.log(`[NeuralFlow] Checking node ${i}: distance=${distance.toFixed(2)}, threshold=${clickThreshold.toFixed(2)}, x=${node.x}, y=${node.y}`);
+      if (!this.canvas) {
+        console.error('[NeuralFlow] Canvas not available for click handling');
+        return;
       }
       
-      if (distance <= clickThreshold) {
-        console.log(`[NeuralFlow] Node ${i} clicked! Creating tooltip...`);
-        nodeFound = true;
+      const rect = this.canvas.getBoundingClientRect();
+      
+      // Get accurate mouse coordinates relative to canvas
+      const mouseX = (e.clientX - rect.left);
+      const mouseY = (e.clientY - rect.top);
+      
+      // Convert screen coordinates to canvas coordinates with camera offset
+      const canvasX = mouseX;
+      const canvasY = mouseY + this.cameraY; // Add camera offset for world coordinates
+      
+      console.log(`[NeuralFlow] Click at screen (${mouseX.toFixed(4)}, ${mouseY.toFixed(4)}), ` +
+                  `canvas (${canvasX.toFixed(4)}, ${canvasY.toFixed(4)}), ` +
+                  `camera offset ${this.cameraY.toFixed(4)}`);
+      
+      // Track if we found and processed a node
+      let nodeFound = false;
+      
+      // Loop in reverse to prioritize top nodes when overlapping (better UX)
+      for (let i = this.nodes.length - 1; i >= 0; i--) {
+        const node = this.nodes[i];
+        if (!node) continue;
         
-        // Create large ripple effect for visual feedback
-        this.createRipple(node);
+        // Calculate distance from click to node center, accounting for camera offset
+        const dx = canvasX - node.x;
+        const dy = canvasY - node.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const clickThreshold = node.radius * 1.5; // 50% larger clickable area
         
-        // Show tooltip with node details
-        this.showTooltip(node);
-        
-        // If clicking on final node or completion node, ensure we scroll to it
-        if (node.isFinal || node.isCompletionNode) {
-          this.scrollToLatest();
+        // Debug logging for node checking
+        if (i % 5 === 0) { // Log only every 5th node to avoid console spam
+          console.log(`[NeuralFlow] Checking node ${i}: ` +
+                     `pos=(${node.x.toFixed(1)},${node.y.toFixed(1)}), ` +
+                     `distance=${distance.toFixed(1)}, threshold=${clickThreshold.toFixed(1)}`);
         }
-        break;
+        
+        if (distance <= clickThreshold) {
+          console.log(`[NeuralFlow] Node ${i} clicked at distance ${distance.toFixed(1)} (threshold: ${clickThreshold.toFixed(1)})`);
+          nodeFound = true;
+          
+          // Create visual feedback
+          this.createRipple(node);
+          
+          // Show tooltip with node details
+          this.showTooltip(node);
+          
+          // If clicking on final node or completion node, ensure we scroll to it
+          if (node.isFinal || node.isCompletionNode) {
+            this.scrollToLatest();
+          }
+          
+          // Highlight the clicked node temporarily
+          this.highlightNode(i);
+          
+          break;
+        }
       }
-    }
-    
-    if (!nodeFound) {
-      console.log(`[NeuralFlow] No node found at click location`);
+      
+      if (!nodeFound) {
+        console.log(`[NeuralFlow] No node found at click location (${canvasX.toFixed(1)}, ${canvasY.toFixed(1)})`);
+        
+        // If no node was clicked, hide all tooltips
+        this.hideAllTooltips();
+      }
+    } catch (error) {
+      console.error('[NeuralFlow] Error in handleClick:', error);
     }
   }
   
+  /**
+   * Create a ripple effect on a node
+   * @param {Object} node - The node to create a ripple on
+   */
   createRipple(node) {
-    if (!node.ripples) node.ripples = [];
-    
-    node.ripples.push({
-      radius: node.radius * 1.2,
-      alpha: 0.8,
-      maxRadius: node.radius * 4
-    });
+    try {
+      if (!node) return;
+      
+      if (!node.ripples) node.ripples = [];
+      
+      node.ripples.push({
+        radius: node.radius * 1.2,
+        alpha: 0.8,
+        maxRadius: node.radius * 4,
+        timestamp: performance.now()
+      });
+      
+      // Force a redraw to show the ripple immediately
+      this.lastFrameTime = 0;
+    } catch (error) {
+      console.error('[NeuralFlow] Error creating ripple:', error);
+    }
   }
   
+  /**
+   * Highlight a node temporarily
+   * @param {number} nodeIndex - Index of the node to highlight
+   * @param {number} [duration=1000] - Duration of the highlight in ms
+   */
+  highlightNode(nodeIndex, duration = 1000) {
+    try {
+      if (nodeIndex < 0 || nodeIndex >= this.nodes.length) {
+        console.warn(`[NeuralFlow] Invalid node index for highlight: ${nodeIndex}`);
+        return;
+      }
+      
+      const node = this.nodes[nodeIndex];
+      if (!node) return;
+      
+      console.log(`[NeuralFlow] Highlighting node ${nodeIndex}`);
+      
+      // Set highlight properties
+      node.highlighted = true;
+      node.highlightStart = performance.now();
+      node.highlightDuration = duration;
+      
+      // Force a redraw to show the highlight immediately
+      this.lastFrameTime = 0;
+      
+      // Remove highlight after duration
+      setTimeout(() => {
+        if (node) {
+          node.highlighted = false;
+          this.lastFrameTime = 0; // Force redraw
+        }
+      }, duration);
+      
+    } catch (error) {
+      console.error('[NeuralFlow] Error highlighting node:', error);
+    }
+  }
+  
+  /**
+   * Show a tooltip for a node
+   * @param {Object} node - The node to show the tooltip for
+   */
   showTooltip(node) {
-    // Clear any existing tooltip
-    if (this.tooltip && this.tooltip.parentNode) {
-      this.tooltip.parentNode.removeChild(this.tooltip);
+    try {
+      if (!node) {
+        console.warn('[NeuralFlow] Cannot show tooltip: node is null');
+        return;
+      }
+      
+      console.log(`[NeuralFlow] Showing tooltip for node:`, node);
+      
+      // Clear any existing tooltips from the DOM
+      this.hideAllTooltips();
+  
+      // Also remove any tooltips that might be in the container
+      const existingTooltips = this.container.querySelectorAll('.tooltip, .neural-flow-tooltip');
+      existingTooltips.forEach(tooltip => {
+        if (tooltip.parentNode) {
+          tooltip.parentNode.removeChild(tooltip);
+        }
+      });
+      
+      // Create tooltip element
+      this.tooltip = document.createElement('div');
+      this.tooltip.className = 'neural-flow-tooltip';
+      
+      // Style the tooltip
+      Object.assign(this.tooltip.style, {
+        position: 'absolute',
+        backgroundColor: 'rgba(30, 35, 60, 0.95)',
+        color: '#fff',
+        padding: '8px 12px',
+        borderRadius: '6px',
+        fontSize: '14px',
+        pointerEvents: 'none',
+        zIndex: '1000',
+        maxWidth: '300px',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+        border: '1px solid rgba(100, 120, 255, 0.3)',
+        backdropFilter: 'blur(4px)',
+        transform: 'translate(-50%, -100%)',
+        transition: 'opacity 0.2s, transform 0.2s',
+        opacity: '0',
+        left: `${node.x}px`,
+        top: `${node.y - node.radius - 10}px`,
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word'
+      });
+      
+      // Set tooltip content
+      const nodeText = this.formatNodeText(node.text || 'No content');
+      this.tooltip.textContent = nodeText;
+      
+      // Add to container with higher z-index to ensure it's above controls
+      this.tooltip.style.zIndex = '1001'; // Higher than controls (1000)
+      this.container.appendChild(this.tooltip);
+      
+      // Force reflow to ensure styles are applied before animating
+      void this.tooltip.offsetWidth;
+      
+      // Fade in
+      this.tooltip.style.opacity = '1';
+      
+      // Position the tooltip above the node, ensuring it stays within viewport
+      const tooltipRect = this.tooltip.getBoundingClientRect();
+      const containerRect = this.container.getBoundingClientRect();
+      
+      let left = node.x;
+      let top = node.y - node.radius - tooltipRect.height - 10;
+      
+      // Adjust if tooltip goes off the left/right edges
+      if (left - tooltipRect.width / 2 < 10) {
+        left = tooltipRect.width / 2 + 10;
+      } else if (left + tooltipRect.width / 2 > containerRect.width - 10) {
+        left = containerRect.width - tooltipRect.width / 2 - 10;
+      }
+      
+      // Adjust if tooltip goes above the container
+      if (top < 10) {
+        top = node.y + node.radius + 10;
+        this.tooltip.style.transform = 'translate(-50%, 0)';
+      }
+      
+      this.tooltip.style.left = `${left}px`;
+      this.tooltip.style.top = `${top}px`;
+      
+    } catch (error) {
+      console.error('[NeuralFlow] Error showing tooltip:', error);
     }
     
     // Debug feedback in console

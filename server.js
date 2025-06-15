@@ -626,7 +626,7 @@ function setupWebSocketServer(server) {
             ws.off('close', onClose);
             ws.off('error', onClose);
             ws.off('pong', handlePong);
-            ws.off('ping', handlePing);
+            //ws.off('ping', handlePing);
             ws.off('message', handleMessage);
             ws.off('close', handleClose);
             ws.off('error', handleError);
@@ -2354,20 +2354,20 @@ async function getPuppeteerLaunchOptions() {
       deviceScaleFactor: 1
     },
     args: [
-      // Security and stability
+      // Basic security and stability
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--disable-software-rasterizer',
       
       // Performance optimizations
       '--disable-extensions',
       '--window-size=1280,720',
+      '--disable-gpu',
+      '--disable-software-rasterizer',
+      '--disable-dev-shm-usage',
       '--disable-accelerated-2d-canvas',
       '--no-first-run',
       '--no-zygote',
-      '--single-process',
       
       // Disable unnecessary features
       '--disable-background-networking',
@@ -2387,6 +2387,8 @@ async function getPuppeteerLaunchOptions() {
       '--no-default-browser-check',
       '--password-store=basic',
       '--use-mock-keychain',
+      
+      // Security
       '--disable-features=IsolateOrigins,site-per-process',
       '--disable-site-isolation-trials',
       '--disable-web-security'

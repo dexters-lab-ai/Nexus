@@ -848,6 +848,20 @@
   transform: translateY(-2px);
 }
 
+.task-error-card {
+  color: var(--danger) !important;
+  box-sizing: border-box !important;
+  flex-direction: row !important;
+  display: flex !important;
+  padding: 0.5em !important;
+  box-sizing: content-box !important;
+  min-height: 25px !important;
+  font-family: var(--font-mono) !important;
+  font-size: 13px !important;
+  font-weight: bold !important;
+  flex-wrap: wrap !important;
+}
+
 /* Single unified card - no compartments */
 .step-card {
   display: flex;
