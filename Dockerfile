@@ -225,6 +225,71 @@ RUN mkdir -p /tmp/chrome-user-data /tmp/chrome /home/node/.cache/puppeteer/chrom
 COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/package*.json ./
 
+# Install Chromium and all its dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    # Core dependencies
+    ca-certificates \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libatspi2.0-0 \
+    libcairo2 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libx11-6 \
+    libxcb1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxkbcommon0 \
+    libxrandr2 \
+    libxshmfence1 \
+    wget \
+    xdg-utils \
+    # Virtual framebuffer and windowing
+    xvfb \
+    x11vnc \
+    x11-xkb-utils \
+    xfonts-100dpi \
+    xfonts-75dpi \
+    xfonts-scalable \
+    xfonts-cyrillic \
+    x11-apps \
+    # Additional fonts
+    fonts-ipafont-gothic \
+    fonts-wqy-zenhei \
+    fonts-thai-tlwg \
+    fonts-kacst \
+    # Clean up
+    && rm -rf /var/lib/apt/lists/* \
+    # Install latest stable Chromium
+    && apt-get update && apt-get install -y --no-install-recommends chromium \
+    # Create necessary symlinks
+    && ln -s /usr/bin/chromium /usr/bin/chromium-browser \
+    && ln -s /usr/bin/chromium /usr/bin/google-chrome-stable \
+    # Create Chrome user data directory and temp directories
+    && mkdir -p /home/node/.config/chromium/Default \
+    && mkdir -p /tmp/chrome-user-data \
+    && mkdir -p /tmp/chrome \
+    # Create Chrome sandbox wrapper
+    && echo '#!/bin/sh\nexec "$@" --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage' > /tmp/chrome-sandbox \
+    && chmod 755 /tmp/chrome-sandbox \
+    # Set permissions
+    && chown -R node:node /home/node/.config \
+    && chown -R node:node /tmp/chrome-user-data \
+    && chown -R node:node /tmp/chrome
+
+# Set environment to production
 ENV NODE_ENV=production
 ENV PORT=3420
 ENV NEXUS_RUN_DIR=/usr/src/app/nexus_run
