@@ -747,7 +747,6 @@ import Billing from './src/models/Billing.js';
 import { stripLargeFields } from './src/utils/stripLargeFields.js';
 import { generateReport } from './src/utils/reportGenerator.js';
 import { editMidsceneReport } from './src/utils/midsceneReportEditor.js';
-import reportHandlers from './src/utils/reportFileFixer.js';
 import executionHelper from './src/utils/execution-helper.js';
 const { determineExecutionMode } = executionHelper;
 
@@ -1507,12 +1506,6 @@ if (process.env.NODE_ENV !== 'development') {
   }));
   
   console.log('Serving static files from:', path.join(__dirname, 'dist'));
-  
-  // Set up report serving and redirector middleware
-  // This must be after static file serving to ensure proper routing
-  reportHandlers.setupReportServing(app);
-  reportHandlers.setupReportRedirector(app);
-  console.log('Report serving middleware initialized');
 }
 
 // Authentication guard middleware
