@@ -2368,14 +2368,14 @@ async function getPuppeteerLaunchOptions() {
   
   // Common launch options for all environments
   const launchOptions = {
-    headless: isProduction ? 'new' : false,
+    headless: false,
     ignoreHTTPSErrors: true,
     defaultViewport: { width: 1280, height: 720, deviceScaleFactor: 1 },
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--headless=new',
+      '--headless=false',
       
       // Performance optimizations
       '--disable-extensions',
@@ -2404,7 +2404,6 @@ async function getPuppeteerLaunchOptions() {
       '--no-default-browser-check',
       '--password-store=basic',
       '--use-mock-keychain',
-      '--mute-audio',
       '--safebrowsing-disable-auto-update',
       '--single-process',
       '--disable-webgl',
@@ -3610,7 +3609,7 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
  * TaskPlan - Class to manage the execution plan for a browser task
  */
 class TaskPlan {
-  constructor(userId, taskId, prompt, initialUrl, runDir, runId, maxSteps = 10) {
+  constructor(userId, taskId, prompt, initialUrl, runDir, runId, maxSteps = 20) {
     this.userId = userId;
     this.taskId = taskId;
     this.prompt = prompt;
@@ -5717,7 +5716,7 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
   // Fetch the user's preferences including execution mode, browser model, and max steps
   const user = await User.findById(userId).select('executionMode preferredEngine modelPreferences maxSteps').lean();
   const executionMode = user?.executionMode || 'step-planning';
-  const maxSteps = user?.maxSteps || 10; // Default to 10 if not set
+  const maxSteps = user?.maxSteps || 20; // Default to 10 if not set
   
   // First check for explicitly requested engine in the function call
   // Then check user's browser model preference
