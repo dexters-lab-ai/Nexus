@@ -350,7 +350,6 @@ HEALTHCHECK --interval=30s --timeout=3s \
 RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo 'set -e' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
-    echo '### Environment Setup ###' >> /usr/local/bin/startup.sh && \
     echo '# Set display and Chromium paths' >> /usr/local/bin/startup.sh && \
     echo 'export DISPLAY=":99"' >> /usr/local/bin/startup.sh && \
     echo 'export CHROME_BIN=/usr/bin/chromium' >> /usr/local/bin/startup.sh && \
@@ -358,82 +357,41 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo 'export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true' >> /usr/local/bin/startup.sh && \
     echo 'export NODE_ENV=production' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
-    echo '### Directory Setup ###' >> /usr/local/bin/startup.sh && \
-    echo 'echo "[Startup] Creating and setting up directories..."' >> /usr/local/bin/startup.sh && \
+    echo '# Create required directories' >> /usr/local/bin/startup.sh && \
     echo 'mkdir -p /tmp/chrome-user-data /tmp/chrome /home/node/.config/chromium/Default /home/node/.pki/nssdb' >> /usr/local/bin/startup.sh && \
     echo 'chmod -R 777 /tmp/chrome-user-data /tmp/chrome /home/node/.config/chromium /home/node/.pki' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
-    echo '### Chrome Sandbox Setup ###' >> /usr/local/bin/startup.sh && \
-    echo 'echo "[Startup] Setting up Chrome sandbox..."' >> /usr/local/bin/startup.sh && \
+    echo '# Set up Chrome sandbox' >> /usr/local/bin/startup.sh && \
     echo 'echo "#!/bin/sh" > /tmp/chrome-sandbox' >> /usr/local/bin/startup.sh && \
     echo 'echo "exec \$@ --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage \$CHROME_EXTRA_ARGS" >> /tmp/chrome-sandbox' >> /usr/local/bin/startup.sh && \
     echo 'chmod +x /tmp/chrome-sandbox' >> /usr/local/bin/startup.sh && \
     echo 'export CHROME_DEVEL_SANDBOX=/tmp/chrome-sandbox' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
-    echo '### Xvfb Startup ###' >> /usr/local/bin/startup.sh && \
-    echo 'echo "[Startup] Starting Xvfb..."' >> /usr/local/bin/startup.sh && \
+    echo '# Start Xvfb' >> /usr/local/bin/startup.sh && \
     echo 'Xvfb :99 -screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -ac +extension RANDR +render -noreset >/tmp/xvfb.log 2>&1 &' >> /usr/local/bin/startup.sh && \
     echo 'Xvfb_PID=$!' >> /usr/local/bin/startup.sh && \
-    echo 'echo "Xvfb started with PID: $Xvfb_PID"' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
     echo '# Wait for Xvfb to be ready' >> /usr/local/bin/startup.sh && \
-    echo 'echo "[Startup] Waiting for Xvfb to be ready..."' >> /usr/local/bin/startup.sh && \
     echo 'for i in {1..30}; do' >> /usr/local/bin/startup.sh && \
-    echo '  xdpyinfo -display :99 >/dev/null 2>&1' >> /usr/local/bin/startup.sh && \
-    echo '  if [ $? -eq 0 ]; then' >> /usr/local/bin/startup.sh && \
-    echo '    echo "[Startup] Xvfb is ready after $i attempts";' >> /usr/local/bin/startup.sh && \
-    echo '    break;' >> /usr/local/bin/startup.sh && \
-    echo '  fi' >> /usr/local/bin/startup.sh && \
+    echo '  xdpyinfo -display :99 >/dev/null 2>&1 && break' >> /usr/local/bin/startup.sh && \
     echo '  if [ $i -eq 30 ]; then' >> /usr/local/bin/startup.sh && \
-    echo '    echo "[ERROR] Xvfb failed to start after 30 seconds"' >> /usr/local/bin/startup.sh && \
-    echo '    echo "=== Xvfb Process Status ==="' >> /usr/local/bin/startup.sh && \
-    echo '    ps aux | grep -i xvfb | grep -v grep' >> /usr/local/bin/startup.sh && \
-    echo '    echo ""' >> /usr/local/bin/startup.sh && \
-    echo '    echo "=== Xvfb Log ==="' >> /usr/local/bin/startup.sh && \
-    echo '    cat /tmp/xvfb.log' >> /usr/local/bin/startup.sh && \
-    echo '    echo ""' >> /usr/local/bin/startup.sh && \
-    echo '    echo "=== Display Info ==="' >> /usr/local/bin/startup.sh && \
-    echo '    xdpyinfo -display :99 2>&1 || echo "Failed to get display info"' >> /usr/local/bin/startup.sh && \
+    echo '    echo "Error: Xvfb failed to start" >&2' >> /usr/local/bin/startup.sh && \
+    echo '    ps aux | grep -i xvfb | grep -v grep >&2' >> /usr/local/bin/startup.sh && \
+    echo '    cat /tmp/xvfb.log >&2' >> /usr/local/bin/startup.sh && \
     echo '    exit 1' >> /usr/local/bin/startup.sh && \
     echo '  fi' >> /usr/local/bin/startup.sh && \
     echo '  sleep 1' >> /usr/local/bin/startup.sh && \
     echo 'done' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
-    echo '### System Information ###' >> /usr/local/bin/startup.sh && \
-    echo 'echo ""' >> /usr/local/bin/startup.sh && \
-    echo 'echo "=== System Information ==="' >> /usr/local/bin/startup.sh && \
-    echo 'echo "Hostname: $(hostname)"' >> /usr/local/bin/startup.sh && \
-    echo 'echo "User: $(whoami)"' >> /usr/local/bin/startup.sh && \
-    echo 'echo "Working directory: $(pwd)"' >> /usr/local/bin/startup.sh && \
-    echo 'uname -a' >> /usr/local/bin/startup.sh && \
-    echo 'echo ""' >> /usr/local/bin/startup.sh && \
-    echo 'echo "=== Environment Variables ==="' >> /usr/local/bin/startup.sh && \
-    echo 'env | grep -E "CHROME|PUPPETEER|DISPLAY|SCREEN|XVFB|XDG|NODE" | sort' >> /usr/local/bin/startup.sh && \
-    echo '' >> /usr/local/bin/startup.sh && \
-    echo 'echo "=== Chromium Information ==="' >> /usr/local/bin/startup.sh && \
-    echo 'echo "Chromium version: $(/usr/bin/chromium --version 2>&1 || echo "Chromium not found")"' >> /usr/local/bin/startup.sh && \
-    echo 'echo "Chromium path: $(which chromium) ($(readlink -f $(which chromium) 2>/dev/null || echo 'not found'))"' >> /usr/local/bin/startup.sh && \
-    echo 'echo "Chromium capabilities: $(ls -l $(which chromium) 2>/dev/null)"' >> /usr/local/bin/startup.sh && \
-    echo 'echo ""' >> /usr/local/bin/startup.sh && \
-    echo 'echo "=== Xvfb Status ==="' >> /usr/local/bin/startup.sh && \
-    echo 'ps aux | grep -i "[x]vfb" || echo "No Xvfb process found"' >> /usr/local/bin/startup.sh && \
-    echo '' >> /usr/local/bin/startup.sh && \
-    echo 'echo "=== Display Info ==="' >> /usr/local/bin/startup.sh && \
-    echo 'xdpyinfo -display :99 >/dev/null 2>&1 && (echo "X server is available"; xdpyinfo -display :99 | grep -A 8 "^name") || echo "X server not available"' >> /usr/local/bin/startup.sh && \
-    echo '' >> /usr/local/bin/startup.sh && \
     echo '# Add a small delay to ensure Xvfb is fully ready' >> /usr/local/bin/startup.sh && \
-    echo 'echo "Waiting 2 seconds to ensure Xvfb is fully ready..."' >> /usr/local/bin/startup.sh && \
     echo 'sleep 2' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
     echo '# Start the application' >> /usr/local/bin/startup.sh && \
-    echo 'echo ""' >> /usr/local/bin/startup.sh && \
-    echo 'echo "=== Starting Application ==="' >> /usr/local/bin/startup.sh && \
     echo 'echo "Current directory: $(pwd)"' >> /usr/local/bin/startup.sh && \
     echo 'echo "Running: node --max-old-space-size=4096 server.js $@"' >> /usr/local/bin/startup.sh && \
     echo 'echo ""' >> /usr/local/bin/startup.sh && \
     echo 'exec node --max-old-space-size=4096 server.js "$@"' >> /usr/local/bin/startup.sh && \
-    chmod +x /usr/local/bin/startup.sh && \
-    chown node:node /usr/local/bin/startup.sh
+    chmod +x /usr/local/bin/startup.sh
 
 # Switch to non-root user
 USER node

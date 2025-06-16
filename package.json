@@ -20,6 +20,7 @@
         "postinstall": "npx puppeteer browsers install chrome",
         "install:fontawesome": "npm install @fortawesome/fontawesome-free",
         "copy-assets": "node scripts/copy-assets.js",
+        "copy-api": "node --experimental-modules --experimental-json-modules scripts/copy-api.js",
         "lint": "eslint . --ext .js,.jsx --fix",
         "test": "vitest",
         "test:watch": "vitest watch"

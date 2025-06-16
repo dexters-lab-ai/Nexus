@@ -1,6 +1,6 @@
 import { isAuthenticated, setAuthState } from './utils/auth.js';
 import { eventBus } from './utils/events.js';
-import api from '../src/utils/api.js';
+import api from './utils/api.js';
 
 // Make API available globally for debugging
 window.api = api;
