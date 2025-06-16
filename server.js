@@ -1390,9 +1390,17 @@ import { requireAuth } from './src/middleware/requireAuth.js';
 import messagesRouter from './src/routes/messages.js';
 import { setStaticFileHeaders } from './src/middleware/staticAssets.js';
 import serveStaticAssets from './src/middleware/staticAssets.js';
+import { setupReportServing, setupReportRedirector } from './src/utils/reportFileFixer.js';
 
 // ======================================
-// 1. STATIC FILES (must come before authentication)
+// 1. REPORT SERVING
+// ======================================
+// Set up report serving routes
+setupReportServing(app);
+setupReportRedirector(app);
+
+// ======================================
+// 2. STATIC FILES (must come before authentication)
 // =================================================
 
 // In development, we don't serve static files from the backend

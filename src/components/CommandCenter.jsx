@@ -436,7 +436,7 @@ export function CommandCenter(props = {}) {
   // Debug logging for WebSocket configuration
   console.log('=== WebSocket Configuration ===');
   console.log('WebSocket URL from config:', config.wsUrl);
-  console.log('Environment:', process.env.NODE_ENV);
+  console.log('Environment:', import.meta.env.NODE_ENV);
   console.log('Using WebSocketManager:', !!window.WebSocketManager);
   console.log('===============================');
 

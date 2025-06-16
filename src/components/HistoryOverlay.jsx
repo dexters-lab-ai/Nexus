@@ -508,8 +508,19 @@ function createHistoryOverlay() {
       
       let screenshotPreview = '';
       if (screenshotUrl) {
-        if (!screenshotUrl.startsWith('http') && !screenshotUrl.startsWith('data:') && !screenshotUrl.startsWith('/')) {
-          screenshotUrl = '/' + screenshotUrl;
+        // Handle different URL formats
+        if (!screenshotUrl.startsWith('http') && !screenshotUrl.startsWith('data:')) {
+          // If it's a relative path, ensure it starts with a slash
+          if (!screenshotUrl.startsWith('/')) {
+            screenshotUrl = '/' + screenshotUrl;
+          }
+          // For production, we need to ensure we're using the correct base URL
+          if (import.meta.env.NODE_ENV === 'production') {
+            // Remove any duplicate slashes that might occur from joining paths
+            screenshotUrl = screenshotUrl.replace(/^\/+/, '');
+            // Use the current origin as the base URL
+            screenshotUrl = window.location.origin + '/' + screenshotUrl;
+          }
         }
         
         const escapedUrl = screenshotUrl.replace(/"/g, '&quot;');
