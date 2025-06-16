@@ -119,74 +119,55 @@ EXPOSE 3420 3000
 FROM node:20.13.1-bullseye-slim AS production
 WORKDIR /usr/src/app
 
-# Install Chromium and dependencies with retry logic
-RUN echo 'APT::Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries && \
-    echo 'Acquire::http::Pipeline-Depth 0;' >> /etc/apt/apt.conf.d/80-retries && \
-    echo 'Acquire::http::No-Cache true;' >> /etc/apt/apt.conf.d/80-retries && \
-    echo 'Acquire::BrokenProxy true;' >> /etc/apt/apt.conf.d/80-retries && \
-    apt-get update --fix-missing || apt-get update --fix-missing
-
-# Function to retry failed commands
-RUN echo 'function retry() {' > /usr/local/bin/retry && \
-    echo '  local n=1' >> /usr/local/bin/retry && \
-    echo '  local max=5' >> /usr/local/bin/retry && \
-    echo '  local delay=5' >> /usr/local/bin/retry && \
-    echo '  while true; do' >> /usr/local/bin/retry && \
-    echo '    "$@" && break' >> /usr/local/bin/retry && \
-    echo '    if [[ $n -lt $max ]]; then' >> /usr/local/bin/retry && \
-    echo '      ((n++))' >> /usr/local/bin/retry && \
-    echo '      echo "Command failed. Attempt $n/$max:"' >> /usr/local/bin/retry && \
-    echo '      sleep $delay' >> /usr/local/bin/retry && \
-    echo '    else' >> /usr/local/bin/retry && \
-    echo '      echo "The command has failed after $n attempts." >&2' >> /usr/local/bin/retry && \
-    echo '      return 1' >> /usr/local/bin/retry && \
-    echo '    fi' >> /usr/local/bin/retry && \
-    echo '  done' >> /usr/local/bin/retry && \
-    chmod +x /usr/local/bin/retry
-
-# Install packages with retry
-RUN retry apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    gnupg \
-    && retry bash -c '\
-    echo "deb http://deb.debian.org/debian bullseye main" > /etc/apt/sources.list.d/bullseye.list && \
-    echo "deb http://deb.debian.org/debian-security/ bullseye-security main" >> /etc/apt/sources.list.d/bullseye.list && \
-    echo "deb http://deb.debian.org/debian bullseye-updates main" >> /etc/apt/sources.list.d/bullseye.list && \
-    apt-get update --fix-missing'
-
-# Install Chromium and dependencies with retry
-RUN retry apt-get install -y --no-install-recommends \
-    chromium \
-    fonts-liberation \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libatspi2.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libdrm2 \
-    libgbm1 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libx11-6 \
-    libxcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxext6 \
-    libxfixes3 \
-    libxrandr2 \
-    xdg-utils \
-    xvfb \
-    x11vnc \
-    x11-xkb-utils \
-    xfonts-100dpi \
-    xfonts-75dpi \
-    xfonts-scalable \
-    xfonts-cyrillic \
-    xserver-xorg-core \
-    x11-xserver-utils \
+# Install Chromium and dependencies
+RUN set -x \
+    # Update package lists
+    && apt-get update \
+    # Install required packages
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        gnupg \
+        wget \
+    # Add Debian repository configuration
+    && echo 'deb http://deb.debian.org/debian bullseye main' > /etc/apt/sources.list.d/bullseye.list \
+    && echo 'deb http://deb.debian.org/debian-security bullseye-security main' >> /etc/apt/sources.list.d/bullseye.list \
+    && echo 'deb http://deb.debian.org/debian bullseye-updates main' >> /etc/apt/sources.list.d/bullseye.list \
+    # Update package lists again
+    && apt-get update \
+    # Install Chromium and dependencies
+    && apt-get install -y --no-install-recommends \
+        chromium \
+        fonts-liberation \
+        libasound2 \
+        libatk-bridge2.0-0 \
+        libatk1.0-0 \
+        libatspi2.0-0 \
+        libcups2 \
+        libdbus-1-3 \
+        libdrm2 \
+        libgbm1 \
+        libgtk-3-0 \
+        libnspr4 \
+        libnss3 \
+        libx11-6 \
+        libxcb1 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxext6 \
+        libxfixes3 \
+        libxrandr2 \
+        xdg-utils \
+        xvfb \
+        x11vnc \
+        x11-xkb-utils \
+        xfonts-100dpi \
+        xfonts-75dpi \
+        xfonts-scalable \
+        xfonts-cyrillic \
+        xserver-xorg-core \
+        x11-xserver-utils \
+    # Clean up
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /tmp/* /var/tmp/* \
