@@ -2346,14 +2346,14 @@ async function getPuppeteerLaunchOptions() {
   
   // Common launch options for all environments
   const launchOptions = {
-    headless: isProduction ? 'new' : false,
+    headless: false, // Always run in headful mode for demo purposes
     ignoreHTTPSErrors: true,
     defaultViewport: { width: 1280, height: 720, deviceScaleFactor: 1 },
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--headless=new',
+      '--enable-chrome-browser-cloud-management',
       
       // Performance optimizations
       '--disable-extensions',
