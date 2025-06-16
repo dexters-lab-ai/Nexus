@@ -2353,6 +2353,7 @@ async function getPuppeteerLaunchOptions() {
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
+      '--headless=new',
       
       // Performance optimizations
       '--disable-extensions',
