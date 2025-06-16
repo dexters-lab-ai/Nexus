@@ -2359,7 +2359,6 @@ async function getPuppeteerLaunchOptions() {
       '--window-size=1280,720',
       '--disable-gpu',
       '--disable-software-rasterizer',
-      '--disable-dev-shm-usage',
       '--disable-accelerated-2d-canvas',
       '--no-first-run',
       '--no-zygote',
@@ -2382,11 +2381,34 @@ async function getPuppeteerLaunchOptions() {
       '--no-default-browser-check',
       '--password-store=basic',
       '--use-mock-keychain',
+      '--mute-audio',
+      '--safebrowsing-disable-auto-update',
+      '--single-process',
+      '--disable-webgl',
+      '--disable-threaded-animation',
+      '--disable-threaded-scrolling',
+      '--disable-in-process-stack-traces',
+      '--disable-logging',
+      '--output=/dev/null',
+      '--disable-3d-apis',
+      '--disable-d3d11',
+      '--disable-d3d12',
+      '--disable-direct-composition',
+      '--disable-direct-dwrite',
       
       // Security
-      '--disable-features=IsolateOrigins,site-per-process',
+      '--disable-features=AudioServiceOutOfProcess,TranslateUI,Translate,ImprovedCookieControls,' +
+      'LazyFrameLoading,GlobalMediaControls,MediaRouter,NetworkService,OutOfBlinkCors,' +
+      'OutOfProcessPdf,OverlayScrollbar,PasswordGeneration,RendererCodeIntegrity,' +
+      'SpareRendererForSitePerProcess,TopChromeTouchUi,VizDisplayCompositor,IsolateOrigins,site-per-process',
       '--disable-site-isolation-trials',
-      '--disable-web-security'
+      '--disable-web-security',
+      '--disable-blink-features=AutomationControlled',
+      
+      // Window settings
+      '--window-position=0,0',
+      '--start-maximized',
+      '--hide-scrollbars'
     ]
   };
   
@@ -2413,10 +2435,10 @@ async function getPuppeteerLaunchOptions() {
             foundPath = true;
             break;
           } else {
-            console.log(`[Production] Path not found: ${execPath}`);
+            console.log(`[Puppeteer] Chromium not found at: ${execPath}`);
           }
-        } catch (err) {
-          console.error(`[Production] Error checking path ${execPath}:`, err);
+        } catch (error) {
+          console.error(`[Puppeteer] Error checking path ${execPath}:`, error.message);
         }
       }
       
@@ -2425,153 +2447,84 @@ async function getPuppeteerLaunchOptions() {
         console.warn('Falling back to Puppeteer\'s bundled Chromium');
         launchOptions.executablePath = await puppeteer.executablePath();
       }
-            
-            // Production-specific settings
-            launchOptions.dumpio = true; // Enable for debugging
-            launchOptions.pipe = true;   // Use pipe instead of WebSocket
-            
-            // Ensure proper permissions for Chrome sandbox
-            if (fs.existsSync(launchOptions.executablePath)) {
-              try {
-                await fs.promises.chmod(launchOptions.executablePath, 0o755);
-                // Create Chrome sandbox wrapper if needed
-                if (!fs.existsSync(process.env.CHROME_DEVEL_SANDBOX)) {
-                  await fs.promises.writeFile(
-                    process.env.CHROME_DEVEL_SANDBOX,
-                    '#!/bin/sh\nexec "$@" --no-sandbox',
-                    { mode: 0o755 }
-                  );
-                }
-                
-                // Ensure the sandbox wrapper is executable
-                await fs.promises.chmod(process.env.CHROME_DEVEL_SANDBOX, 0o755);
-                
-                // Set environment variable for the sandbox
-                process.env.CHROME_DEVEL_SANDBOX = process.env.CHROME_DEVEL_SANDBOX;
-              } catch (err) {
-                console.error('Error setting up Chrome sandbox:', err);
-              }
-            }
-            
-            // Additional production settings
-            launchOptions.pipe = true;    // Use pipe mode for better Docker support
-            launchOptions.env = {
-              ...process.env,
-              CHROME_DEVEL_SANDBOX: process.env.CHROME_DEVEL_SANDBOX,
-              DISPLAY: ':99',
-              NO_AT_BRIDGE: '1',
-              DBUS_SESSION_BUS_ADDRESS: '/dev/null',
-              XDG_RUNTIME_DIR: '/tmp/chrome'
-            };
-            
-            // Create necessary directories
-            try {
-              await fs.promises.mkdir('/tmp/chrome-user-data', { recursive: true });
-              await fs.promises.mkdir('/tmp/chrome', { recursive: true });
-            } catch (err) {
-              console.error('Error creating temp directories:', err);
-            }
-            
-            // Add production-specific arguments only once
-            const productionArgs = [
-              // Performance optimizations
-              '--disable-background-networking',
-              '--disable-sync',
-              '--metrics-recording-only',
-              '--disable-default-apps',
-              '--mute-audio',
-              '--no-first-run',
-              '--safebrowsing-disable-auto-update',
-              '--disable-component-extensions-with-background-pages',
-              '--disable-background-timer-throttling',
-              '--disable-backgrounding-occluded-windows',
-              '--disable-ipc-flooding-protection',
-              '--disable-renderer-backgrounding',
-              '--disable-dev-shm-usage',
-              '--single-process',
-              '--disable-webgl',
-              '--disable-threaded-animation',
-              '--disable-threaded-scrolling',
-              '--disable-in-process-stack-traces',
-              '--disable-logging',
-              '--output=/dev/null',
-              '--disable-3d-apis',
-              '--disable-d3d11',
-              '--disable-d3d12',
-              '--disable-direct-composition',
-              '--disable-direct-dwrite',
-              
-              // Disable features
-              '--disable-features=AudioServiceOutOfProcess,TranslateUI,Translate,ImprovedCookieControls,' +
-              'LazyFrameLoading,GlobalMediaControls,MediaRouter,NetworkService,OutOfBlinkCors,' +
-              'OutOfProcessPdf,OverlayScrollbar,PasswordGeneration,RendererCodeIntegrity,' +
-              'SpareRendererForSitePerProcess,TopChromeTouchUi,VizDisplayCompositor,IsolateOrigins,site-per-process',
-              
-              // Security
-              '--disable-site-isolation-trials',
-              '--disable-web-security',
-              '--disable-blink-features=AutomationControlled',
-              
-              // Window settings
-              '--window-size=1280,720',
-              '--window-position=0,0',
-              '--start-maximized',
-              '--hide-scrollbars'
-            ];
-            
-            // Add production args, avoiding duplicates
-            productionArgs.forEach(arg => {
-              if (!launchOptions.args.includes(arg)) {
-                launchOptions.args.push(arg);
-              }
-            });
-            
-            // Set the user data directory to a writable location
-            const userDataDir = path.join(process.cwd(), 'chrome-profile');
-            if (!fs.existsSync(userDataDir)) {
-              fs.mkdirSync(userDataDir, { recursive: true });
-            }
-            launchOptions.userDataDir = userDataDir;
-            
-            console.log('[Production] Configured Chromium with optimized settings for Docker');
-            break;
-          } else {
-            console.log(`[Puppeteer] Chromium not found at: ${execPath}`);
+      
+      // Production-specific settings
+      launchOptions.dumpio = true; // Enable for debugging
+      launchOptions.pipe = true;   // Use pipe instead of WebSocket
+      
+      // Ensure proper permissions for Chrome sandbox
+      if (launchOptions.executablePath && fs.existsSync(launchOptions.executablePath)) {
+        try {
+          await fs.promises.chmod(launchOptions.executablePath, 0o755);
+          
+          // Set up Chrome sandbox wrapper
+          const sandboxPath = process.env.CHROME_DEVEL_SANDBOX || '/tmp/chrome-sandbox';
+          if (!fs.existsSync(sandboxPath)) {
+            await fs.promises.writeFile(
+              sandboxPath,
+              '#!/bin/sh\nexec "$@" --no-sandbox',
+              { mode: 0o755 }
+            );
           }
-        } catch (error) {
-          console.error(`[Puppeteer] Error checking path ${execPath}:`, error.message);
+          
+          // Ensure the sandbox wrapper is executable
+          await fs.promises.chmod(sandboxPath, 0o755);
+          
+          // Set environment variable for the sandbox
+          process.env.CHROME_DEVEL_SANDBOX = sandboxPath;
+          
+          // Create necessary directories
+          await Promise.all([
+            fs.promises.mkdir('/tmp/chrome-user-data', { recursive: true }),
+            fs.promises.mkdir('/tmp/chrome', { recursive: true })
+          ]);
+          
+          // Set environment variables
+          launchOptions.env = {
+            ...process.env,
+            CHROME_DEVEL_SANDBOX: sandboxPath,
+            DISPLAY: ':99',
+            NO_AT_BRIDGE: '1',
+            DBUS_SESSION_BUS_ADDRESS: '/dev/null',
+            XDG_RUNTIME_DIR: '/tmp/chrome'
+          };
+          
+          // Set the user data directory to a writable location
+          const userDataDir = path.join(process.cwd(), 'chrome-profile');
+          if (!fs.existsSync(userDataDir)) {
+            fs.mkdirSync(userDataDir, { recursive: true });
+          }
+          launchOptions.userDataDir = userDataDir;
+          
+          console.log('[Production] Configured Chromium with optimized settings for Docker');
+        } catch (err) {
+          console.error('Error setting up Chrome sandbox:', err);
         }
       }
-      
-      if (!launchOptions.executablePath) {
-        console.warn('[Puppeteer] No valid Chromium executable found in any standard location');
-      }
     } else {
-      // In development, use Puppeteer's bundled Chromium
-      launchOptions.executablePath = await puppeteer.executablePath();
-      console.log(`[Puppeteer] Using bundled Chromium at: ${launchOptions.executablePath}`);
+      // Development settings
+      launchOptions.dumpio = true;
+      launchOptions.timeout = 30000;
     }
+    
+    console.log('Puppeteer launch options:', {
+      executablePath: launchOptions.executablePath || 'puppeteer-default',
+      headless: launchOptions.headless,
+      argsCount: launchOptions.args?.length || 0
+    });
+    
+    return launchOptions;
   } catch (error) {
-    console.error('[Puppeteer] Error resolving Chromium path:', error);
-    // Continue with default path resolution
+    console.error('Error in getPuppeteerLaunchOptions:', error);
+    throw error;
   }
-
-  // Log the final configuration
-  console.log('[Puppeteer] Launching browser with options:', {
-    headless: launchOptions.headless,
-    executablePath: launchOptions.executablePath || 'puppeteer-default',
-    argsCount: launchOptions.args?.length || 0
-  });
-
-  // Debug settings for development
-  if (!isProduction) {
-    launchOptions.dumpio = true;
-    launchOptions.timeout = 30000;
-  }
-
-  return launchOptions;
 }
 
+/**
+ * Sleep for a specified number of milliseconds
+ * @param {number} ms - Milliseconds to sleep
+ * @returns {Promise<void>}
+ */
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
