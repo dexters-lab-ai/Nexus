@@ -20,6 +20,7 @@ import pRetry from 'p-retry';
 import { v4 as uuidv4 } from 'uuid';
 import { Semaphore } from 'async-mutex';
 import puppeteer from 'puppeteer';
+import * as reportHandlers from './src/utils/reportFileFixer.js';
 import puppeteerExtra from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { PuppeteerAgent } from '@midscene/web/puppeteer';
@@ -857,16 +858,6 @@ global.NEXUS_PATHS = {
   ARTIFACTS_DIR: ARTIFACTS_DIR
 };
 
-// X.X Serve reports and report directories before any other static or SPA fallback
-reportHandlers.setupReportServing(app);
-reportHandlers.setupReportRedirector(app);
-app.use('/nexus_run', express.static(NEXUS_RUN_DIR));
-app.use('/midscene_run', (req, res, next) => {
-  const subPath = req.path;
-  const newPath = `/nexus_run${subPath}`;
-  res.redirect(301, newPath);
-});
-
 // Logger Mr Winston
 const logger = winston.createLogger({
   level: 'info',
@@ -1036,17 +1027,23 @@ const sessionMiddleware = session({
   }
 });
 
-// 8.1 Body parsers
+// ======================================
+// 8.1 BODY PARSERS (MUST come before any route handlers)
+// ======================================
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// 8.2 Session middleware
+// ======================================
+// 8.2 SESSION MIDDLEWARE
+// ======================================
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1); // Trust first proxy
 }
 app.use(sessionMiddleware);
 
-// 8.2.1 Guest session middleware
+// ======================================
+// 8.3 GUEST SESSION HANDLING
+// ======================================
 app.use((req, res, next) => {
   // If no session user ID, create a guest session
   if (!req.session.user) {
@@ -1056,9 +1053,30 @@ app.use((req, res, next) => {
   next();
 });
 
-// 8.3 Custom request logging middleware to silence 404s for specific endpoints
+// ======================================
+// 8.4 REPORT SERVING MIDDLEWARE
+// ======================================
+// Serve reports with proper middleware ordering
+app.use(reportHandlers.setupReportServing);
+app.use(reportHandlers.setupReportRedirector);
+
+// Serve nexus_run directory with proper caching
+app.use('/nexus_run', express.static(NEXUS_RUN_DIR, {
+  setHeaders: (res, path) => {
+    // Ensure proper caching for static files
+    res.setHeader('Cache-Control', 'public, max-age=31536000');
+  }
+}));
+
+// Legacy redirect for midscene_run -> nexus_run
+app.use('/midscene_run', (req, res) => {
+  const subPath = req.path;
+  const newPath = `/nexus_run${subPath}`;
+  res.redirect(301, newPath);
+});
+
+// Skip logging for 404s on specific endpoints
 app.use((req, res, next) => {
-  // Skip logging for 404s on specific endpoints
   const skipLogging = 
     (req.path === '/api/user/available-engines' && req.method === 'GET' && res.statusCode === 404);
   
@@ -1390,12 +1408,9 @@ import { requireAuth } from './src/middleware/requireAuth.js';
 import messagesRouter from './src/routes/messages.js';
 import { setStaticFileHeaders } from './src/middleware/staticAssets.js';
 import serveStaticAssets from './src/middleware/staticAssets.js';
-import { setupReportServing, setupReportRedirector } from './src/utils/reportFileFixer.js';
 
-// ======================================
 // 2. STATIC FILES (must come before authentication)
 // =================================================
-
 // In development, we don't serve static files from the backend
 // as they are handled by Vite dev server on port 3000
 if (process.env.NODE_ENV !== 'development') {
@@ -1492,6 +1507,12 @@ if (process.env.NODE_ENV !== 'development') {
   }));
   
   console.log('Serving static files from:', path.join(__dirname, 'dist'));
+  
+  // Set up report serving and redirector middleware
+  // This must be after static file serving to ensure proper routing
+  reportHandlers.setupReportServing(app);
+  reportHandlers.setupReportRedirector(app);
+  console.log('Report serving middleware initialized');
 }
 
 // Authentication guard middleware
