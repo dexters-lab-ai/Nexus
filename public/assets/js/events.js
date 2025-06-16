@@ -1,5 +1,4 @@
-
-        // Simple event bus
+// Simple event bus
         const events = new Map();
         
         export const eventBus = {
@@ -18,13 +17,12 @@
           
           emit(event, data) {
             if (!events.has(event)) return;
-            events.get(event).forEach(cb => {
+            for (const callback of events.get(event)) {
               try {
-                cb(data);
+                callback(data);
               } catch (e) {
-                console.error('Event handler error:', e);
+                console.error('Error in event handler:', e);
               }
-            });
+            }
           }
         };
-      

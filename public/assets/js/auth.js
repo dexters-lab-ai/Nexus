@@ -1,5 +1,4 @@
-
-        // Simple auth state management
+// Simple auth state management
         export const AUTH_TOKEN_KEY = 'authToken';
         export const USER_ID_KEY = 'userId';
         
@@ -20,4 +19,3 @@
         export function isAuthenticated() {
           return !!localStorage.getItem(AUTH_TOKEN_KEY);
         }
-      
