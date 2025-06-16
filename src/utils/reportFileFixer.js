@@ -44,22 +44,13 @@ export function setupReportServing(app) {
         return res.status(400).send('Invalid report name');
       }
       
-      // Prefer nexus_run, fallback to midscene_run
-      let reportPath = path.join(process.cwd(), 'nexus_run', 'report', reportName);
-      let reportFound = fs.existsSync(reportPath);
+      // Look for report in nexus_run/report directory
+      const reportPath = path.join(process.cwd(), 'nexus_run', 'report', reportName);
+      const reportFound = fs.existsSync(reportPath);
       
       if (!reportFound) {
-        const fallbackPath = path.join(process.cwd(), 'midscene_run', 'report', reportName);
-        if (fs.existsSync(fallbackPath)) {
-          reportPath = fallbackPath;
-          reportFound = true;
-          console.log(`[ReportServer] Found report to download in fallback location: ${fallbackPath}`);
-        }
-      }
-      
-      if (!reportFound) {
-        console.warn(`[ReportServer] Report not found for download: ${reportName}`);
-        return res.status(404).send(`Report "${reportName}" not found. Please check the report name and try again.`);
+        console.warn(`[ReportServer] Report not found at: ${reportPath}`);
+        return res.status(404).send(`Report "${reportName}" not found.`);
       }
       
       // Set appropriate headers for file download
@@ -85,20 +76,12 @@ export function setupReportServing(app) {
         console.warn(`[ReportServer] Invalid report name attempted: ${reportName}`);
         return res.status(400).send('Invalid report name');
       }
-      // Prefer nexus_run, fallback to midscene_run
-      let reportPath = path.join(process.cwd(), 'nexus_run', 'report', reportName);
-      let reportFound = fs.existsSync(reportPath);
+      // Look for report in nexus_run/report directory
+      const reportPath = path.join(process.cwd(), 'nexus_run', 'report', reportName);
+      const reportFound = fs.existsSync(reportPath);
       if (!reportFound) {
-        const fallbackPath = path.join(process.cwd(), 'midscene_run', 'report', reportName);
-        if (fs.existsSync(fallbackPath)) {
-          reportPath = fallbackPath;
-          reportFound = true;
-          console.log(`[ReportServer] Found report in fallback location: ${fallbackPath}`);
-        }
-      }
-      if (!reportFound) {
-        console.warn(`[ReportServer] Report not found: ${reportName}`);
-        return res.status(404).send(`Report "${reportName}" not found. Please check the report name and try again.`);
+        console.warn(`[ReportServer] Report not found at: ${reportPath}`);
+        return res.status(404).send(`Report "${reportName}" not found.`);
       }
       // Set security headers (CSP is now handled in server.js)
       res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -159,22 +142,12 @@ export function setupReportServing(app) {
       }
 
       // Look for the report in nexus_run/report directory
-      let reportPath = path.join(process.cwd(), 'nexus_run', 'report', reportName);
-      let reportFound = fs.existsSync(reportPath);
+      const reportPath = path.join(process.cwd(), 'nexus_run', 'report', reportName);
+      const reportFound = fs.existsSync(reportPath);
 
       if (!reportFound) {
-        // Fallback to midscene_run directory
-        const fallbackPath = path.join(process.cwd(), 'midscene_run', 'report', reportName);
-        if (fs.existsSync(fallbackPath)) {
-          reportPath = fallbackPath;
-          reportFound = true;
-          console.log(`[ReportServer] Found raw report in fallback location: ${fallbackPath}`);
-        }
-      }
-
-      if (!reportFound) {
-        console.warn(`[ReportServer] Raw report not found: ${reportName}`);
-        return res.status(404).send(`Raw report "${reportName}" not found. Please check the report name and try again.`);
+        console.warn(`[ReportServer] Raw report not found at: ${reportPath}`);
+        return res.status(404).send(`Raw report "${reportName}" not found.`);
       }
 
       // Set security headers (CSP is now handled in server.js)
