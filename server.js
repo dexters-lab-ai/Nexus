@@ -1393,13 +1393,6 @@ import serveStaticAssets from './src/middleware/staticAssets.js';
 import { setupReportServing, setupReportRedirector } from './src/utils/reportFileFixer.js';
 
 // ======================================
-// 1. REPORT SERVING
-// ======================================
-// Set up report serving routes
-setupReportServing(app);
-setupReportRedirector(app);
-
-// ======================================
 // 2. STATIC FILES (must come before authentication)
 // =================================================
 
