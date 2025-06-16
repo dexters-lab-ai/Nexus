@@ -45,12 +45,13 @@ export function setupReportServing(app) {
       }
       
       // Look for report in nexus_run/report directory
-      const reportPath = path.join(process.cwd(), 'nexus_run', 'report', reportName);
+      const baseDir = process.env.MIDSCENE_RUN_DIR || process.cwd();
+      const reportPath = path.join(baseDir, 'report', reportName);
       const reportFound = fs.existsSync(reportPath);
       
       if (!reportFound) {
-        console.warn(`[ReportServer] Report not found at: ${reportPath}`);
-        return res.status(404).send(`Report "${reportName}" not found.`);
+        console.warn(`[ReportServer] Report not found at: ${reportPath} (cwd: ${process.cwd()}, MIDSCENE_RUN_DIR: ${process.env.MIDSCENE_RUN_DIR || 'not set'})`);
+        return res.status(404).send(`Report "${reportName}" not found. Checked path: ${reportPath}`);
       }
       
       // Set appropriate headers for file download
@@ -77,11 +78,12 @@ export function setupReportServing(app) {
         return res.status(400).send('Invalid report name');
       }
       // Look for report in nexus_run/report directory
-      const reportPath = path.join(process.cwd(), 'nexus_run', 'report', reportName);
+      const baseDir = process.env.MIDSCENE_RUN_DIR || process.cwd();
+      const reportPath = path.join(baseDir, 'report', reportName);
       const reportFound = fs.existsSync(reportPath);
       if (!reportFound) {
-        console.warn(`[ReportServer] Report not found at: ${reportPath}`);
-        return res.status(404).send(`Report "${reportName}" not found.`);
+        console.warn(`[ReportServer] Report not found at: ${reportPath} (cwd: ${process.cwd()}, MIDSCENE_RUN_DIR: ${process.env.MIDSCENE_RUN_DIR || 'not set'})`);
+        return res.status(404).send(`Report "${reportName}" not found. Checked path: ${reportPath}`);
       }
       // Set security headers (CSP is now handled in server.js)
       res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -142,12 +144,13 @@ export function setupReportServing(app) {
       }
 
       // Look for the report in nexus_run/report directory
-      const reportPath = path.join(process.cwd(), 'nexus_run', 'report', reportName);
+      const baseDir = process.env.MIDSCENE_RUN_DIR || process.cwd();
+      const reportPath = path.join(baseDir, 'report', reportName);
       const reportFound = fs.existsSync(reportPath);
 
       if (!reportFound) {
-        console.warn(`[ReportServer] Raw report not found at: ${reportPath}`);
-        return res.status(404).send(`Raw report "${reportName}" not found.`);
+        console.warn(`[ReportServer] Raw report not found at: ${reportPath} (cwd: ${process.cwd()}, MIDSCENE_RUN_DIR: ${process.env.MIDSCENE_RUN_DIR || 'not set'})`);
+        return res.status(404).send(`Raw report "${reportName}" not found. Checked path: ${reportPath}`);
       }
 
       // Set security headers (CSP is now handled in server.js)
