@@ -3,6 +3,11 @@ import fs from 'fs';
 import path from 'path';
 import express from 'express';
 import { styleRawReport } from './reportGenerator.js';
+import { fileURLToPath } from 'url';
+
+// Get the current directory name in ES module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Cache to store processed reports for quick serving
@@ -30,6 +35,43 @@ function getWithTTL(key) {
 }
 
 /**
+ * Find a report file in the standard locations
+ * @param {string} reportName - Name of the report file to find
+ * @returns {{found: boolean, path: string, error: string|null}}
+ */
+function locateReportFile(reportName) {
+  // Validate report name to prevent directory traversal
+  if (!/^[a-zA-Z0-9_.\-]+\.html$/.test(reportName)) {
+    return { found: false, path: '', error: 'Invalid report name' };
+  }
+
+  // Try to find the report in standard locations
+  const possibleLocations = [
+    // Production location
+    path.join(process.cwd(), 'nexus_run', 'report', reportName),
+    // Fallback location
+    path.join(process.cwd(), 'midscene_run', 'report', reportName),
+    // Development location (relative to this file)
+    path.join(__dirname, '..', '..', 'nexus_run', 'report', reportName),
+    path.join(__dirname, '..', '..', 'midscene_run', 'report', reportName),
+  ];
+
+  // Check each location
+  for (const location of possibleLocations) {
+    try {
+      if (fs.existsSync(location)) {
+        console.log(`[ReportServer] Found report at: ${location}`);
+        return { found: true, path: location, error: null };
+      }
+    } catch (error) {
+      console.warn(`[ReportServer] Error checking location ${location}:`, error.message);
+    }
+  }
+
+  return { found: false, path: '', error: 'Report not found' };
+}
+
+/**
  * Set up report serving middleware that bypasses Vite HTML parsing
  * @param {Object} app - Express app instance
  */
@@ -38,53 +80,86 @@ export function setupReportServing(app) {
   app.get('/download-report/:reportName', async (req, res, next) => {
     try {
       const { reportName } = req.params;
-      // Validate report name to prevent directory traversal
-      if (!/^[a-zA-Z0-9_.\-]+\.html$/.test(reportName)) {
-        console.warn(`[ReportServer] Invalid report name attempted for download: ${reportName}`);
-        return res.status(400).send('Invalid report name');
-      }
+      console.log(`[ReportServer] Download request for: ${reportName}`);
       
-      // Look for report in nexus_run/report directory - using same pattern as external-report
-      const baseDir = process.env.MIDSCENE_RUN_DIR || process.cwd();
-      const reportPath = path.join(baseDir, 'report', reportName);
-      const reportFound = fs.existsSync(reportPath);
+      // Find the report file
+      const { found, path: reportPath, error } = locateReportFile(reportName);
       
-      if (!reportFound) {
-        console.warn(`[ReportServer] Download report not found at: ${reportPath} (cwd: ${process.cwd()}, MIDSCENE_RUN_DIR: ${process.env.MIDSCENE_RUN_DIR || 'not set'})`);
-        return res.status(404).send(`Report "${reportName}" not found. Checked path: ${reportPath}`);
+      if (!found) {
+        console.warn(`[ReportServer] Report not found for download: ${reportName} - ${error}`);
+        return res.status(404).json({
+          success: false,
+          error: `Report "${reportName}" not found. Please check the report name and try again.`
+        });
       }
       
       // Set appropriate headers for file download
       res.setHeader('Content-Disposition', `attachment; filename="${reportName}"`);
       res.setHeader('Content-Type', 'text/html');
+      res.setHeader('Cache-Control', 'no-store');
+      
+      console.log(`[ReportServer] Serving report for download: ${reportPath}`);
       
       // Stream the file directly to the client
       const fileStream = fs.createReadStream(reportPath);
+      
+      // Handle stream errors
+      fileStream.on('error', (error) => {
+        console.error(`[ReportServer] Stream error for ${reportName}:`, error.message);
+        if (!res.headersSent) {
+          res.status(500).json({
+            success: false,
+            error: `Error reading report: ${error.message}`
+          });
+        }
+      });
+      
       fileStream.pipe(res);
+      
     } catch (error) {
-      console.error(`[ReportServer] Error downloading report: ${error.message}`);
-      res.status(500).send(`Error downloading report: ${error.message}`);
+      console.error(`[ReportServer] Error in download handler:`, error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          error: `Internal server error: ${error.message}`
+        });
+      }
     }
   });
   
   // Route for processed/external reports
-  // Single robust /external-report/:reportName route
   app.get('/external-report/:reportName', async (req, res, next) => {
     try {
       const { reportName } = req.params;
-      // Validate report name to prevent directory traversal
-      if (!/^[a-zA-Z0-9_.\-]+\.html$/.test(reportName)) {
-        console.warn(`[ReportServer] Invalid report name attempted: ${reportName}`);
-        return res.status(400).send('Invalid report name');
+      console.log(`[ReportServer] External report request for: ${reportName}`);
+      
+      // Find the report file using our shared locator
+      const { found, path: reportPath, error } = locateReportFile(reportName);
+      
+      if (!found) {
+        console.warn(`[ReportServer] Report not found: ${reportName} - ${error}`);
+        return res.status(404).send(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Report Not Found</title>
+            <style>
+              body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+              h1 { color: #dc3545; }
+              .container { max-width: 600px; margin: 0 auto; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>Report Not Found</h1>
+              <p>The report "${reportName}" could not be found.</p>
+              <p>${error || 'Please check the report name and try again.'}</p>
+            </div>
+          </body>
+          </html>
+        `);
       }
-      // Look for report in nexus_run/report directory
-      const baseDir = process.env.MIDSCENE_RUN_DIR || process.cwd();
-      const reportPath = path.join(baseDir, 'report', reportName);
-      const reportFound = fs.existsSync(reportPath);
-      if (!reportFound) {
-        console.warn(`[ReportServer] Report not found at: ${reportPath} (cwd: ${process.cwd()}, MIDSCENE_RUN_DIR: ${process.env.MIDSCENE_RUN_DIR || 'not set'})`);
-        return res.status(404).send(`Report "${reportName}" not found. Checked path: ${reportPath}`);
-      }
+      
       // Set security headers (CSP is now handled in server.js)
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('X-Frame-Options', 'SAMEORIGIN');
@@ -143,14 +218,23 @@ export function setupReportServing(app) {
         return res.status(400).send('Invalid report name');
       }
 
-      // Look for the report in nexus_run/report directory - using same pattern as external-report
-      const baseDir = process.env.MIDSCENE_RUN_DIR || process.cwd();
-      const reportPath = path.join(baseDir, 'report', reportName);
-      const reportFound = fs.existsSync(reportPath);
+      // Look for the report in nexus_run/report directory
+      let reportPath = path.join(process.cwd(), 'nexus_run', 'report', reportName);
+      let reportFound = fs.existsSync(reportPath);
 
       if (!reportFound) {
-        console.warn(`[ReportServer] Raw report not found at: ${reportPath} (cwd: ${process.cwd()}, MIDSCENE_RUN_DIR: ${process.env.MIDSCENE_RUN_DIR || 'not set'})`);
-        return res.status(404).send(`Raw report "${reportName}" not found. Checked path: ${reportPath}`);
+        // Fallback to midscene_run directory
+        const fallbackPath = path.join(process.cwd(), 'midscene_run', 'report', reportName);
+        if (fs.existsSync(fallbackPath)) {
+          reportPath = fallbackPath;
+          reportFound = true;
+          console.log(`[ReportServer] Found raw report in fallback location: ${fallbackPath}`);
+        }
+      }
+
+      if (!reportFound) {
+        console.warn(`[ReportServer] Raw report not found: ${reportName}`);
+        return res.status(404).send(`Raw report "${reportName}" not found. Please check the report name and try again.`);
       }
 
       // Set security headers (CSP is now handled in server.js)
