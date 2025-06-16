@@ -4,43 +4,8 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { visualizer } from 'rollup-plugin-visualizer';
-import { mkdirSync, writeFileSync } from 'fs';
-
-// Plugin to inject environment variables into HTML
-function injectEnvPlugin() {
-  return {
-    name: 'inject-env',
-    transformIndexHtml(html, { env = {} }) {
-      // Get all environment variables that start with VITE_ or are specifically needed
-      const envVars = {};
-      for (const [key, value] of Object.entries(env)) {
-        if (key.startsWith('VITE_') || ['MODE', 'PROD', 'DEV'].includes(key)) {
-          envVars[key] = value;
-        }
-      }
-
-      // Inject environment variables as a script tag
-      const envScript = `
-        <script>
-          // Injected environment variables
-          window.ENV = ${JSON.stringify(envVars, null, 2)};
-          
-          // Debug logging
-          console.log('[ENV] Injected environment variables:', window.ENV);
-        </script>
-      `;
-      
-      // Inject before the closing head tag
-      if (html.includes('</head>')) {
-        return html.replace('</head>', `${envScript}\n</head>`);
-      }
-      
-      // Fallback: inject at the end of the body if no head tag found
-      console.warn('No </head> tag found in HTML, injecting at end of body');
-      return html.replace('</body>', `${envScript}\n</body>`);
-    }
-  };
-}
+import fs from 'fs';
+import { writeFileSync, mkdirSync } from 'fs';
 
 // Plugin to copy auth and events utilities to assets
 function copyUtilsPlugin() {
@@ -76,12 +41,6 @@ function copyUtilsPlugin() {
         }
       `;
       
-      // Write auth.js
-      writeFileSync(
-        path.join(assetsDir, 'auth.js'),
-        authContent.trim()
-      );
-      
       // Copy events.js
       const eventsContent = `
         // Simple event bus
@@ -103,22 +62,20 @@ function copyUtilsPlugin() {
           
           emit(event, data) {
             if (!events.has(event)) return;
-            for (const callback of events.get(event)) {
+            events.get(event).forEach(cb => {
               try {
-                callback(data);
+                cb(data);
               } catch (e) {
-                console.error('Error in event handler:', e);
+                console.error('Event handler error:', e);
               }
-            }
+            });
           }
         };
       `;
       
-      // Write events.js
-      writeFileSync(
-        path.join(assetsDir, 'events.js'),
-        eventsContent.trim()
-      );
+      // Write files
+      writeFileSync(path.join(assetsDir, 'auth.js'), authContent);
+      writeFileSync(path.join(assetsDir, 'events.js'), eventsContent);
     }
   };
 }
@@ -127,10 +84,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default defineConfig(({ mode }) => {
-  // Load environment variables
+  // load .env and system env
   const env = {
     ...process.env,
-    ...loadEnv(mode, process.cwd(), '')
+    ...loadEnv(mode, process.cwd(), ''),
   };
   
   const isDev = mode === 'development';
@@ -138,76 +95,205 @@ export default defineConfig(({ mode }) => {
   const isProduction = mode === 'production';
 
   // Network configuration
-  const host = '0.0.0.0';
-  const hmrHost = 'localhost';
+  const host = '0.0.0.0';  // Keep this as 0.0.0.0 for development
+  const hmrHost = 'localhost';  // Keep HMR on localhost for reliability
   const protocol = isProduction ? 'https' : 'http';
   const wsProtocol = isProduction ? 'wss' : 'ws';
 
   // Base URL configuration
   const appDomain = env.VITE_APP_DOMAIN || 'localhost';
-  const port = 3000;
+  const port = 3000;  // Explicitly set Vite's port
 
-  // API and WebSocket URLs
+  // API and WebSocket URLs - simplified
   const apiUrl = env.VITE_API_URL || (isDev ? 'http://localhost:3420' : `${protocol}://${appDomain}`);
   const wsUrl = env.VITE_WS_URL || (isDev ? 'ws://localhost:3420' : `${wsProtocol}://${appDomain}/ws`);
-  
+        
   // Define global constants for the client
   const define = {
     'process.env.NODE_ENV': JSON.stringify(mode),
-    'process.env.VITE_API_URL': JSON.stringify(apiUrl),
-    'process.env.VITE_WS_URL': JSON.stringify(wsUrl),
-    'process.env.FRONTEND_URL': JSON.stringify(env.FRONTEND_URL || ''),
-    'process.env.APP_DOMAIN': JSON.stringify(env.APP_DOMAIN || ''),
+    'import.meta.env.MODE': JSON.stringify(mode),
+    'import.meta.env.DEV': isDev,
+    'import.meta.env.PROD': !isDev,
+    'import.meta.env.VITE_API_URL': JSON.stringify(apiUrl),
+    'import.meta.env.VITE_WS_URL': JSON.stringify(wsUrl),
+    'import.meta.env.VITE_APP_DOMAIN': JSON.stringify(env.VITE_APP_DOMAIN || 'operator-io236.ondigitalocean.app'),
   };
 
-  return {
-    plugins: [
-      react(),
-      injectEnvPlugin(),
-      copyUtilsPlugin(),
-      visualizer({
-        open: isDev,
-        gzipSize: true,
-        brotliSize: true,
-      }),
-      {
-        name: 'configure-server',
-        configureServer(server) {
-          server.middlewares.use((req, res, next) => {
-            res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-            res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
-            next();
-          });
-        }
+  // debug dump
+  if (isDev || env.DEBUG === 'true') {
+    const info = { mode, isDev, isDocker, host, hmrHost, apiUrl, wsUrl };
+    console.log('vite env:', JSON.stringify(info, null, 2));
+    if (isDev) {
+      try {
+        fs.writeFileSync('vite-debug-env.json', JSON.stringify(info, null, 2));
+      } catch (e) {
+        console.warn('could not write debug file:', e.message);
       }
-    ],
-    
-    define,
-    
+    }
+  }
+
+  process.env.NODE_ENV = mode;
+
+  return {
+    root: __dirname,
+    publicDir: 'public',
+    base: '/',
+    logLevel: 'warn',
     server: {
-      host: true,
-      port: 3000,
+      host,
+      port,
       strictPort: true,
-      hmr: {
-        host: hmrHost,
-        protocol: wsProtocol,
-        port: 3000,
+      open: !isDocker,
+      cors: {
+        origin: true,
+        methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+        preflightContinue: false,
+        optionsSuccessStatus: 204,
+        credentials: true,
+        allowedHeaders: [
+          'Content-Type',
+          'Authorization',
+          'X-Requested-With',
+          'Accept',
+          'Origin',
+          'X-CSRF-Token',
+          'X-Socket-ID',
+        ],
       },
-      proxy: {
-        '/api': {
-          target: apiUrl,
-          changeOrigin: true,
-          secure: false,
-          ws: true,
+      hmr: {
+        protocol: 'ws',
+        host:    hmrHost,
+        port:    24678,
+        clientPort: isDocker ? 80 : 24678,
+        path:    '/__vite_ws',
+        timeout: 60000,
+        overlay: true,
+        reconnectTries:    5,
+        reconnectInterval: 1000,
+        onError:   (err) => console.error('WebSocket HMR Error:', err),
+        onClose:   ()   => console.log('WebSocket HMR connection closed'),
+      },
+      errorOverlay: {
+        showSource:     true,
+        showLinkToFile: true,
+        position: 'top',
+        message:  'An error occurred',
+        style: {
+          fontSize:   '14px',
+          padding:    '10px',
+          fontWeight: 'bold',
+          background: 'rgba(255, 0, 0, 0.1)',
+          border:     '1px solid rgba(255, 0, 0, 0.2)',
         },
       },
+      watch: {
+        usePolling:     true,
+        interval:       100,
+        binaryInterval: 300,
+        ignored: [
+          '**/node_modules/**',
+          '**/.git/**',
+          '**/.next/**',
+          '**/dist/**',
+          '**/build/**',
+          '**/nexus_run/**',
+          '**/midscene_run/**',
+          '**/cypress/**',
+          '**/coverage/**',
+          '**/logs/**',
+          '**/temp/**',
+          '**/tmp/**',
+          '**/.cache/**',
+          '**/.vscode/**',
+          '**/.idea/**',
+          '**/test-results/**',
+          '**/test-results-dev/**',
+        ],
+      },
+      proxy: {
+        '/ws': {
+          target:      wsUrl,
+          ws:          true,
+          changeOrigin:true,
+          secure:      false,
+          xfwd:        true,
+          logLevel:    'debug',
+          rewrite:     p => p.replace(/^\/ws/, ''),
+        },
+        '/api': {
+          target:       apiUrl,
+          changeOrigin: true,
+          secure:       false,
+          ws:           true,
+          xfwd:         true,
+          logLevel:     'debug',
+          headers: {
+            'Access-Control-Allow-Origin':  '*',
+            'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
+            'Access-Control-Allow-Headers': 'X-Requested-With,content-type,Authorization',
+          },
+          rewrite: p => p.replace(/^\/api/, ''),
+        },
+        '/uploads': {
+          target:       apiUrl,
+          changeOrigin: true,
+          secure:       false,
+          xfwd:         true,
+          logLevel:     'debug',
+          rewrite:      p => p.replace(/^\/uploads/, '/uploads'),
+        },
+        '/nexus_run': {
+          target:       apiUrl,
+          changeOrigin: true,
+          secure:       false,
+          xfwd:         true,
+          logLevel:     'debug',
+          rewrite:      p => p.replace(/^\/nexus_run/, '/nexus_run'),
+        },
+        '/external-report': {
+          target:       apiUrl,
+          changeOrigin: true,
+          secure:       false,
+          xfwd:         true,
+          logLevel:     'debug',
+          rewrite:      p => p.replace(/^\/external-report/, '/external-report'),
+        },
+      },
+      onError: (err, req, res, next) => {
+        console.error('Vite Dev Server Error:', err);
+        next(err);
+      },
+      ws: {
+        reconnect:      { retries: 3, delay: 1000 },
+        clientTracking: true,
+      },
+      sourcemapIgnoreList: () => true,
+      fs: {
+        strict: false,
+        allow: [
+          process.cwd(),
+          path.join(process.cwd(), 'src'),
+          path.join(process.cwd(), 'public'),
+          path.join(process.cwd(), 'node_modules'),
+          path.join(__dirname, 'public'),
+          path.join(__dirname, 'node_modules'),
+          path.join(__dirname, 'bruno_demo_temp'),
+        ],
+        deny: [
+          '**/node_modules/.vite',
+          '**/.git',
+          '**/nexus_run/report/**',
+          '**/midscene_run/report/**',
+        ],
+      },
+      headers: {
+        'Cross-Origin-Opener-Policy':   'same-origin',
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+        'Cross-Origin-Resource-Policy': 'cross-origin',
+      },
     },
-    
-    preview: {
-      port: 3000,
-      strictPort: true,
-    },
-    
+
+    // Build configuration to copy the entire src/styles directory to dist/css
     build: {
       outDir: 'dist',
       assetsDir: 'assets',
@@ -217,11 +303,15 @@ export default defineConfig(({ mode }) => {
       target: 'esnext',
       cssCodeSplit: true,
       
+      // Copy all files from src/styles to dist/css
       rollupOptions: {
         input: path.resolve(__dirname, 'index.html'),
         output: {
+          // JavaScript files
           entryFileNames: 'assets/js/[name]-[hash].js',
           chunkFileNames: 'assets/js/[name]-[hash].js',
+          
+          // Asset file naming
           assetFileNames: (assetInfo) => {
             const name = assetInfo.name || '';
             const ext = name.split('.').pop() || '';
@@ -229,9 +319,9 @@ export default defineConfig(({ mode }) => {
             // Handle CSS files - ensure consistent paths for components
             if (ext === 'css') {
               if (name.includes('src/styles/components/')) {
-                return 'css/components/[name][extname]';
+                return name.replace('src/styles/', 'css/');
               } else if (name.includes('src/styles/')) {
-                return 'css/[name][extname]';
+                return name.replace('src/styles/', 'css/');
               }
             }
             
@@ -239,23 +329,64 @@ export default defineConfig(({ mode }) => {
             return 'assets/[name]-[hash][extname]';
           }
         },
+        plugins: [
+          // Plugin to ensure all files from src/styles are included
+          {
+            name: 'copy-styles',
+            async generateBundle() {
+              const fs = await import('fs/promises');
+              const path = await import('path');
+              const { glob } = await import('glob');
+              
+              // Find all files in src/styles
+              const files = await glob('src/styles/**/*', { nodir: true });
+              
+              // Specific CSS files that need to be in the root css/ directory
+              const specificFiles = [
+                'src/styles/components/settings-advanced.css',
+                'src/styles/components/settings-modal-enhancements.css'
+              ];
+              
+              // Process all files
+              for (const file of [...files, ...specificFiles]) {
+                try {
+                  const content = await fs.readFile(file, 'utf-8');
+                  const fileName = path.basename(file);
+                  
+                  // Only process CSS files that don't start with _ (Sass partials)
+                  if (!file.endsWith('.css') || path.basename(file).startsWith('_')) {
+                    continue;
+                  }
+                  
+                  // Determine output path based on file location
+                  let outputPath;
+                  if (specificFiles.includes(file)) {
+                    // Specific files go to root css/ directory
+                    outputPath = `css/${fileName}`;
+                  } else if (file.includes('src/styles/components/')) {
+                    // Component CSS goes to components subdirectory
+                    outputPath = `css/components/${fileName}`;
+                  } else {
+                    // Other CSS files go to root css/ directory
+                    outputPath = `css/${fileName}`;
+                  }
+                  
+                  // Add file to the bundle
+                  this.emitFile({
+                    type: 'asset',
+                    fileName: outputPath,
+                    source: content
+                  });
+                } catch (error) {
+                  console.warn(`[vite:copy-styles] Could not process ${file}:`, error.message);
+                }
+              }
+            }
+          }
+        ]
       },
     },
-    
-    resolve: {
-      extensions: ['.js', '.jsx', '.ts', '.tsx', '.json', '.css'],
-      alias: {
-        '@': path.resolve(__dirname, 'src'),
-        '@components': path.resolve(__dirname, 'src/components'),
-        '@store': path.resolve(__dirname, 'src/store'),
-        '/models': path.resolve(__dirname, 'public/models'),
-        '/assets': path.resolve(__dirname, 'public/assets'),
-        '/draco': path.resolve(__dirname, 'public/draco'),
-        '@styles': path.resolve(__dirname, 'src/styles'),
-        '@styles/components': path.resolve(__dirname, 'src/styles/components'),
-      },
-    },
-    
+
     optimizeDeps: {
       include: [
         'react', 'react-dom', 'react-router-dom',
@@ -268,5 +399,43 @@ export default defineConfig(({ mode }) => {
         target: 'es2020',
       },
     },
+
+    resolve: {
+      extensions: ['.js','.jsx','.ts','.tsx','.json','.css'],
+      alias: {
+        '@'                                   : path.resolve(__dirname, 'src'),
+        '@components'                         : path.resolve(__dirname, 'src/components'),
+        '@store'                              : path.resolve(__dirname, 'src/store'),
+        '/models'                             : path.resolve(__dirname, 'public/models'),
+        '/assets'                             : path.resolve(__dirname, 'public/assets'),
+        '/draco'                              : path.resolve(__dirname, 'public/draco'),
+        '@floating-ui/react'                  : path.resolve(__dirname, 'node_modules/@floating-ui/react'),
+        '@fortawesome/fontawesome-free/webfonts': path.resolve(__dirname, 'node_modules/@fortawesome/fontawesome-free/webfonts'),
+        '@floating-ui/react-dom'              : path.resolve(__dirname, 'node_modules/@floating-ui/react-dom'),
+        '@styles'                            : path.resolve(__dirname, 'src/styles'),
+        '@styles/components'                 : path.resolve(__dirname, 'src/styles/components'),
+      },
+      dedupe: [
+        'react', 'react-dom',
+        'three', '@mantine/core', '@mantine/hooks', '@mantine/notifications',
+      ],
+    },
+
+    define: {
+      'process.env.NODE_ENV' : JSON.stringify(mode),
+      'process.env.VITE_API_URL': JSON.stringify(apiUrl),
+      'process.env.VITE_WS_URL' : JSON.stringify(wsUrl),
+      'process.env.FRONTEND_URL': JSON.stringify(env.FRONTEND_URL || ''),
+      'process.env.APP_DOMAIN' : JSON.stringify(env.APP_DOMAIN || ''),
+    },
+    plugins: [
+      react({ fastRefresh: true }),
+      copyUtilsPlugin(),
+      visualizer({
+        open: isDev,
+        gzipSize: true,
+        brotliSize: true,
+      }),
+    ],
   };
 });

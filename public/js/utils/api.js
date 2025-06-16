@@ -4,26 +4,41 @@
  */
 
 // Configuration for API requests
-const isProduction = import.meta.env.PROD;
-const isLocalhost = window.location.hostname === 'localhost' || 
-                   window.location.hostname === '127.0.0.1';
+const isBrowser = typeof window !== 'undefined';
+const isLocalhost = isBrowser && (window.location.hostname === 'localhost' || 
+                                window.location.hostname === '127.0.0.1');
+
+// Get environment from Vite or fall back to window.ENV (set in index.html)
+const env = {
+  MODE: typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.MODE : 
+       (isBrowser && window.ENV ? window.ENV.MODE : 'production'),
+  PROD: typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.PROD : 
+       (isBrowser && window.ENV ? window.ENV.PROD : true),
+  VITE_API_URL: typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_API_URL : 
+               (isBrowser && window.ENV ? window.ENV.VITE_API_URL : '')
+};
+
+const isProduction = env.PROD;
 
 // Debug logging for environment
-console.log('[API Config]', {
-  env: import.meta.env.MODE,
-  isProduction,
-  isLocalhost,
-  hostname: window.location.hostname,
-  port: window.location.port,
-  VITE_API_URL: import.meta.env.VITE_API_URL
-});
+if (isBrowser) {
+  console.log('[API Config]', {
+    env: env.MODE,
+    isProduction,
+    isLocalhost,
+    hostname: window.location.hostname,
+    port: window.location.port,
+    VITE_API_URL: env.VITE_API_URL,
+    envSource: typeof import.meta !== 'undefined' ? 'vite' : 'window.ENV'
+  });
+}
 
 // Determine the base API URL
 let API_BASE = '';
 
 // 1. Check for explicit API URL from environment first
-if (import.meta.env.VITE_API_URL) {
-  API_BASE = import.meta.env.VITE_API_URL;
+if (env.VITE_API_URL) {
+  API_BASE = env.VITE_API_URL;
   console.log('[API] Using VITE_API_URL from environment:', API_BASE);
 } 
 // 2. For local development
@@ -34,9 +49,15 @@ else if (isLocalhost) {
   console.log('[API] Using local development URL:', API_BASE);
 } 
 // 3. For production
-else {
+else if (isBrowser) {
   API_BASE = window.location.origin;
   console.log('[API] Using production URL:', API_BASE);
+}
+
+// Fallback if nothing else worked
+if (!API_BASE && isBrowser) {
+  API_BASE = window.location.origin;
+  console.warn('[API] Using fallback URL:', API_BASE);
 }
 
 // Ensure API_BASE doesn't have a trailing slash
