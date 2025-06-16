@@ -2392,19 +2392,17 @@ async function getPuppeteerLaunchOptions() {
   
   try {
     if (isProduction) {
-      // In production, use the path from environment variable or default path
+      // In production, prioritize the path from environment variables
       const possiblePaths = [
-        process.env.CHROME_BIN,                  // From Dockerfile ENV
-        process.env.PUPPETEER_EXECUTABLE_PATH,   // Explicit override
-        '/usr/bin/chromium-browser',             // Debian/Ubuntu
-        '/usr/bin/chromium',                     // Other distros
-        '/usr/bin/google-chrome-stable'          // Google Chrome
+        process.env.PUPPETEER_EXECUTABLE_PATH,   // Explicit override first
+        process.env.CHROME_BIN,                  // Then Dockerfile ENV
+        '/usr/bin/chromium',                     // Standard Debian/Ubuntu
+        '/usr/bin/chromium-browser',             // Alternative path
+        '/usr/bin/google-chrome-stable'          // Fallback to Chrome
       ].filter(Boolean);
       
-      // Add fallback to Puppeteer's bundled Chromium last
-      possiblePaths.push(await puppeteer.executablePath());
-      
       // Try each path until we find one that exists
+      let foundPath = false;
       for (const execPath of possiblePaths) {
         if (!execPath) continue;
         
@@ -2412,6 +2410,21 @@ async function getPuppeteerLaunchOptions() {
           if (fs.existsSync(execPath)) {
             launchOptions.executablePath = execPath;
             console.log(`[Production] Using Chromium at: ${execPath}`);
+            foundPath = true;
+            break;
+          } else {
+            console.log(`[Production] Path not found: ${execPath}`);
+          }
+        } catch (err) {
+          console.error(`[Production] Error checking path ${execPath}:`, err);
+        }
+      }
+      
+      if (!foundPath) {
+        console.warn('[Production] No valid Chromium path found in environment variables or default locations');
+        console.warn('Falling back to Puppeteer\'s bundled Chromium');
+        launchOptions.executablePath = await puppeteer.executablePath();
+      }
             
             // Production-specific settings
             launchOptions.dumpio = true; // Enable for debugging

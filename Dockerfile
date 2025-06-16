@@ -199,6 +199,11 @@ ENV CHROME_BIN=/usr/bin/chromium \
     CHROME_REMOTE_DEBUGGING_PORT=9222 \
     CHROME_REMOTE_DEBUGGING_ADDRESS=0.0.0.0
 
+# Create necessary directories and set permissions
+RUN mkdir -p /tmp/chrome-user-data /tmp/chrome /home/node/.cache/puppeteer/chrome/linux-* \
+    && chmod -R 777 /tmp/chrome-user-data /tmp/chrome /home/node/.cache/puppeteer \
+    && chown -R node:node /tmp/chrome-user-data /tmp/chrome /home/node/.cache/puppeteer
+
 # Install production dependencies only
 COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/package*.json ./
