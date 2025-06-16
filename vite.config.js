@@ -11,19 +11,33 @@ function injectEnvPlugin() {
   return {
     name: 'inject-env',
     transformIndexHtml(html, { env = {} }) {
+      // Get all environment variables that start with VITE_ or are specifically needed
+      const envVars = {};
+      for (const [key, value] of Object.entries(env)) {
+        if (key.startsWith('VITE_') || ['MODE', 'PROD', 'DEV'].includes(key)) {
+          envVars[key] = value;
+        }
+      }
+
       // Inject environment variables as a script tag
       const envScript = `
         <script>
           // Injected environment variables
-          window.ENV = {
-            VITE_API_URL: ${JSON.stringify(env.VITE_API_URL || '')},
-            VITE_WS_URL: ${JSON.stringify(env.VITE_WS_URL || '')},
-            VITE_APP_DOMAIN: ${JSON.stringify(env.VITE_APP_DOMAIN || '')},
-            MODE: ${JSON.stringify(env.MODE || 'development')}
-          };
+          window.ENV = ${JSON.stringify(envVars, null, 2)};
+          
+          // Debug logging
+          console.log('[ENV] Injected environment variables:', window.ENV);
         </script>
       `;
-      return html.replace('</head>', `${envScript}\n</head>`);
+      
+      // Inject before the closing head tag
+      if (html.includes('</head>')) {
+        return html.replace('</head>', `${envScript}\n</head>`);
+      }
+      
+      // Fallback: inject at the end of the body if no head tag found
+      console.warn('No </head> tag found in HTML, injecting at end of body');
+      return html.replace('</body>', `${envScript}\n</body>`);
     }
   };
 }
