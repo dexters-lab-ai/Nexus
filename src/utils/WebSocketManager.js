@@ -897,11 +897,21 @@ class WebSocketManager {
     return this.connectionState === connectionStates.CONNECTED && 
            this.ws?.readyState === WebSocket.OPEN;
   }
+
+  /**
+   * Get the singleton instance of WebSocketManager
+   * @returns {WebSocketManager} The singleton instance
+   */
+  static getInstance() {
+    if (!WebSocketManager.instance) {
+      WebSocketManager.instance = new WebSocketManager();
+    }
+    return WebSocketManager.instance;
+  }
 }
 
 // Export the class for named imports
 export { WebSocketManager };
 
 // Also export a singleton instance as default
-const webSocketManager = new WebSocketManager();
-export default webSocketManager;
+export default WebSocketManager.getInstance();
