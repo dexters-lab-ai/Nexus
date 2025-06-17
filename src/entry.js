@@ -112,33 +112,12 @@ eventBus.once('initialize-application', async () => {
     // Initialize WebSocket with user context
     const isAuthenticated = !userId.startsWith('guest_');
     try {
-      // Import the WebSocketManager singleton instance
-      const wsManager = (await import('./utils/WebSocketManager.js')).default;
-      
-      // Initialize with user context
-      await wsManager.initialize({
+      const WebSocketManager = (await import('./utils/WebSocketManager.js')).default;
+      await WebSocketManager.initialize({
         userId,
-        isAuthenticated,
-        autoReconnect: true,
-        reconnectAttempts: 10,
-        reconnectDelay: 1000
+        isAuthenticated
       });
-      
-      console.log('WebSocket initialized with user:', { 
-        userId, 
-        isAuthenticated,
-        timestamp: new Date().toISOString() 
-      });
-      
-      // Listen for session expiration
-      wsManager.on('session_expired', () => {
-        console.warn('Session expired, cleaning up...');
-        // Clear any stored session data
-        sessionStorage.removeItem('userId');
-        // Notify the app to handle session expiration
-        eventBus.emit('session-expired');
-      });
-      
+      console.log('WebSocket initialized with user:', { userId, isAuthenticated });
     } catch (error) {
       console.error('Failed to initialize WebSocket:', error);
       // Continue with app initialization even if WebSocket fails

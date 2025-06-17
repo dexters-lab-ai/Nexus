@@ -651,7 +651,7 @@ class WebSocketManager {
         : window.location.origin;
       
       this.log('Validating session...');
-      const response = await fetch(`${apiBase}/api/auth/validate-session`, {
+      const response = await fetch(`${apiBase}/api/validate-session`, {
         method: 'GET',
         credentials: 'include',
         headers: {
@@ -670,12 +670,11 @@ class WebSocketManager {
       }
       
       const data = await response.json();
-      this.log('Session validation result:', data);
       return data.valid === true;
     } catch (error) {
       // For network errors or missing endpoints, log but continue
-      this.log('Session validation not available, continuing without it:', error.message);
-      return true; // Default to true to prevent breaking existing connections
+      this.log('Session validation not available, continuing without it');
+      return true;
     }
   }
   
@@ -897,21 +896,11 @@ class WebSocketManager {
     return this.connectionState === connectionStates.CONNECTED && 
            this.ws?.readyState === WebSocket.OPEN;
   }
-
-  /**
-   * Get the singleton instance of WebSocketManager
-   * @returns {WebSocketManager} The singleton instance
-   */
-  static getInstance() {
-    if (!WebSocketManager.instance) {
-      WebSocketManager.instance = new WebSocketManager();
-    }
-    return WebSocketManager.instance;
-  }
 }
 
 // Export the class for named imports
 export { WebSocketManager };
 
 // Also export a singleton instance as default
-export default WebSocketManager.getInstance();
+const webSocketManager = new WebSocketManager();
+export default webSocketManager;

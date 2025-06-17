@@ -26,24 +26,35 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// GET /validate-session - Validate current session
+// GET /api/validate-session - Validate current session
 router.get('/validate-session', async (req, res) => {
   try {
     if (!req.session.user) {
-      return res.json({ valid: false });
+      return res.status(401).json({ valid: false, error: 'No active session' });
     }
     
-    // For guest users, just check if session exists
+    // For guest sessions
     if (typeof req.session.user === 'string' && req.session.user.startsWith('guest_')) {
-      return res.json({ valid: true, isGuest: true });
+      return res.json({ valid: true, isGuest: true, userId: req.session.user });
     }
     
-    // For authenticated users, verify user exists
-    const user = await User.findById(req.session.user).select('_id');
-    return res.json({ valid: !!user });
+    // For authenticated users
+    const user = await User.findById(req.session.user).select('-password');
+    if (!user) {
+      return res.status(401).json({ valid: false, error: 'User not found' });
+    }
+    
+    res.json({ 
+      valid: true, 
+      user: {
+        _id: user._id,
+        email: user.email,
+        isGuest: false
+      }
+    });
   } catch (error) {
     console.error('Session validation error:', error);
-    return res.status(500).json({ valid: false, error: 'Session validation failed' });
+    res.status(500).json({ valid: false, error: 'Internal server error' });
   }
 });
 
