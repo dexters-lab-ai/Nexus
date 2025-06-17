@@ -26,6 +26,27 @@ router.post('/register', async (req, res) => {
   }
 });
 
+// GET /validate-session - Validate current session
+router.get('/validate-session', async (req, res) => {
+  try {
+    if (!req.session.user) {
+      return res.json({ valid: false });
+    }
+    
+    // For guest users, just check if session exists
+    if (typeof req.session.user === 'string' && req.session.user.startsWith('guest_')) {
+      return res.json({ valid: true, isGuest: true });
+    }
+    
+    // For authenticated users, verify user exists
+    const user = await User.findById(req.session.user).select('_id');
+    return res.json({ valid: !!user });
+  } catch (error) {
+    console.error('Session validation error:', error);
+    return res.status(500).json({ valid: false, error: 'Session validation failed' });
+  }
+});
+
 // GET /me - Get current user session info
 router.get('/me', async (req, res) => {
   try {

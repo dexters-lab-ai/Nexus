@@ -4412,7 +4412,7 @@ async function setupNexusEnvironment(userId) {
   
   // Standard configuration across all models
   process.env.MIDSCENE_MAX_STEPS = '20';
-  process.env.MIDSCENE_TIMEOUT = '480000'; // 8 min
+  process.env.MIDSCENE_TIMEOUT = '1800000'; // 30 min
 
   // Configure environment based on selected engine
   switch (preferredEngine) {
@@ -4725,11 +4725,6 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
     await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
     logAction("Set viewport to 1280x720");
 
-    // Handle page obstacles.
-    //logAction("Checking for page obstacles");
-    //const obstacleResults = await handlePageObstacles(page, agent);
-    //logAction("Obstacle check results", obstacleResults);
-
     // Execute action (only for non-navigation commands).
     logAction(`Executing action: "${command}"`);
     await agent.aiAction(command);
@@ -4759,6 +4754,11 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
           logAction("Switched to new page and reinitialized agent");
         }
       }
+      
+      // Handle page obstacles.
+      logAction("Checking for page obstacles");
+      const obstacleResults = await handlePageObstacles(page, agent);
+      logAction("Obstacle check results", obstacleResults);
     }
 
     // Extract rich context (extractedInfo remains separate).
@@ -5980,7 +5980,7 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
                 
                 // Check if we've reached the maximum steps limit (10 steps)
                 // If so, we need to make sure a task_complete is forced if this function call isn't it
-                const MAX_STEPS = 20;
+                const MAX_STEPS = user?.maxSteps;
                 if (plan.steps.length >= MAX_STEPS - 1 && currentFunctionCall.name !== 'task_complete') {
                   plan.log(`WARNING: Reached maximum steps (${MAX_STEPS}). Will force task_complete after this step.`);
                   // Set flag to force task_complete after this function call completes

@@ -636,15 +636,22 @@ class WebSocketManager {
   
   /**
    * Validate the current session with the server
-   * @returns {Promise<boolean>} True if session is valid, false otherwise
+   * @returns {Promise<boolean>} True if session is valid or validation is not available
    */
   async validateSession() {
+    // Skip validation if we're in the middle of reconnecting
+    if (this.isReconnecting) {
+      this.log('Skipping session validation during reconnection');
+      return true;
+    }
+
     try {
       const apiBase = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
         ? `http://${window.location.hostname}:3420`
         : window.location.origin;
       
-      const response = await fetch(`${apiBase}/api/validate-session`, {
+      this.log('Validating session...');
+      const response = await fetch(`${apiBase}/api/auth/validate-session`, {
         method: 'GET',
         credentials: 'include',
         headers: {
@@ -654,14 +661,21 @@ class WebSocketManager {
       });
       
       if (!response.ok) {
+        // If the endpoint doesn't exist (404), treat as validation passed
+        if (response.status === 404) {
+          this.log('Session validation endpoint not found, skipping validation');
+          return true;
+        }
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
       const data = await response.json();
+      this.log('Session validation result:', data);
       return data.valid === true;
     } catch (error) {
-      this.error('Session validation failed:', error);
-      return false;
+      // For network errors or missing endpoints, log but continue
+      this.log('Session validation not available, continuing without it:', error.message);
+      return true; // Default to true to prevent breaking existing connections
     }
   }
   
@@ -670,13 +684,29 @@ class WebSocketManager {
    * @private
    */
   setupSessionCheck() {
+    // Clear any existing interval first
     this.clearSessionCheck();
+    
+    // Skip if we're already reconnecting
+    if (this.isReconnecting) {
+      this.log('Skipping session check setup during reconnection');
+      return;
+    }
+    
+    this.log('Setting up session validation check');
     
     this.sessionCheckInterval = setInterval(async () => {
       try {
+        // Skip if we're reconnecting
+        if (this.isReconnecting) {
+          this.log('Skipping session check - currently reconnecting');
+          return;
+        }
+        
         const now = Date.now();
         // Only check session if we haven't checked recently
         if (now - this.lastSessionCheck > this.config.SESSION_CHECK_INTERVAL) {
+          this.log('Performing session validation check');
           const isValid = await this.validateSession();
           this.lastSessionCheck = now;
           
@@ -688,7 +718,8 @@ class WebSocketManager {
           }
         }
       } catch (error) {
-        this.error('Error during session check:', error);
+        // Don't treat validation errors as fatal
+        this.log('Non-fatal error during session check:', error.message);
       }
     }, this.config.SESSION_CHECK_INTERVAL);
   }
