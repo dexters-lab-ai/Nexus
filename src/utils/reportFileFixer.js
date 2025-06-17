@@ -4,10 +4,23 @@ import path from 'path';
 import express from 'express';
 import { styleRawReport } from './reportGenerator.js';
 import { fileURLToPath } from 'url';
+import { promisify } from 'util';
 
 // Get the current directory name in ES module
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Promisify fs functions
+const fsExists = promisify(fs.exists);
+const fsReadFile = promisify(fs.readFile);
+const fsReadDir = promisify(fs.readdir);
+
+// Retry configuration
+const RETRY_ATTEMPTS = 3;
+const RETRY_DELAY = 300; // ms
+
+// Helper function to delay execution
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Cache to store processed reports for quick serving
@@ -35,11 +48,12 @@ function getWithTTL(key) {
 }
 
 /**
- * Find a report file in the standard locations
+ * Find a report file in the standard locations with retry logic
  * @param {string} reportName - Name of the report file to find
- * @returns {{found: boolean, path: string, error: string|null}}
+ * @param {number} [attempt=1] - Current attempt number
+ * @returns {Promise<{found: boolean, path: string, error: string|null}>}
  */
-function locateReportFile(reportName) {
+async function locateReportFile(reportName, attempt = 1) {
   // Validate report name to prevent directory traversal
   if (!/^[a-zA-Z0-9_.\-]+\.html$/.test(reportName)) {
     return { found: false, path: '', error: 'Invalid report name' };
@@ -56,19 +70,48 @@ function locateReportFile(reportName) {
     path.join(__dirname, '..', '..', 'midscene_run', 'report', reportName),
   ];
 
-  // Check each location
-  for (const location of possibleLocations) {
-    try {
-      if (fs.existsSync(location)) {
-        console.log(`[ReportServer] Found report at: ${location}`);
-        return { found: true, path: location, error: null };
+  try {
+    // Check each location with retry logic
+    for (const location of possibleLocations) {
+      try {
+        // Try to access the file with retries
+        let lastError;
+        for (let i = 0; i < RETRY_ATTEMPTS; i++) {
+          try {
+            const exists = await fsExists(location);
+            if (exists) {
+              // Verify the file is readable and not empty
+              const stats = await fs.promises.stat(location);
+              if (stats.size > 0) {
+                console.log(`[ReportServer] Found report at: ${location} (attempt ${i + 1})`);
+                return { found: true, path: location, error: null };
+              } else {
+                console.warn(`[ReportServer] Empty report file at: ${location}`);
+              }
+            }
+            await delay(RETRY_DELAY);
+          } catch (error) {
+            lastError = error;
+            console.warn(`[ReportServer] Attempt ${i + 1} failed for ${location}:`, error.message);
+            if (i < RETRY_ATTEMPTS - 1) {
+              await delay(RETRY_DELAY * (i + 1)); // Exponential backoff
+            }
+          }
+        }
+        
+        if (lastError) {
+          console.warn(`[ReportServer] All attempts failed for ${location}:`, lastError.message);
+        }
+      } catch (error) {
+        console.warn(`[ReportServer] Error checking location ${location}:`, error.message);
       }
-    } catch (error) {
-      console.warn(`[ReportServer] Error checking location ${location}:`, error.message);
     }
+  } catch (error) {
+    console.error(`[ReportServer] Error in locateReportFile:`, error);
+    return { found: false, path: '', error: `Error locating report: ${error.message}` };
   }
 
-  return { found: false, path: '', error: 'Report not found' };
+  return { found: false, path: '', error: 'Report not found after multiple attempts' };
 }
 
 /**
@@ -82,14 +125,14 @@ export function setupReportServing(app) {
       const { reportName } = req.params;
       console.log(`[ReportServer] Download request for: ${reportName}`);
       
-      // Find the report file
-      const { found, path: reportPath, error } = locateReportFile(reportName);
+      // Find the report file with retry logic
+      const { found, path: reportPath, error } = await locateReportFile(reportName);
       
       if (!found) {
         console.warn(`[ReportServer] Report not found for download: ${reportName} - ${error}`);
         return res.status(404).json({
           success: false,
-          error: `Report "${reportName}" not found. Please check the report name and try again.`
+          error: `Report "${reportName}" not found after multiple attempts. Please check the report name and try again.`
         });
       }
       
@@ -133,27 +176,47 @@ export function setupReportServing(app) {
       const { reportName } = req.params;
       console.log(`[ReportServer] External report request for: ${reportName}`);
       
-      // Find the report file using our shared locator
-      const { found, path: reportPath, error } = locateReportFile(reportName);
+      // Find the report file with retry logic
+      const { found, path: reportPath, error } = await locateReportFile(reportName);
       
       if (!found) {
         console.warn(`[ReportServer] Report not found: ${reportName} - ${error}`);
-        return res.status(404).send(`
+        // Set headers to prevent caching of error responses
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.status(404);
+        
+        return res.send(`
           <!DOCTYPE html>
           <html>
           <head>
             <title>Report Not Found</title>
+            <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+            <meta http-equiv="Pragma" content="no-cache">
+            <meta http-equiv="Expires" content="0">
             <style>
               body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
               h1 { color: #dc3545; }
               .container { max-width: 600px; margin: 0 auto; }
+              .retry-btn { 
+                margin-top: 20px; 
+                padding: 10px 20px; 
+                background: #007bff; 
+                color: white; 
+                border: none; 
+                border-radius: 4px; 
+                cursor: pointer;
+              }
+              .retry-btn:hover { background: #0056b3; }
             </style>
           </head>
           <body>
             <div class="container">
               <h1>Report Not Found</h1>
-              <p>The report "${reportName}" could not be found.</p>
-              <p>${error || 'Please check the report name and try again.'}</p>
+              <p>The report "${reportName}" could not be found after multiple attempts.</p>
+              <p>${error || 'The report may not exist or is currently being generated.'}</p>
+              <button class="retry-btn" onclick="window.location.reload(true)">Retry Loading</button>
             </div>
           </body>
           </html>
@@ -166,38 +229,107 @@ export function setupReportServing(app) {
 
       // For HTML, we need to serve it as-is with minimal processing to avoid breaking scripts
       if (reportPath.endsWith('.html')) {
-        // Check if we have a cached version
-        const cachedContent = getWithTTL(reportPath);
-        if (!cachedContent) {
-          console.log(`[ReportServer] Reading and processing report: ${reportPath}`);
-          const content = fs.readFileSync(reportPath, 'utf8');
-
-          // Only rewrite the anchor links, but leave all scripts intact
-          const processed = content.replace(
-            /<a\s+href=(['"])(?:\/?)((?:nexus_run\/report\/|external-report\/|direct-report\/)?[^'"]+)\1([^>]*)>/gi,
-            (match, quote, linkReportName, attrs) => {
-              if (linkReportName.endsWith('.html')) {
-                const baseName = path.basename(linkReportName);
-                const absoluteUrl = `${req.protocol}://${req.get('host')}/external-report/${baseName}`;
-                return `<a href="${absoluteUrl}" target="_blank"${attrs}>`;
+        try {
+          // Check if we have a cached version that's not an error
+          let cachedContent = getWithTTL(reportPath);
+          let shouldCache = true;
+          
+          if (!cachedContent) {
+            console.log(`[ReportServer] Reading and processing report: ${reportPath}`);
+            let content;
+            
+            // Try to read the file with retries
+            for (let i = 0; i < RETRY_ATTEMPTS; i++) {
+              try {
+                content = await fsReadFile(reportPath, 'utf8');
+                // Verify content is valid HTML before proceeding
+                if (!content || content.trim().length === 0) {
+                  throw new Error('Empty file content');
+                }
+                break; // Success, exit retry loop
+              } catch (readError) {
+                if (i === RETRY_ATTEMPTS - 1) throw readError; // Last attempt failed
+                await delay(RETRY_DELAY * (i + 1)); // Wait before retry
               }
-              return match;
             }
-          );
 
-          // Add DOCTYPE if missing
-          const hasDoctype = processed.trim().startsWith('<!DOCTYPE') || processed.trim().startsWith('<!doctype');
-          const finalHtml = hasDoctype ? processed : `<!DOCTYPE html>\n${processed}`;
+            // Only rewrite the anchor links, but leave all scripts intact
+            const processed = content.replace(
+              /<a\s+href=(['"])(?:\/?)((?:nexus_run\/report\/|external-report\/|direct-report\/)?[^'"]+)\1([^>]*)>/gi,
+              (match, quote, linkReportName, attrs) => {
+                if (linkReportName.endsWith('.html')) {
+                  const baseName = path.basename(linkReportName);
+                  const absoluteUrl = `${req.protocol}://${req.get('host')}/external-report/${baseName}`;
+                  return `<a href="${absoluteUrl}" target="_blank"${attrs}>`;
+                }
+                return match;
+              }
+            );
 
-          // Cache the processed HTML with TTL
-          setWithTTL(reportPath, finalHtml);
-        } else {
-          console.log(`[ReportServer] Serving cached report: ${reportPath}`);
+            // Add DOCTYPE if missing
+            const hasDoctype = processed.trim().startsWith('<!DOCTYPE') || processed.trim().startsWith('<!doctype');
+            cachedContent = hasDoctype ? processed : `<!DOCTYPE html>\n${processed}`;
+
+            // Only cache successful responses with valid content
+            if (shouldCache) {
+              console.log(`[ReportServer] Caching processed report: ${reportPath}`);
+              setWithTTL(reportPath, cachedContent);
+            } else {
+              console.log(`[ReportServer] Not caching due to error state: ${reportPath}`);
+            }
+          } else {
+            console.log(`[ReportServer] Serving cached report: ${reportPath}`);
+          }
+
+          // Set appropriate headers to prevent caching of errors
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+          
+          return res.send(cachedContent);
+        } catch (processError) {
+          console.error(`[ReportServer] Error processing report ${reportPath}:`, processError);
+          // Ensure we don't cache error states
+          reportCache.delete(reportPath);
+          
+          // Return error response with retry option
+          res.status(500);
+          return res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>Error Loading Report</title>
+              <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+              <meta http-equiv="Pragma" content="no-cache">
+              <meta http-equiv="Expires" content="0">
+              <style>
+                body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+                h1 { color: #dc3545; }
+                .container { max-width: 600px; margin: 0 auto; }
+                .retry-btn { 
+                  margin-top: 20px; 
+                  padding: 10px 20px; 
+                  background: #007bff; 
+                  color: white; 
+                  border: none; 
+                  border-radius: 4px; 
+                  cursor: pointer;
+                }
+                .retry-btn:hover { background: #0056b3; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <h1>Error Loading Report</h1>
+                <p>There was an error loading the report. Please try again.</p>
+                <p>${processError.message || 'Unknown error'}</p>
+                <button class="retry-btn" onclick="window.location.reload(true)">Retry Loading</button>
+              </div>
+            </body>
+            </html>
+          `);
         }
-
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.setHeader('Cache-Control', 'no-cache');
-        return res.send(getWithTTL(reportPath));
       } else {
         // For non-HTML, just send file
         return res.sendFile(reportPath);
@@ -212,55 +344,60 @@ export function setupReportServing(app) {
   app.get('/raw-report/:reportName', async (req, res, next) => {
     try {
       const { reportName } = req.params;
-      // Validate report name to prevent directory traversal
-      if (!/^[a-zA-Z0-9_.\-]+\.html$/.test(reportName)) {
-        console.warn(`[ReportServer] Invalid raw report name attempted: ${reportName}`);
-        return res.status(400).send('Invalid report name');
+      console.log(`[ReportServer] Raw report request for: ${reportName}`);
+      
+      // Find the report file with retry logic
+      const { found, path: reportPath, error } = await locateReportFile(reportName);
+      
+      if (!found) {
+        console.warn(`[ReportServer] Raw report not found: ${reportName} - ${error}`);
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        return res.status(404).send('Report not found');
       }
-
-      // Look for the report in nexus_run/report directory
-      let reportPath = path.join(process.cwd(), 'nexus_run', 'report', reportName);
-      let reportFound = fs.existsSync(reportPath);
-
-      if (!reportFound) {
-        // Fallback to midscene_run directory
-        const fallbackPath = path.join(process.cwd(), 'midscene_run', 'report', reportName);
-        if (fs.existsSync(fallbackPath)) {
-          reportPath = fallbackPath;
-          reportFound = true;
-          console.log(`[ReportServer] Found raw report in fallback location: ${fallbackPath}`);
-        }
-      }
-
-      if (!reportFound) {
-        console.warn(`[ReportServer] Raw report not found: ${reportName}`);
-        return res.status(404).send(`Raw report "${reportName}" not found. Please check the report name and try again.`);
-      }
-
-      // Set security headers (CSP is now handled in server.js)
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-
-      // Read the file content
-      const rawContent = fs.readFileSync(reportPath, 'utf8');
+      
+      // Set appropriate headers for file download
+      res.setHeader('Content-Disposition', `attachment; filename="${reportName}"`);
+      res.setHeader('Content-Type', 'text/html');
+      res.setHeader('Cache-Control', 'no-store');
+      
+      console.log(`[ReportServer] Serving raw report content directly for: ${reportName}`);
 
       // Detect if content is JSON to apply appropriate styling
       let content;
       try {
-        content = JSON.parse(rawContent);
-        console.log(`[ReportServer] Detected JSON content in raw report: ${reportName}`);
+        content = JSON.parse(await fsReadFile(reportPath, 'utf8'));
       } catch (e) {
-        content = rawContent;
+        content = await fsReadFile(reportPath, 'utf8');
       }
 
-      // Apply futuristic theme styling
-      const styledReport = styleRawReport(content, `Raw Report - ${reportName}`);
-      let finalContent = styledReport;
+      // Set appropriate content type based on file extension
+      const ext = path.extname(reportPath).toLowerCase();
+      const contentType = {
+        '.html': 'text/html',
+        '.json': 'application/json',
+        '.txt': 'text/plain',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.svg': 'image/svg+xml',
+        '.css': 'text/css',
+        '.js': 'application/javascript',
+      }[ext] || 'application/octet-stream';
 
-      // Set proper headers
-      res.removeHeader('X-Frame-Options'); // Allow framing for reports
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      // Set appropriate headers with cache control
+      res.setHeader('Content-Type', contentType);
+      // Only cache successful responses for non-HTML files
+      if (ext !== '.html') {
+        res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+      } else {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
+
       res.setHeader('X-Content-Type-Options', 'nosniff');
 
       console.log(`[ReportServer] Serving raw report content directly for: ${reportName}`);
