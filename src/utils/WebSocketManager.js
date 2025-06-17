@@ -22,6 +22,7 @@ class WebSocketManager {
       MAX_RETRIES: 10,          // Max reconnection attempts
       INITIAL_RETRY_DELAY: 1000, // Start with 1 second
       MAX_RETRY_DELAY: 30000,    // Max 30 seconds between retries
+      SESSION_CHECK_INTERVAL: 30000, // Check session every 30 seconds
       DEBUG: process.env.NODE_ENV !== 'production'
     };
 
@@ -29,13 +30,17 @@ class WebSocketManager {
     this.ws = null;
     this.listeners = new Set();
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
+    this.maxReconnectAttempts = 10; // Increased from 5 to 10
     this.reconnectDelay = 1000; // Start with 1s, will increase exponentially
     this.pingInterval = null;
     this.lastPongTime = null;
     this.connectionId = null;
     this.pingTimeout = null;
     this.isAlive = false;
+    this.isReconnecting = false;
+    this.visibilityChangeHandler = null;
+    this.sessionCheckInterval = null;
+    this.lastSessionCheck = 0;
     
     // User context - Will be set in initialize()
     this.userId = null;
@@ -52,6 +57,7 @@ class WebSocketManager {
     // Expose to window for global access if running in browser
     if (typeof window !== 'undefined') {
       window.WebSocketManager = this;
+      this.setupVisibilityHandlers();
     }
   }
 
@@ -67,43 +73,57 @@ class WebSocketManager {
    * @returns {Promise<void>}
    */
   async initialize({ userId, isAuthenticated = false } = {}) {
-    // Set user context
-    this.userId = userId || `guest_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-    this.isAuthenticated = isAuthenticated;
-    
-    // Generate connection URL with the user ID
-    this.connectionUrl = this.getWebSocketUrl();
-    
-    this.log('Initializing WebSocket with user:', { 
-      userId: this.userId, 
-      isAuthenticated: this.isAuthenticated 
-    });
-    
-    // Check connection state first
-    if (this.connectionState === connectionStates.CONNECTED) {
-      this.log('WebSocket already connected');
-      return Promise.resolve();
-    }
-    
-    if (this.connectionState === connectionStates.CONNECTING) {
-      this.log('WebSocket connection already in progress');
-      return new Promise((resolve) => {
-        // Wait for connection to complete or fail
-        const checkConnection = () => {
-          if (this.connectionState === connectionStates.CONNECTED) {
-            resolve();
-          } else if (this.connectionState === connectionStates.DISCONNECTED) {
-            this.connect().then(resolve).catch(console.error);
-          } else {
-            setTimeout(checkConnection, 100);
-          }
-        };
-        checkConnection();
+    try {
+      // Set user context
+      this.userId = userId || `guest_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+      this.isAuthenticated = isAuthenticated;
+      
+      // Generate connection URL with the user ID
+      this.connectionUrl = this.getWebSocketUrl();
+      
+      this.log('Initializing WebSocket with user:', { 
+        userId: this.userId, 
+        isAuthenticated: this.isAuthenticated 
       });
+      
+      // Check connection state first
+      if (this.connectionState === connectionStates.CONNECTED) {
+        this.log('WebSocket already connected, re-authenticating...');
+        this.sendAuthUpdate();
+        return Promise.resolve();
+      }
+      
+      if (this.connectionState === connectionStates.CONNECTING) {
+        this.log('WebSocket connection already in progress, waiting...');
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Connection timeout'));
+          }, 10000); // 10 second timeout
+          
+          // Wait for connection to complete or fail
+          const checkConnection = () => {
+            if (this.connectionState === connectionStates.CONNECTED) {
+              clearTimeout(timeout);
+              resolve();
+            } else if (this.connectionState === connectionStates.DISCONNECTED) {
+              clearTimeout(timeout);
+              this.connect()
+                .then(resolve)
+                .catch(reject);
+            } else {
+              setTimeout(checkConnection, 100);
+            }
+          };
+          checkConnection();
+        });
+      }
+      
+      // If not connected or connecting, establish new connection
+      return this.connect();
+    } catch (error) {
+      this.error('Error initializing WebSocket:', error);
+      throw error;
     }
-    
-    // If not connected or connecting, establish new connection
-    return this.connect();
   }
 
   /**
@@ -155,22 +175,51 @@ class WebSocketManager {
   // ====================
 
   async connect() {
-    if (this.ws) {
-      this.ws.close();
-    }
-
+    // Clean up any existing connection
+    this.cleanupConnection();
+    
+    // Reset connection state
+    this.connectionState = connectionStates.CONNECTING;
+    this.isAlive = false;
+    
     try {
-      this.ws = new WebSocket(this.connectionUrl);
+      // Create new WebSocket connection with authentication token if available
+      const token = localStorage.getItem('authToken');
+      const url = token ? `${this.connectionUrl}?token=${encodeURIComponent(token)}` : this.connectionUrl;
+      
+      this.log('Connecting to WebSocket...', { url: this.connectionUrl });
+      this.ws = new WebSocket(url);
+      
+      // Set up event handlers
       this.setupEventHandlers();
       
-      // Set up ping/pong after connection is established
+      // Set connection timeout
+      const connectionTimeout = setTimeout(() => {
+        if (this.connectionState !== connectionStates.CONNECTED) {
+          this.error('Connection timeout');
+          this.handleDisconnect({ code: 4001, reason: 'Connection timeout', wasClean: false });
+        }
+      }, 10000); // 10 second connection timeout
+      
+      // Handle successful connection
       this.ws.onopen = () => {
+        clearTimeout(connectionTimeout);
+        this.log('WebSocket connected, setting up ping interval');
         this.setupPingInterval();
         this.processPendingMessages();
+        
+        // If we have a user ID, send authentication
+        if (this.userId) {
+          this.sendAuthUpdate();
+        }
+        
+        // Set up session validation interval
+        this.setupSessionCheck();
       };
+      
     } catch (error) {
       this.error('WebSocket connection failed:', error);
-      this.handleDisconnect();
+      this.handleDisconnect({ code: 4000, reason: error.message, wasClean: false });
     }
   }
 
@@ -456,13 +505,27 @@ class WebSocketManager {
     });
   }
 
-  handleDisconnect(event) {
+  /**
+   * Handle WebSocket disconnection with reconnection logic
+   * @param {CloseEvent} event - The close event
+   */
+  async handleDisconnect(event = {}) {
+    // Prevent multiple reconnection attempts
+    if (this.isReconnecting) {
+      this.log('Already attempting to reconnect, skipping duplicate attempt');
+      return;
+    }
+    
+    this.isReconnecting = true;
     this.log('Handling disconnect...', event);
+    
+    // Clean up the existing connection
     this.cleanupConnection();
     
     // Don't attempt to reconnect if this was a clean close from our side
     if (event && event.code === 1000 && event.wasClean) {
       this.log('Clean disconnect, not reconnecting');
+      this.isReconnecting = false;
       return;
     }
     
@@ -552,15 +615,123 @@ class WebSocketManager {
    * Clean up all resources and close the WebSocket connection
    */
   cleanup() {
-    this.clearPingInterval();
+    this.log('Cleaning up WebSocket manager');
+    this.cleanupConnection();
+    this.listeners.clear();
+    this.pendingMessages = [];
     
-    // Clear any pending reconnection
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
     }
     
-    // Clean up WebSocket connection
-    this.cleanupConnection();
+    this.clearPingInterval();
+    this.clearPingTimeout();
+    this.clearSessionCheck();
+    this.removeVisibilityHandlers();
+    
+    this.isReconnecting = false;
+    this.reconnectAttempts = 0;
+  }
+  
+  /**
+   * Validate the current session with the server
+   * @returns {Promise<boolean>} True if session is valid, false otherwise
+   */
+  async validateSession() {
+    try {
+      const apiBase = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? `http://${window.location.hostname}:3420`
+        : window.location.origin;
+      
+      const response = await fetch(`${apiBase}/api/validate-session`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data.valid === true;
+    } catch (error) {
+      this.error('Session validation failed:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Set up session validation interval
+   * @private
+   */
+  setupSessionCheck() {
+    this.clearSessionCheck();
+    
+    this.sessionCheckInterval = setInterval(async () => {
+      try {
+        const now = Date.now();
+        // Only check session if we haven't checked recently
+        if (now - this.lastSessionCheck > this.config.SESSION_CHECK_INTERVAL) {
+          const isValid = await this.validateSession();
+          this.lastSessionCheck = now;
+          
+          if (!isValid) {
+            this.log('Session is no longer valid, triggering reconnection');
+            this.notify({ type: 'session_expired' });
+            this.cleanupConnection();
+            this.initialize();
+          }
+        }
+      } catch (error) {
+        this.error('Error during session check:', error);
+      }
+    }, this.config.SESSION_CHECK_INTERVAL);
+  }
+  
+  /**
+   * Clear the session check interval
+   * @private
+   */
+  clearSessionCheck() {
+    if (this.sessionCheckInterval) {
+      clearInterval(this.sessionCheckInterval);
+      this.sessionCheckInterval = null;
+    }
+  }
+  
+  /**
+   * Set up visibility change handlers
+   * @private
+   */
+  setupVisibilityHandlers() {
+    if (typeof document === 'undefined') return;
+    
+    this.visibilityChangeHandler = () => {
+      if (document.visibilityState === 'visible') {
+        this.log('Page became visible, checking connection...');
+        if (!this.isConnected) {
+          this.initialize();
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', this.visibilityChangeHandler);
+  }
+  
+  /**
+   * Remove visibility change handlers
+   * @private
+   */
+  removeVisibilityHandlers() {
+    if (this.visibilityChangeHandler && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
+      this.visibilityChangeHandler = null;
+    }
   }
 
   /**
