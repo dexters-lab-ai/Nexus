@@ -20,7 +20,6 @@ import pRetry from 'p-retry';
 import { v4 as uuidv4 } from 'uuid';
 import { Semaphore } from 'async-mutex';
 import puppeteer from 'puppeteer';
-import * as reportHandlers from './src/utils/reportFileFixer.js';
 import puppeteerExtra from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { PuppeteerAgent } from '@midscene/web/puppeteer';
@@ -747,6 +746,7 @@ import Billing from './src/models/Billing.js';
 import { stripLargeFields } from './src/utils/stripLargeFields.js';
 import { generateReport } from './src/utils/reportGenerator.js';
 import { editMidsceneReport } from './src/utils/midsceneReportEditor.js';
+import * as reportHandlers from './src/utils/reportFileFixer.js';
 import executionHelper from './src/utils/execution-helper.js';
 const { determineExecutionMode } = executionHelper;
 
@@ -1050,28 +1050,6 @@ app.use((req, res, next) => {
     console.log('Created guest session:', req.session.user);
   }
   next();
-});
-
-// ======================================
-// 8.4 REPORT SERVING MIDDLEWARE
-// ======================================
-// Serve reports with proper middleware ordering
-app.use(reportHandlers.setupReportServing);
-app.use(reportHandlers.setupReportRedirector);
-
-// Serve nexus_run directory with proper caching
-app.use('/nexus_run', express.static(NEXUS_RUN_DIR, {
-  setHeaders: (res, path) => {
-    // Ensure proper caching for static files
-    res.setHeader('Cache-Control', 'public, max-age=31536000');
-  }
-}));
-
-// Legacy redirect for midscene_run -> nexus_run
-app.use('/midscene_run', (req, res) => {
-  const subPath = req.path;
-  const newPath = `/nexus_run${subPath}`;
-  res.redirect(301, newPath);
 });
 
 // Skip logging for 404s on specific endpoints
@@ -1507,6 +1485,30 @@ if (process.env.NODE_ENV !== 'development') {
   
   console.log('Serving static files from:', path.join(__dirname, 'dist'));
 }
+
+// ======================================
+// 8.4 REPORT SERVING MIDDLEWARE
+// ======================================
+// Set up report serving and redirector middleware
+// This must be after static file serving to ensure proper routing
+reportHandlers.setupReportServing(app);
+reportHandlers.setupReportRedirector(app);
+console.log('Report serving middleware initialized');
+
+// Serve nexus_run directory with proper caching
+app.use('/nexus_run', express.static(NEXUS_RUN_DIR, {
+  setHeaders: (res, path) => {
+    // Ensure proper caching for static files
+    res.setHeader('Cache-Control', 'public, max-age=31536000');
+  }
+}));
+
+// Legacy redirect for midscene_run -> nexus_run
+app.use('/midscene_run', (req, res) => {
+  const subPath = req.path;
+  const newPath = `/nexus_run${subPath}`;
+  res.redirect(301, newPath);
+});
 
 // Authentication guard middleware
 /*
