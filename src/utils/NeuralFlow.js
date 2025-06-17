@@ -277,7 +277,7 @@ export default class NeuralFlow {
       this.container.style.width = '100%';
       this.container.style.maxWidth = '100%';
       this.container.style.height = '100%';
-      this.container.style.maxHeight = '100vh'; // Use viewport height as max
+      this.container.style.maxHeight = '100%';
       this.container.style.boxSizing = 'border-box';
       
       // Ensure proper padding and margins
@@ -1024,95 +1024,38 @@ moveCamera(dy) {
   // Calculate the actual movement amount based on container dimensions
   const moveAmount = dy * (this.container.clientHeight / 800); // Normalize based on viewport height
   
-  // Calculate content height and viewport height
-  const contentHeight = this.getContentHeight();
-  const viewportHeight = this.height || this.container.clientHeight;
-  
-  // If content is smaller than viewport, don't allow scrolling
-  if (contentHeight <= viewportHeight) {
-    this.cameraY = 0;
-    this.targetCameraY = 0;
-    return;
-  }
-  
-  // Update camera position with easing for smoother scrolling
+  // Update camera position
   this.cameraY += moveAmount;
   this.targetCameraY = this.cameraY;
   
   // Clamp camera position to valid range based on content and viewport
-  const maxY = Math.max(0, contentHeight - viewportHeight);
+  const maxY = Math.max(0, this.getContentHeight() - this.height);
   this.cameraY = Math.max(0, Math.min(this.cameraY, maxY));
   this.targetCameraY = this.cameraY;
-  
-  // If we're at the top or bottom, apply some resistance
-  const atTop = this.cameraY <= 0;
-  const atBottom = this.cameraY >= maxY;
-  
-  if ((atTop && dy < 0) || (atBottom && dy > 0)) {
-    // Apply resistance when trying to scroll past boundaries
-    this.cameraY = atTop ? 0 : maxY;
-    this.targetCameraY = this.cameraY;
   }
-}
   
   // Calculate the total height of all nodes plus padding
   getContentHeight() {
     if (this.nodes.length === 0) return this.container.clientHeight;
     
-    // Find the bottom of the lowest node, considering both current and target positions
+    // Find the bottom of the lowest node
     let maxY = 0;
     this.nodes.forEach(node => {
-      // Use the maximum of current position (y) and target position (ty)
-      const nodeBottom = Math.max(
-        (node.y || 0) + (node.radius || 0) * 2,
-        (node.ty || 0) + (node.radius || 0) * 2
-      );
-      maxY = Math.max(maxY, nodeBottom);
+      maxY = Math.max(maxY, node.y + node.radius * 2);
     });
     
-    // Add padding at the bottom (increased from 40 to 100)
-    return Math.max(this.container.clientHeight, maxY + 100);
+    // Add some padding at the bottom
+    return maxY + 40;
   }
   
   scrollToTop() {
     this.autoScrollEnabled = false;
-    this.cameraY = 0;
-    this.targetCameraY = 0; // Immediately set camera position
+    this.targetCameraY = 0;
+    this.cameraY = 0; // Immediately set camera position
     
     const followBtn = this.controls?.querySelector('#neural-flow-follow');
     if (followBtn) {
       followBtn.setAttribute('data-active', 'false');
-    }
-  }
-  
-  /**
-   * Scrolls to the latest node with smooth animation
-   * @param {boolean} immediate - If true, jumps instantly without animation
-   */
-  scrollToLatest(immediate = false) {
-    if (this.nodes.length === 0) return;
-    
-    const latestNode = this.nodes[this.nodes.length - 1];
-    if (!latestNode) return;
-    
-    // Calculate target position to center the latest node
-    const nodeBottom = Math.max(latestNode.y, latestNode.ty || 0) + (latestNode.radius * 2);
-    const viewportHeight = this.height || this.container.clientHeight;
-    const targetY = Math.max(0, nodeBottom - viewportHeight + 100); // Extra padding at bottom
-    
-    if (immediate) {
-      this.cameraY = targetY;
-      this.targetCameraY = targetY;
-    } else {
-      // Smooth scroll to target
-      this.targetCameraY = targetY;
-    }
-    
-    // Enable auto-scroll to keep following new content
-    this.autoScrollEnabled = true;
-    const followBtn = this.controls?.querySelector('#neural-flow-follow');
-    if (followBtn) {
-      followBtn.setAttribute('data-active', 'true');
     }
   }
   
@@ -1360,9 +1303,9 @@ moveCamera(dy) {
         position: 'absolute',
         backgroundColor: 'rgba(30, 35, 60, 0.95)',
         color: '#fff',
-        padding: '6px 8px',
+        padding: '8px 12px',
         borderRadius: '6px',
-        fontSize: '12px',
+        fontSize: '14px',
         pointerEvents: 'none',
         zIndex: '1000',
         maxWidth: '300px',
@@ -1538,8 +1481,8 @@ moveCamera(dy) {
   
     // Use system card border style with subtle glow
     this.tooltip.style.border = '1px solid rgba(156, 163, 175, 0.5)';
-    this.tooltip.style.borderLeft = '1px solid rgba(156, 163, 175, 0.8)';
-    this.tooltip.style.borderRadius = '6px';
+    this.tooltip.style.borderLeft = '2px solid rgba(156, 163, 175, 0.8)';
+    this.tooltip.style.borderRadius = '4px';
     this.tooltip.style.boxShadow = '0 2px 5px rgba(0, 0, 0, 0.2)';
   
     // Ultra compact sizing - minimal padding and margins
@@ -1554,8 +1497,8 @@ moveCamera(dy) {
     this.tooltip.style.opacity = '0';
     this.tooltip.style.transition = 'opacity 0.2s ease-out, transform 0.2s ease-out';
     this.tooltip.style.fontFamily = 'var(--font-sans, system-ui, -apple-system, sans-serif)';
-    this.tooltip.style.fontSize = '11px';
-    this.tooltip.style.lineHeight = '1';
+    this.tooltip.style.fontSize = '10px';
+    this.tooltip.style.lineHeight = '1.2';
     this.tooltip.style.letterSpacing = '0.1px';
   
     // Force higher z-index to ensure visibility
@@ -1607,7 +1550,7 @@ moveCamera(dy) {
         text-transform: uppercase;
       }
       .neural-tooltip-content {
-        margin: 1px 0 1px;
+        margin: 2px 0 3px;
         font-size: 10px;
         line-height: 1.2;
         color: rgba(229, 231, 235, 0.9);
@@ -1626,8 +1569,8 @@ moveCamera(dy) {
         justify-content: space-between;
         align-items: center;
         margin: 1px 0;
-        font-size: 10px;
-        color: rgba(255, 255, 255, 0.8);
+        font-size: 9px;
+        color: rgba(229, 231, 235, 0.8);
       }
       .neural-tooltip-detail span {
         color: rgba(156, 163, 175, 0.7);
@@ -1676,10 +1619,10 @@ moveCamera(dy) {
         font-style: italic;
       }
       .tooltip-progress-bar {
-        width: 50px;
+        width: 40px;
         height: 3px;
         background: rgba(156, 163, 175, 0.15);
-        border-radius: 2px;
+        border-radius: 1px;
         margin: 0 4px;
         position: relative;
         overflow: hidden;
@@ -1687,7 +1630,7 @@ moveCamera(dy) {
       .tooltip-progress-bar > div {
         height: 100%;
         background: var(--border-color, #6B7280);
-        border-radius: 2px;
+        border-radius: 1px;
       }
     `;
     this.tooltip.appendChild(style);
