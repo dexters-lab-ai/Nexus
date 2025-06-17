@@ -714,7 +714,7 @@ export function CommandCenter(props = {}) {
               canvasBubble.style.height = '800px';
             } else {
               canvasBubble.classList.add('size-xlarge');
-              canvasBubble.style.height = '1000px';
+              canvasBubble.style.height = '1600px';
             }
             
             // Make sure the canvas is properly initialized
