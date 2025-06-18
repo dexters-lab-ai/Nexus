@@ -444,39 +444,61 @@
 
 @media (max-width: 768px) {
   :root {
-    --sidebar-width: 100%;
-    --sidebar-collapsed-width: 0;
+    --sidebar-width: 50%;
+    --sidebar-collapsed-width: 40px;
+    --content-width: calc(100% - var(--sidebar-collapsed-width));
   }
   
   .modern-layout {
     grid-template-areas: 
-      "header"
-      "timeline"
-      "command"
-      "footer";
-    grid-template-columns: 1fr;
+      "header header"
+      "timeline sidebar"
+      "command sidebar"
+      "footer footer";
+    grid-template-columns: var(--content-width) var(--sidebar-collapsed-width);
     grid-template-rows: var(--header-height) 1fr var(--command-center-height) var(--footer-height);
   }
   
   .main-sidebar {
-    position: absolute;
-    top: var(--header-height);
+    position: relative;
+    top: 0;
     right: 0;
-    height: calc(100vh - var(--header-height));
-    width: var(--sidebar-width);
-    transform: translateX(100%);
-    z-index: 99;
+    height: 100%;
+    width: 100%;
+    transform: none;
+    z-index: 1;
     flex-direction: column;
     display: flex;
+    transition: all 0.3s ease;
   }
   
   .sidebar-expanded .sidebar-area {
-    transform: translateX(0);
+    transform: none;
+    width: 100%;
   }
   
   .sidebar-nav {
     display: flex;
     flex-direction: column;
+    height: 100%;
+  }
+  
+  /* Adjust content area when sidebar is expanded */
+  .sidebar-expanded .timeline-area,
+  .sidebar-expanded .command-area {
+    width: 50%;
+  }
+  
+  /* Ensure content is scrollable */
+  .timeline-area {
+    width: 100%;
+    overflow-y: auto;
+    padding-right: 10px;
+  }
+  
+  /* Adjust command center */
+  .command-area {
+    width: 100%;
   }
 }
 

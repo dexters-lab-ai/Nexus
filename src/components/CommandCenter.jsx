@@ -2940,13 +2940,36 @@ export function CommandCenter(props = {}) {
     
     // For NLI tasks, continue with standard thought bubbles
     // First check if a thought bubble already exists
-    // Hide any existing thought bubble for this task by placing preference on data-message-id card (the THINKIN... card")
-    let thoughtMsg = document.querySelector(`[data-message-id="thought-${taskId}"]`) ||
-                    document.querySelector(`.msg-thought[data-task-id="${taskId}"]:not(.task-complete-card)`) ||
-                    document.querySelector(`.msg-thought-item[data-task-id="${taskId}"]`);
+    // Priority order for finding existing thought bubbles:
+    // 1. Match by exact data-message-id
+    // 2. Match by data-task-id with appropriate classes
+    // 3. Match by any thought bubble with the taskId
     
-    // Check if we already have a thought bubble for this task
-    const existingBubble = document.querySelector(`.thought-bubble[data-task-id="${taskId}"], .msg-thought[data-task-id="${taskId}"]`);
+    // Define all possible selectors in order of preference
+    const thoughtBubbleSelectors = [
+      `[data-message-id^="thought-${taskId}"]`,
+      `.msg-thought-item[data-task-id="${taskId}"]:not(.task-complete-card)`,
+      `.msg-thought[data-task-id="${taskId}"]:not(.task-complete-card)`,
+      `[data-task-id="${taskId}"].msg-item.msg-thought:not(.task-complete-card)`,
+      `.thought-bubble[data-task-id="${taskId}"]:not(.task-complete-card)`
+    ];
+    
+    // Find the first matching thought bubble
+    let thoughtMsg = null;
+    for (const selector of thoughtBubbleSelectors) {
+      thoughtMsg = document.querySelector(selector);
+      if (thoughtMsg) {
+        console.log(`[DEBUG] Found thought bubble with selector: ${selector}`);
+        break;
+      }
+    }
+    
+    // Check if we already have a thought bubble for this task (using a broader selector)
+    const existingBubble = document.querySelector(
+      `[data-message-id^="thought-${taskId}"], ` +
+      `[data-task-id="${taskId}"].msg-thought, ` +
+      `.thought-bubble[data-task-id="${taskId}"]`
+    );
   
     if (existingBubble) {
       // If existing bubble is marked as complete, create a new one instead of updating
@@ -3294,20 +3317,25 @@ export function CommandCenter(props = {}) {
     // Use multiple selectors with a primary focus on message IDs and thought messages
     const selectors = [];
     
-    // Target thought messages by message IDs pattern (primary approach)
-    selectors.push('.msg-thought-item[data-message-id^="thought-"]'); // Target by message ID prefix
-    
-    // If we have a taskId, use data-task-id selectors as secondary approach
+    // If we have a taskId, prioritize matching by taskId first
     if (taskId) {
-      // TaskID-based selectors (still useful for some legacy messages)
-      selectors.push(`.message-item[data-task-id="${taskId}"] .msg-type.msg-thought`); // Specific element inside messages
-      selectors.push(`.thought-bubble[data-task-id="${taskId}"]`); // Legacy approach
-    } else {
-      // Otherwise try to find all potential thought messages
-      selectors.push('.msg-item.msg-thought'); // Modern approach
-      selectors.push('.msg-type.msg-thought'); // Target the specific element with "Thinking..." text
-      selectors.push('.thought-bubble'); // Legacy bubbles
-    }
+      // 1. Exact match by data-message-id (most reliable)
+      selectors.push(`[data-message-id^="thought-${taskId}"]`);
+      
+      // 2. Match by task ID in data-task-id attribute
+      selectors.push(`.msg-thought-item[data-task-id="${taskId}"]`);
+      selectors.push(`.msg-thought[data-task-id="${taskId}"]`);
+      selectors.push(`[data-task-id="${taskId}"].msg-item.msg-thought`);
+      selectors.push(`.message-item[data-task-id="${taskId}"] .msg-type.msg-thought`);
+      selectors.push(`.thought-bubble[data-task-id="${taskId}"]`);
+    } 
+    
+    // Always include these general selectors for completeness
+    selectors.push('.msg-thought-item[data-message-id^="thought-"]');
+    selectors.push('.msg-item.msg-thought:not(.task-complete-card)');
+    selectors.push('.msg-thought:not(.task-complete-card)');
+    selectors.push('.msg-type.msg-thought');
+    selectors.push('.thought-bubble:not(.task-complete-card)');
     
     // Track if we found any elements to update
     let foundElements = false;

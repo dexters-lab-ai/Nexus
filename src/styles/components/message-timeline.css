@@ -55,9 +55,12 @@
   box-sizing: border-box;
   color: rgba(255, 255, 255, 0.9);
   border-radius: 13px;
-  height: 520px !important;
-  max-height: 520px;
+  height: calc(100vh - var(--header-height) - var(--command-center-height) - var(--task-bar-height, 50px) - 40px) !important;
+  max-height: none;
   margin-bottom: 0.5rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 200px; /* Ensure it's never too small */
 }
 
 .message-timeline-empty {
