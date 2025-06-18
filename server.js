@@ -2701,13 +2701,30 @@ async function getPuppeteerLaunchOptions() {
       '--password-store=basic',
       '--use-mock-keychain',
       '--enable-automation',
-      '--disable-blink-features=AutomationControlled'
+      '--disable-blink-features=AutomationControlled',
+      
+      // Debugging
+      '--remote-debugging-port=9222',
+      '--remote-debugging-address=0.0.0.0',
+      '--enable-logging',
+      '--v=1'
     ],
     ignoreDefaultArgs: ['--enable-automation'],
     handleSIGINT: false,
     handleSIGTERM: false,
     handleSIGHUP: false,
-    dumpio: true
+    dumpio: true,
+    env: {
+      ...process.env,
+      // Ensure display is set for Xvfb
+      DISPLAY: process.env.DISPLAY || ':99',
+      // Disable unnecessary features
+      NO_AT_BRIDGE: '1',
+      DBUS_SESSION_BUS_ADDRESS: '/dev/null',
+      // Set up Chrome environment
+      XDG_RUNTIME_DIR: '/tmp/chrome-runtime',
+      CHROME_DEVEL_SANDBOX: '/tmp/chrome-sandbox'
+    }
   };
 
   // On Windows, specify the Chrome executable path
