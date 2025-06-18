@@ -558,6 +558,54 @@ export const api = {
           } : undefined
       });
     }
+  },
+  
+  // Billing endpoints
+  billing: {
+    /**
+     * Get user's billing usage and token balance
+     * @returns {Promise<Object>} - Billing information including token balance and usage
+     */
+    getUsage: () => get('/api/billing/usage'),
+    
+    /**
+     * Purchase additional tokens
+     * @param {number} amountUSD - Amount in USD to spend on tokens
+     * @param {string} paymentMethod - Payment method ID
+     * @returns {Promise<Object>} - Updated billing information
+     */
+    purchaseTokens: (amountUSD, paymentMethod) => 
+      post('/api/billing/purchase', { amountUSD, paymentMethod }),
+    
+    /**
+     * Get transaction history
+     * @param {number} [page=1] - Page number for pagination
+     * @param {number} [limit=20] - Number of items per page
+     * @returns {Promise<{transactions: Array, total: number}>} - Paginated transaction history
+     */
+    getTransactions: (page = 1, limit = 20) => 
+      get('/api/billing/transactions', { page, limit }),
+    
+    /**
+     * Get available subscription plans
+     * @returns {Promise<Array>} - List of available subscription plans
+     */
+    getPlans: () => get('/api/billing/plans'),
+    
+    /**
+     * Subscribe to a plan
+     * @param {string} planId - ID of the plan to subscribe to
+     * @param {string} paymentMethod - Payment method ID
+     * @returns {Promise<Object>} - Subscription details
+     */
+    subscribe: (planId, paymentMethod) => 
+      post('/api/billing/subscribe', { planId, paymentMethod }),
+    
+    /**
+     * Cancel subscription
+     * @returns {Promise<{success: boolean, message: string}>} - Cancellation status
+     */
+    cancelSubscription: () => post('/api/billing/cancel-subscription')
   }
 };
 

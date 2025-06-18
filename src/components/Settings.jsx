@@ -1108,6 +1108,19 @@ function setupPasswordToggles() {
   initialize();
   
   // ===== FUNCTIONALITY =====
+  // Function to show notification
+  function showNotification(message, isSuccess) {
+    const notification = document.querySelector('.settings-notification');
+    notification.className = isSuccess ? 
+      'settings-notification success show' : 
+      'settings-notification error show';
+    
+    document.querySelector('.notification-message').textContent = message;
+    
+    setTimeout(() => {
+      notification.classList.remove('show');
+    }, 3000);
+  }
   
   // Function to select a tab
   function selectTab(tabId) {
@@ -1126,59 +1139,232 @@ function setupPasswordToggles() {
     // Update content visibility
     const allTabContents = content.children;
     Array.from(allTabContents).forEach(tabContent => {
-      if (tabContent.id === `${tabId}-tab`) {
-        tabContent.style.display = 'block';
-      } else {
-        tabContent.style.display = 'none';
-      }
+      tabContent.style.display = tabContent.id === `${tabId}-tab` ? 'block' : 'none';
     });
     
     // Special handler for billing tab
     if (tabId === 'billing') {
-      // Update token amount display based on latest usage data
-      // This would normally fetch data from API but we're showing static data for now
-      const tokenAmountInput = document.getElementById('token-amount');
-      if (tokenAmountInput) {
-        // Update token estimate when amount changes
-        tokenAmountInput.addEventListener('input', function() {
-          const amount = parseFloat(this.value) || 0;
-          const tokenEstimate = amount * 1000; // 1 USD = 1000 RATOR tokens
-          const tokenEstimateElement = document.querySelector('.token-estimate span');
-          if (tokenEstimateElement) {
-            tokenEstimateElement.textContent = tokenEstimate.toLocaleString() + ' RATOR tokens';
-          }
-        });
-      }
-      
-      // Add purchase button handler
-      const purchaseButton = document.getElementById('purchase-tokens-btn');
-      if (purchaseButton) {
-        purchaseButton.addEventListener('click', function() {
-          const amount = parseFloat(document.getElementById('token-amount').value) || 0;
-          if (amount <= 0) {
-            showNotification('Please enter a valid amount', false);
-            return;
-          }
+      const billingContent = document.getElementById('billing-tab');
+      if (!billingContent) return;
+
+      // Show loading state
+      const loadingHtml = `
+        <div class="settings-section">
+          <h3><i class="fas fa-money-bill-wave"></i> Billing & Usage</h3>
+          <div class="billing-loading">
+            <i class="fas fa-spinner fa-spin"></i> Loading billing information...
+          </div>
+        </div>
+      `;
+      billingContent.innerHTML = loadingHtml;
+
+      // Load billing data from API
+      const loadBillingData = async () => {
+        try {
+          // Fetch all data in parallel
+          const [usage, subscription, transactions, plans] = await Promise.all([
+            api.billing.getUsage(),
+            api.billing.getSubscription(),
+            api.billing.getTransactions(),
+            api.billing.getPlans()
+          ]);
+
+          // Render billing content with real data
+          renderBillingContent(usage, subscription, transactions, plans);
+        } catch (error) {
+          console.error('Error loading billing data:', error);
+          billingContent.innerHTML = `
+            <div class="settings-section">
+              <h3><i class="fas fa-money-bill-wave"></i> Billing & Usage</h3>
+              <div class="billing-error">
+                <i class="fas fa-exclamation-triangle"></i>
+                <p>Failed to load billing information. Please try again later.</p>
+                <button id="retry-billing-load" class="btn btn-primary">
+                  <i class="fas fa-sync-alt"></i> Retry
+                </button>
+              </div>
+            </div>
+          `;
           
-          // Mock purchase success
-          showNotification(`Successfully purchased ${(amount * 1000).toLocaleString()} RATOR tokens`, true);
+          // Add retry handler
+          document.getElementById('retry-billing-load')?.addEventListener('click', () => selectTab('billing'));
+        }
+      };
+
+      // Render billing content with data
+      const renderBillingContent = (usage, subscription, transactions, plans) => {
+        billingContent.innerHTML = `
+          <div class="settings-section">
+            <h3><i class="fas fa-money-bill-wave"></i> Billing & Usage</h3>
+            
+            <!-- Token Balance -->
+            <div class="billing-stats">
+              <div class="billing-stats-card">
+                <h4>Token Balance</h4>
+                <div class="token-balance">
+                  <div class="token-amount">${usage.tokenBalance.toLocaleString()}</div>
+                  <div class="token-label">RATOR tokens available</div>
+                </div>
+                <div class="usage-stats">
+                  <div class="stat">
+                    <span class="value">${usage.tokensUsedThisMonth.toLocaleString()}</span>
+                    <span class="label">Used this month</span>
+                  </div>
+                  <div class="stat">
+                    <span class="value">${usage.apiCallsThisMonth.toLocaleString()}</span>
+                    <span class="label">API calls</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Purchase Tokens -->
+            <div class="token-purchase">
+              <h4>Purchase Additional Tokens</h4>
+              <div class="purchase-options">
+                ${plans.filter(p => !p.isSubscription).map(plan => `
+                  <div class="plan-option" data-plan-id="${plan.id}">
+                    <div class="plan-name">${plan.name}</div>
+                    <div class="plan-price">$${plan.price}</div>
+                    <div class="plan-tokens">${plan.amount.toLocaleString()} tokens</div>
+                    <button class="btn btn-primary purchase-btn">
+                      <i class="fas fa-shopping-cart"></i> Purchase
+                    </button>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+            
+            <!-- Subscription -->
+            <div class="billing-plans">
+              <h4>Subscription Plans</h4>
+              ${subscription.active ? `
+                <div class="subscription-active">
+                  <p>Current Plan: <strong>${subscription.planName}</strong></p>
+                  <p>Renews on: ${new Date(subscription.renewalDate).toLocaleDateString()}</p>
+                  <button id="cancel-subscription" class="btn btn-danger">
+                    <i class="fas fa-ban"></i> Cancel Subscription
+                  </button>
+                </div>
+              ` : `
+                <div class="subscription-plans">
+                  ${plans.filter(p => p.isSubscription).map(plan => `
+                    <div class="plan-card">
+                      <div class="plan-name">${plan.name}</div>
+                      <div class="plan-price">$${plan.price}/month</div>
+                      <div class="plan-features">
+                        ${plan.features.map(feature => `<div class="plan-feature">${feature}</div>`).join('')}
+                      </div>
+                      <button class="btn btn-primary subscribe-btn" data-plan-id="${plan.id}">
+                        Subscribe Now
+                      </button>
+                    </div>
+                  `).join('')}
+                </div>
+              `}
+            </div>
+            
+            <!-- Transaction History -->
+            <div class="transaction-history">
+              <h4>Transaction History</h4>
+              ${transactions.length > 0 ? `
+                <table class="transactions-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Description</th>
+                      <th>Amount</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${transactions.map(tx => `
+                      <tr>
+                        <td>${new Date(tx.date).toLocaleDateString()}</td>
+                        <td>${tx.description}</td>
+                        <td class="amount ${tx.amount < 0 ? 'negative' : 'positive'}">
+                          ${tx.amount < 0 ? '-' : ''}$${Math.abs(tx.amount).toFixed(2)}
+                        </td>
+                        <td><span class="status-badge ${tx.status.toLowerCase()}">${tx.status}</span></td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              ` : '<p class="no-transactions">No transactions found.</p>'}
+            </div>
+          </div>
+        `;
+
+        // Setup event listeners
+        setupBillingEventListeners(plans, subscription);
+      };
+
+      // Setup billing event listeners
+      const setupBillingEventListeners = (plans, subscription) => {
+        // Purchase token buttons
+        document.querySelectorAll('.purchase-btn').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const planId = e.target.closest('.plan-option').dataset.planId;
+            const plan = plans.find(p => p.id === planId);
+            if (!plan) return;
+
+            const confirmPurchase = confirm(`Purchase ${plan.amount.toLocaleString()} tokens for $${plan.price}?`);
+            if (!confirmPurchase) return;
+
+            try {
+              await api.billing.purchaseTokens(plan.amount, 'default');
+              showNotification(`Successfully purchased ${plan.amount.toLocaleString()} tokens!`, true);
+              selectTab('billing'); // Refresh the tab
+            } catch (error) {
+              console.error('Purchase failed:', error);
+              showNotification(`Purchase failed: ${error.message || 'Please try again'}`, false);
+            }
+          });
         });
-      }
+
+        // Subscribe buttons
+        document.querySelectorAll('.subscribe-btn').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const planId = e.target.dataset.planId;
+            const plan = plans.find(p => p.id === planId);
+            if (!plan) return;
+
+            const confirmSubscribe = confirm(`Subscribe to ${plan.name} for $${plan.price}/month?`);
+            if (!confirmSubscribe) return;
+
+            try {
+              await api.billing.subscribe(planId, 'default');
+              showNotification(`Successfully subscribed to ${plan.name}!`, true);
+              selectTab('billing'); // Refresh the tab
+            } catch (error) {
+              console.error('Subscription failed:', error);
+              showNotification(`Subscription failed: ${error.message || 'Please try again'}`, false);
+            }
+          });
+        });
+
+        // Cancel subscription button
+        const cancelBtn = document.getElementById('cancel-subscription');
+        if (cancelBtn) {
+          cancelBtn.addEventListener('click', async () => {
+            const confirmCancel = confirm('Are you sure you want to cancel your subscription?');
+            if (!confirmCancel) return;
+
+            try {
+              await api.billing.cancelSubscription();
+              showNotification('Your subscription has been cancelled.', true);
+              selectTab('billing'); // Refresh the tab
+            } catch (error) {
+              console.error('Failed to cancel subscription:', error);
+              showNotification('Failed to cancel subscription. Please try again.', false);
+            }
+          });
+        }
+      };
+
+      // Initial load
+      loadBillingData();
     }
-  }
-  
-  // Function to show notification
-  function showNotification(message, isSuccess) {
-    const notification = document.querySelector('.settings-notification');
-    notification.className = isSuccess ? 
-      'settings-notification success show' : 
-      'settings-notification error show';
-    
-    document.querySelector('.notification-message').textContent = message;
-    
-    setTimeout(() => {
-      notification.classList.remove('show');
-    }, 3000);
   }
   
   // Get a human-readable display name for an engine ID

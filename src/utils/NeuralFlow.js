@@ -49,6 +49,11 @@ export default class NeuralFlow {
       this.handleClick = this.handleClick.bind(this);
       this.animate = this.animate.bind(this);
       this.handleResize = this.handleResize.bind(this);
+      this.handleMouseEnter = this.handleMouseEnter.bind(this);
+      this.handleMouseLeave = this.handleMouseLeave.bind(this);
+      this.handleTouchStart = this.handleTouchStart.bind(this);
+      this.handleTouchMove = this.handleTouchMove.bind(this);
+      this.handleTouchEnd = this.handleTouchEnd.bind(this);
       
       // Create high-res canvas for crisp rendering
       this.initCanvas();

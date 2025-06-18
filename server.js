@@ -2186,43 +2186,281 @@ async function clearDatabaseOnce() {
 const activeBrowsers = new Map();
 const browserSemaphore = new Semaphore(MAX_CONCURRENT_BROWSERS);
 
-// Set up session health monitoring
-const browserSessionHeartbeat = setInterval(async () => {
-  logger.debug(`Running heartbeat check on ${activeBrowsers.size} active browser sessions`);
-  const sessionsToClean = [];
+/**
+ * Get or create a browser session with proper error handling and recovery
+ * @param {string} taskId - Task ID
+ * @param {string} userId - User ID
+ * @returns {Promise<Object>} Browser session object
+ */
+async function getOrCreateBrowserSession(taskId, userId) {
+  const sessionKey = `${userId}:${taskId}`;
   
-  for (const [taskId, session] of activeBrowsers.entries()) {
+  // Check if we have a valid existing session
+  const existingSession = activeBrowsers.get(sessionKey);
+  if (existingSession) {
     try {
-      if (!session || session.closed || session.hasReleased || !session.page) {
-        sessionsToClean.push(taskId);
-        continue;
-      }
-      
-      if (Date.now() - (session.lastActivity || 0) > 30 * 60 * 1000) { // 30 minutes inactive
-        logger.info(`Cleaning up inactive browser session ${taskId}`);
-        sessionsToClean.push(taskId);
-        if (session.release && typeof session.release === 'function') {
-          session.release();
-        }
-        try {
-          if (session.page && !session.page.isClosed()) {
-            await session.page.close();
-          }
-          if (session.browser) {
-            await session.browser.close();
-          }
-        } catch (err) {
-          logger.error('Error cleaning up browser session:', err);
+      // Verify the session is still valid and browser is connected
+      if (existingSession.browser && existingSession.browser.isConnected()) {
+        const pages = await existingSession.browser.pages();
+        if (pages && pages.length >= 0) {
+          existingSession.lastActivity = Date.now();
+          logger.debug(`[BrowserSession] Reusing existing session for task ${taskId}`);
+          return existingSession;
         }
       }
     } catch (error) {
-      logger.error('Error in browser session heartbeat:', error);
-      sessionsToClean.push(taskId);
+      logger.warn(`[BrowserSession] Existing session invalid (${error.message}), creating new one`);
+      await cleanupBrowserSession(sessionKey).catch(e => 
+        logger.error('Error during session cleanup:', e)
+      );
+    }
+  }
+
+  // Acquire semaphore to limit concurrent browsers
+  let release;
+  try {
+    release = await browserSemaphore.acquire();
+    logger.debug(`[BrowserSession] Acquired semaphore for task ${taskId}`);
+  } catch (error) {
+    logger.error(`[BrowserSession] Failed to acquire semaphore for task ${taskId}:`, error);
+    throw new Error('Server busy. Please try again later.');
+  }
+  
+  try {
+    // Double check if another request created a session while we were waiting
+    const currentSession = activeBrowsers.get(sessionKey);
+    if (currentSession) {
+      logger.debug(`[BrowserSession] Found new session created by another request for task ${taskId}`);
+      release();
+      return currentSession;
+    }
+
+    logger.info(`[BrowserSession] Launching new browser for task ${taskId}`);
+    const launchOptions = await getPuppeteerLaunchOptions();
+    
+    // Add additional debugging for launch options
+    logger.debug('[BrowserSession] Launch options:', {
+      headless: launchOptions.headless,
+      args: launchOptions.args.filter(arg => !arg.includes('--disable-dev-shm-usage')),
+      executablePath: launchOptions.executablePath
+    });
+
+    const browser = await puppeteerExtra.launch(launchOptions).catch(error => {
+      logger.error(`[BrowserSession] Failed to launch browser:`, error);
+      throw new Error(`Failed to start browser: ${error.message}`);
+    });
+    
+    // Create a new session object with proper cleanup
+    const session = {
+      browser,
+      page: null,
+      createdAt: Date.now(),
+      lastActivity: Date.now(),
+      taskId,
+      userId,
+      hasReleased: false,
+      closing: false,
+      release: () => {
+        if (!session.hasReleased) {
+          logger.debug(`[BrowserSession] Releasing semaphore for task ${taskId}`);
+          session.hasReleased = true;
+          release();
+        }
+      },
+      close: async () => {
+        if (session.closing) return;
+        session.closing = true;
+        
+        logger.info(`[BrowserSession] Closing session for task ${taskId}`);
+        try {
+          if (session.page && typeof session.page.close === 'function' && !session.page.isClosed()) {
+            await session.page.close().catch(e => 
+              logger.error(`[BrowserSession] Error closing page for task ${taskId}:`, e)
+            );
+          }
+          if (session.browser && session.browser.isConnected()) {
+            await session.browser.close().catch(e => 
+              logger.error(`[BrowserSession] Error closing browser for task ${taskId}:`, e)
+            );
+          }
+        } finally {
+          session.release();
+          activeBrowsers.delete(sessionKey);
+          logger.info(`[BrowserSession] Session closed for task ${taskId}`);
+        }
+      },
+      // Helper method to create a new page with error handling
+      newPage: async () => {
+        try {
+          const page = await browser.newPage();
+          session.page = page;
+          
+          // Add basic error handling to the page
+          page.on('error', error => {
+            logger.error(`[BrowserSession] Page error in task ${taskId}:`, error);
+          });
+          
+          // Log page creation for debugging
+          logger.debug(`[BrowserSession] Created new page for task ${taskId}`);
+          return page;
+        } catch (error) {
+          logger.error(`[BrowserSession] Failed to create page for task ${taskId}:`, error);
+          throw new Error(`Failed to create new page: ${error.message}`);
+        }
+      }
+    };
+
+    // Store the session
+    activeBrowsers.set(sessionKey, session);
+    logger.info(`[BrowserSession] New session created for task ${taskId}, total active sessions: ${activeBrowsers.size}`);
+    
+    // Set up cleanup on browser close
+    browser.once('disconnected', () => {
+      logger.info(`[BrowserSession] Browser disconnected for task ${taskId}`);
+      cleanupBrowserSession(sessionKey).catch(e => 
+        logger.error('Error in browser disconnect handler:', e)
+      );
+    });
+
+    return session;
+  } catch (error) {
+    logger.error(`[BrowserSession] Failed to create browser session for task ${taskId}:`, error);
+    
+    // Ensure we always release the semaphore on error
+    if (release && typeof release === 'function') {
+      release();
+    }
+    
+    // Rethrow with more context
+    const errorMessage = error.message || 'Unknown error creating browser session';
+    throw new Error(`Browser session creation failed: ${errorMessage}`);
+  }
+}
+
+/**
+ * Clean up browser session
+ * @param {string} sessionKeyOrTaskId - Either a session key (userId:taskId) or just taskId for backward compatibility
+ */
+async function cleanupBrowserSession(sessionKeyOrTaskId) {
+  // Check if this is a full session key (userId:taskId) or just taskId
+  const sessionKey = sessionKeyOrTaskId.includes(':') 
+    ? sessionKeyOrTaskId 
+    : Array.from(activeBrowsers.keys()).find(key => key.endsWith(`:${sessionKeyOrTaskId}`)) || sessionKeyOrTaskId;
+
+  const session = activeBrowsers.get(sessionKey);
+  if (!session) {
+    logger.debug(`[BrowserSession] No active session found for ${sessionKeyOrTaskId}`);
+    return;
+  }
+
+  // Mark session as closing to prevent multiple cleanups
+  if (session.closing) {
+    logger.debug(`[BrowserSession] Session ${sessionKey} is already being closed`);
+    return;
+  }
+  session.closing = true;
+
+  logger.info(`[BrowserSession] Cleaning up session ${sessionKey}`);
+  
+  try {
+    // Close page if it exists and is not already closed
+    if (session.page && typeof session.page.close === 'function' && !session.page.isClosed()) {
+      try {
+        await session.page.close();
+        logger.debug(`[BrowserSession] Closed page for session ${sessionKey}`);
+      } catch (error) {
+        logger.error(`[BrowserSession] Error closing page for session ${sessionKey}:`, error);
+      }
+    }
+
+    // Close browser if it exists and is connected
+    if (session.browser && typeof session.browser.close === 'function' && session.browser.isConnected()) {
+      try {
+        await session.browser.close();
+        logger.debug(`[BrowserSession] Closed browser for session ${sessionKey}`);
+      } catch (error) {
+        logger.error(`[BrowserSession] Error closing browser for session ${sessionKey}:`, error);
+      }
+    }
+
+    // Call release function if it exists and hasn't been called yet
+    if (typeof session.release === 'function' && !session.hasReleased) {
+      try {
+        await session.release();
+        session.hasReleased = true;
+        logger.debug(`[BrowserSession] Released resources for session ${sessionKey}`);
+      } catch (error) {
+        logger.error(`[BrowserSession] Error releasing resources for session ${sessionKey}:`, error);
+      }
+    }
+  } catch (error) {
+    logger.error(`[BrowserSession] Error during cleanup of session ${sessionKey}:`, error);
+  } finally {
+    // Always remove from active sessions, even if cleanup failed
+    activeBrowsers.delete(sessionKey);
+    logger.info(`[BrowserSession] Session ${sessionKey} cleanup completed`);
+  }
+}
+
+// Add cleanup handler to process termination events
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received - cleaning up browser sessions');
+  for (const [taskId] of activeBrowsers) {
+    await cleanupBrowserSession(taskId);
+  }
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received - cleaning up browser sessions');
+  for (const [taskId] of activeBrowsers) {
+    await cleanupBrowserSession(taskId);
+  }
+  process.exit(0);
+});
+
+// Set up session health monitoring
+const browserSessionHeartbeat = setInterval(async () => {
+  logger.debug(`[BrowserSession] Running heartbeat check on ${activeBrowsers.size} active browser sessions`);
+  const cleanupPromises = [];
+  const now = Date.now();
+  
+  for (const [sessionKey, session] of activeBrowsers.entries()) {
+    try {
+      // Skip if session is already marked for cleanup
+      if (!session || session.closed || session.hasReleased) {
+        cleanupPromises.push(cleanupBrowserSession(sessionKey));
+        continue;
+      }
+      
+      // Check for inactive sessions (30 minutes of inactivity)
+      const inactiveFor = now - (session.lastActivity || 0);
+      if (inactiveFor > 30 * 60 * 1000) {
+        logger.info(`[BrowserSession] Cleaning up inactive browser session ${sessionKey} (inactive for ${Math.floor(inactiveFor / 1000 / 60)}m)`);
+        cleanupPromises.push(cleanupBrowserSession(sessionKey));
+        continue;
+      }
+      
+      // Verify browser is still responsive
+      try {
+        const pages = await session.browser.pages().catch(() => []);
+        if (!pages || pages.length === 0) {
+          logger.warn(`[BrowserSession] Browser session ${sessionKey} has no pages, cleaning up`);
+          cleanupPromises.push(cleanupBrowserSession(sessionKey));
+        }
+      } catch (error) {
+        logger.warn(`[BrowserSession] Browser session ${sessionKey} is not responsive:`, error.message);
+        cleanupPromises.push(cleanupBrowserSession(sessionKey));
+      }
+    } catch (error) {
+      logger.error(`[BrowserSession] Error checking session ${sessionKey}:`, error);
+      cleanupPromises.push(cleanupBrowserSession(sessionKey));
     }
   }
   
-  // Clean up dead sessions
-  sessionsToClean.forEach(taskId => activeBrowsers.delete(taskId));
+  // Wait for all cleanups to complete
+  if (cleanupPromises.length > 0) {
+    await Promise.allSettled(cleanupPromises);
+  }
 }, 5 * 60 * 1000); // Check every 5 minutes
 
 
@@ -2360,86 +2598,136 @@ puppeteerExtra.use(StealthPlugin());
  */
 async function getPuppeteerLaunchOptions() {
   const isProduction = process.env.NODE_ENV === 'production';
+  const isWindows = process.platform === 'win32';
   
   // Common launch options for all environments
   const launchOptions = {
-    headless: false,
+    headless: false, // Always show browser window in both dev and production
     ignoreHTTPSErrors: true,
-    defaultViewport: { width: 1280, height: 720, deviceScaleFactor: 1 },
+    defaultViewport: { 
+      width: 1280, 
+      height: 720,
+      deviceScaleFactor: 1
+    },
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--headless=false',
-      
-      // Performance optimizations
-      '--disable-extensions',
-      '--window-size=1280,720',
-      '--disable-gpu',
-      '--disable-software-rasterizer',
-      '--disable-accelerated-2d-canvas',
       '--no-first-run',
       '--no-zygote',
-      
-      // Disable unnecessary features
+      '--disable-features=IsolateOrigins,site-per-process',
+      '--disable-site-isolation-trials',
+      '--disable-web-security',
+      '--disable-logging',
+      '--disable-breakpad',
+      '--disable-notifications',
+      '--disable-infobars',
+      '--disable-session-crashed-bubble',
+      '--disable-translate',
+      '--no-default-browser-check',
+      '--disable-component-update',
+      '--noerrdialogs',
+      '--disable-sync',
       '--disable-background-networking',
+      '--disable-default-apps',
+      '--metrics-recording-only',
+      '--safebrowsing-disable-auto-update',
+      '--disable-client-side-phishing-detection',
+      '--disable-domain-reliability',
       '--disable-background-timer-throttling',
       '--disable-backgrounding-occluded-windows',
-      '--disable-breakpad',
-      '--disable-client-side-phishing-detection',
-      '--disable-component-extensions-with-background-pages',
-      '--disable-default-apps',
-      '--disable-hang-monitor',
       '--disable-ipc-flooding-protection',
+      '--disable-renderer-backgrounding',
+      '--disable-hang-monitor',
+      '--password-store=basic',
+      '--use-mock-keychain',
       '--disable-popup-blocking',
       '--disable-prompt-on-repost',
-      '--disable-renderer-backgrounding',
       '--disable-sync',
       '--metrics-recording-only',
       '--no-default-browser-check',
       '--password-store=basic',
       '--use-mock-keychain',
       '--safebrowsing-disable-auto-update',
-      '--single-process',
-      '--disable-webgl',
-      '--disable-threaded-animation',
+      '--disable-single-click-autofill',
+      '--disable-speech-api',
+      '--disable-tab-for-desktop-share',
       '--disable-threaded-scrolling',
-      '--disable-in-process-stack-traces',
-      '--disable-logging',
-      '--output=/dev/null',
+      '--disable-webgl',
+      '--disable-webgl2',
       '--disable-3d-apis',
-      '--disable-d3d11',
-      '--disable-d3d12',
-      '--disable-direct-composition',
-      '--disable-direct-dwrite',
-      
-      // Security
-      '--disable-features=AudioServiceOutOfProcess,TranslateUI,Translate,ImprovedCookieControls,' +
-      'LazyFrameLoading,GlobalMediaControls,MediaRouter,NetworkService,OutOfBlinkCors,' +
-      'OutOfProcessPdf,OverlayScrollbar,PasswordGeneration,RendererCodeIntegrity,' +
-      'SpareRendererForSitePerProcess,TopChromeTouchUi,VizDisplayCompositor,IsolateOrigins,site-per-process',
-      '--disable-site-isolation-trials',
-      '--disable-web-security',
-      '--disable-blink-features=AutomationControlled',
-      
-      // Window settings
-      '--window-position=0,0',
+      '--disable-accelerated-2d-canvas',
+      '--disable-gpu',
+      '--disable-software-rasterizer',
+      '--disable-accelerated-video-decode',
+      '--disable-accelerated-video-encode',
+      '--disable-gpu-compositing',
+      '--disable-accelerated-mjpeg-decode',
+      '--disable-accelerated-mjpeg-encode',
+      '--disable-accelerated-vpx-decode',
+      '--disable-accelerated-vp9-decode',
+      '--disable-accelerated-vp9-encode',
+      '--disable-accelerated-webgl',
+      '--disable-accelerated-webgl2',
+      '--disable-in-process-stack-traces',
+      '--disable-features=AudioServiceOutOfProcess,TranslateUI,Translate,ImprovedCookieControls,LazyFrameLoading,GlobalMediaControls,MediaRouter,NetworkService,OutOfBlinkCors,OutOfProcessPdf,OverlayScrollbar,PasswordGeneration,RendererCodeIntegrity,SpareRendererForSitePerProcess,TopChromeTouchUi,VizDisplayCompositor,IsolateOrigins,site-perprocess',
+      '--use-gl=swiftshader',
+      '--window-size=1280,720',
       '--start-maximized',
-      '--hide-scrollbars'
-    ]
+      '--window-position=0,0',
+      '--remote-debugging-port=9222',
+      '--remote-debugging-address=0.0.0.0',
+      '--disable-web-security',
+      '--allow-running-insecure-content',
+      '--disable-extensions',
+      '--mute-audio',
+      '--disable-background-networking',
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-breakpad',
+      '--disable-client-side-phishing-detection',
+      '--disable-component-update',
+      '--disable-default-apps',
+      '--disable-dev-shm-usage',
+      '--disable-hang-monitor',
+      '--disable-ipc-flooding-protection',
+      '--disable-popup-blocking',
+      '--disable-prompt-on-repost',
+      '--disable-sync',
+      '--disable-translate',
+      '--metrics-recording-only',
+      '--no-first-run',
+      '--safebrowsing-disable-auto-update',
+      '--password-store=basic',
+      '--use-mock-keychain',
+      '--enable-automation',
+      '--disable-blink-features=AutomationControlled'
+    ],
+    ignoreDefaultArgs: ['--enable-automation'],
+    handleSIGINT: false,
+    handleSIGTERM: false,
+    handleSIGHUP: false,
+    dumpio: true
   };
-  
+
+  // On Windows, specify the Chrome executable path
+  if (isWindows) {
+    launchOptions.executablePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+  }
+
   try {
     if (isProduction) {
+      // Production-specific settings
+      // Note: headless mode is already set at the top level
       // In production, prioritize the path from environment variables
       const possiblePaths = [
-        process.env.PUPPETEER_EXECUTABLE_PATH,   // Explicit override first
-        process.env.CHROME_BIN,                  // Then Dockerfile ENV
-        '/usr/bin/chromium',                     // Standard Debian/Ubuntu
-        '/usr/bin/chromium-browser',             // Alternative path
-        '/usr/bin/google-chrome-stable'          // Fallback to Chrome
+        process.env.PUPPETEER_EXECUTABLE_PATH,
+        process.env.CHROME_BIN,
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/google-chrome-stable'
       ].filter(Boolean);
-      
+
       // Try each path until we find one that exists
       let foundPath = false;
       for (const execPath of possiblePaths) {
@@ -2448,27 +2736,20 @@ async function getPuppeteerLaunchOptions() {
         try {
           if (fs.existsSync(execPath)) {
             launchOptions.executablePath = execPath;
-            console.log(`[Production] Using Chromium at: ${execPath}`);
+            console.log(`[Production] Using browser at: ${execPath}`);
             foundPath = true;
             break;
-          } else {
-            console.log(`[Puppeteer] Chromium not found at: ${execPath}`);
           }
         } catch (error) {
           console.error(`[Puppeteer] Error checking path ${execPath}:`, error.message);
         }
       }
-      
-      if (!foundPath) {
-        console.warn('[Production] No valid Chromium path found in environment variables or default locations');
-        console.warn('Falling back to Puppeteer\'s bundled Chromium');
+
+      if (!foundPath && !isWindows) {
+        console.warn('[Production] No valid browser path found in environment variables or default locations');
         launchOptions.executablePath = await puppeteer.executablePath();
       }
-      
-      // Production-specific settings
-      launchOptions.dumpio = true; // Enable for debugging
-      launchOptions.pipe = true;   // Use pipe instead of WebSocket
-      
+
       // Ensure proper permissions for Chrome sandbox
       if (launchOptions.executablePath && fs.existsSync(launchOptions.executablePath)) {
         try {
@@ -2484,10 +2765,7 @@ async function getPuppeteerLaunchOptions() {
             );
           }
           
-          // Ensure the sandbox wrapper is executable
           await fs.promises.chmod(sandboxPath, 0o755);
-          
-          // Set environment variable for the sandbox
           process.env.CHROME_DEVEL_SANDBOX = sandboxPath;
           
           // Create necessary directories
@@ -2513,15 +2791,23 @@ async function getPuppeteerLaunchOptions() {
           }
           launchOptions.userDataDir = userDataDir;
           
-          console.log('[Production] Configured Chromium with optimized settings for Docker');
+          console.log('[Production] Configured browser with optimized settings');
         } catch (err) {
-          console.error('Error setting up Chrome sandbox:', err);
+          console.error('Error setting up browser sandbox:', err);
         }
       }
     } else {
       // Development settings
       launchOptions.dumpio = true;
       launchOptions.timeout = 30000;
+      
+      // In development, always show the browser window
+      launchOptions.headless = false;
+      launchOptions.defaultViewport = { 
+        width: 1280, 
+        height: 720, 
+        deviceScaleFactor: 1 
+      };
     }
     
     console.log('Puppeteer launch options:', {
@@ -4411,6 +4697,7 @@ async function setupNexusEnvironment(userId) {
   delete process.env.MIDSCENE_USE_VLM_UI_TARS;
   
   // Standard configuration across all models
+  process.env.MIDSCNE
   process.env.MIDSCENE_MAX_STEPS = '20';
   process.env.MIDSCENE_TIMEOUT = '1800000'; // 30 min
 
@@ -6702,73 +6989,6 @@ async function handlePageObstacles(page, agent) {
     return results;
   }
 }
-
-// Browser session cleanup utilities
-
-async function cleanupBrowserSession(taskId) {
-  try {
-    if (!activeBrowsers.has(taskId)) return;
-    
-    const sessionData = activeBrowsers.get(taskId);
-    if (!sessionData) {
-      console.log(`No browser session found for task ${taskId}`);
-      return true;
-    }
-    
-    const { browser, page, release } = sessionData;
-    
-    // Close browser resources
-    if (page && !page.isClosed()) {
-      try {
-        await page.close();
-      } catch (err) {
-        console.error(`Error closing page for task ${taskId}:`, err);
-      }
-    }
-    
-    if (browser) {
-      try {
-        await browser.close();
-      } catch (err) {
-        console.error(`Error closing browser for task ${taskId}:`, err);
-      }
-    }
-    
-    // Release semaphore if it exists and is a function
-    if (release && typeof release === 'function') {
-      try {
-        release();
-      } catch (err) {
-        console.error(`Error releasing semaphore for task ${taskId}:`, err);
-      }
-    }
-    
-    // Remove from tracking
-    activeBrowsers.delete(taskId);
-    
-    console.log(`Successfully cleaned up browser session for task ${taskId}`);
-    return true;
-  } catch (err) {
-    console.error(`Failed to cleanup browser session for task ${taskId}:`, err);
-    return false;
-  }
-}
-
-// Add cleanup handler to process termination events
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received - cleaning up browser sessions');
-  for (const [taskId] of activeBrowsers) {
-    await cleanupBrowserSession(taskId);
-  }
-});
-
-process.on('SIGINT', async () => {
-  console.log('SIGINT received - cleaning up browser sessions');
-  for (const [taskId] of activeBrowsers) {
-    await cleanupBrowserSession(taskId);
-  }
-  process.exit(0);
-});
 
 // --- Helper: Ensure userId is present in session, generate guest if needed ---
 function ensureUserId(req, res, next) {

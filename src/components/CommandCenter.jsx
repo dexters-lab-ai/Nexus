@@ -1106,11 +1106,20 @@ export function CommandCenter(props = {}) {
           }
         }
         
-        // CRITICAL: Skip task completion cards
-        if (thoughtContainer && thoughtContainer.classList.contains('task-complete-card')) {
-          console.log('[thoughtComplete] Skipping task-complete-card');
+        // CRITICAL: Skip any completed cards (task-complete, complete, thought-complete)
+        if (thoughtContainer && (
+          thoughtContainer.classList.contains('task-complete-card') ||
+          thoughtContainer.classList.contains('complete') ||
+          thoughtContainer.classList.contains('thought-complete')
+        )) {
+          console.log(`[thoughtComplete] Skipping completed card for task ${tid}`, {
+            hasTaskComplete: thoughtContainer.classList.contains('task-complete-card'),
+            hasComplete: thoughtContainer.classList.contains('complete'),
+            hasThoughtComplete: thoughtContainer.classList.contains('thought-complete')
+          });
           thoughtContainer = null;
           thoughtElement = null;
+          return; // Exit early to prevent further processing
         }
         
         // For NLI tasks, NEVER create a new container during thoughtComplete - it causes unwanted movement
@@ -2895,12 +2904,21 @@ export function CommandCenter(props = {}) {
   // Register event listener for chat-initiated tasks
   eventBus.on('chatTaskStart', handleChatTaskStart);
   
+  // Helper function to check if a bubble is marked as complete
+  const isBubbleComplete = (bubble) => {
+    return bubble && (
+      bubble.classList.contains('complete') || 
+      bubble.classList.contains('thought-complete') || 
+      bubble.classList.contains('task-complete')
+    );
+  };
+
   // Helper function to create or update thought bubbles for tasks
   const createOrUpdateThoughtBubble = (taskId, content) => {
     if (!taskId) {
       console.error('[createOrUpdateThoughtBubble] Invalid taskId provided');
-      return;
-    }
+      return null;
+    }  
     
     // Check if this task is from NLI
     const isNliTask = taskNliMapping[taskId] || false;
@@ -2909,6 +2927,12 @@ export function CommandCenter(props = {}) {
     // For direct (non-NLI) tasks, we'll only create a neural flow canvas
     // No standard thought bubble message will be created - as requested
     if (!isNliTask) {
+      // Check if we should create a new neural flow canvas
+      const existingCanvas = document.querySelector(`.neural-canvas-container[data-task-id="${taskId}"]`);
+      if (existingCanvas && isBubbleComplete(existingCanvas.closest('.thought-bubble, .msg-thought'))) {
+        console.log(`[createOrUpdateThoughtBubble] Existing canvas for task ${taskId} is marked as complete, creating new one`);
+        return createNeuralFlowCanvas(taskId, content, isNliTask);
+      }
       // Only create the neural flow visualization, no thought bubble
       createNeuralFlowCanvas(taskId, content, isNliTask);
       return null;
@@ -2921,22 +2945,31 @@ export function CommandCenter(props = {}) {
                     document.querySelector(`.msg-thought[data-task-id="${taskId}"]:not(.task-complete-card)`) ||
                     document.querySelector(`.msg-thought-item[data-task-id="${taskId}"]`);
     
-    // If we found an existing bubble, just update it but don't show it yet
-    if (thoughtMsg) {
-      console.log(`[createOrUpdateThoughtBubble] Found existing thought bubble for task ${taskId}`);
-      // Ensure it has proper attributes
-      thoughtMsg.setAttribute('data-task-id', taskId);
-      thoughtMsg.setAttribute('data-message-id', `thought-${taskId}`);
-      thoughtMsg.id = `thought-bubble-${taskId}`; // Add unique ID for targeting
-      
-      // Hide the thought bubble until task completion
-      if (thoughtMsg.style.display !== 'none') {
-        thoughtMsg.style.display = 'none';
+    // Check if we already have a thought bubble for this task
+    const existingBubble = document.querySelector(`.thought-bubble[data-task-id="${taskId}"], .msg-thought[data-task-id="${taskId}"]`);
+  
+    if (existingBubble) {
+      // If existing bubble is marked as complete, create a new one instead of updating
+      if (isBubbleComplete(existingBubble)) {
+        console.log(`[createOrUpdateThoughtBubble] Existing bubble for task ${taskId} is marked as complete, creating new one`);
+      } else {
+        console.log(`[createOrUpdateThoughtBubble] Updating existing thought bubble for task ${taskId}`);
+        // Update existing bubble content if it's not complete
+        const contentDiv = existingBubble.querySelector('.thought-content, .content');
+        if (contentDiv && content) {
+          contentDiv.innerHTML = `<div class="plan-log-entry"><span class="log-step">Task: </span>${content}</div>`;
+        }
+        
+        // Make sure it's visible and styled correctly
+        existingBubble.style.opacity = '1';
+        existingBubble.style.display = 'block';
+        existingBubble.style.fontStyle = 'normal';
+        
+        // Also update neural flow canvas if it exists
+        createNeuralFlowCanvas(taskId, content, isNliTask);
+        
+        return existingBubble;
       }
-      
-      // Also create/update neural flow
-      createNeuralFlowCanvas(taskId, content, isNliTask);
-      return thoughtMsg;
     }
     const messageTimeline = document.querySelector('.message-timeline-container');
     if (!messageTimeline) {
@@ -2944,27 +2977,36 @@ export function CommandCenter(props = {}) {
       thoughtMsg.appendChild(typeDiv);
       
       // Create content div with fixed height and scrollable content
-      const contentDiv = document.createElement('div');
-      contentDiv.className = 'msg-content';
+      const thoughtMsg = document.createElement('div');
+      thoughtMsg.className = 'msg-item msg-assistant msg-thought';
+      thoughtMsg.setAttribute('data-task-id', taskId);
+      thoughtMsg.style.opacity = '0.9';
+      thoughtMsg.style.fontStyle = 'normal';
+      thoughtMsg.style.fontSize = '0.9em';
       
-      // Add styling for fixed size and scrollable content
-      contentDiv.style.maxHeight = '50px'; // Fixed height
-      contentDiv.style.overflowY = 'auto'; // Scrollable
-      contentDiv.style.scrollBehavior = 'smooth'; // Smooth scrolling
-      contentDiv.style.paddingRight = '5px'; // Space for scrollbar
+      // Add a unique ID to this thought bubble for better tracking
+      const thoughtId = `thought-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      thoughtMsg.id = thoughtId;
+      
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'thought-content';
       
       if (content) {
-        // contentDiv.innerHTML = `<div class="plan-log-entry"><span class="log-step">Task: </span>${content}</div>`;
+        contentDiv.innerHTML = `<div class="plan-log-entry"><span class="log-step">Task: </span>${content}</div>`;
       }
+      
       thoughtMsg.appendChild(contentDiv);
       
       // Add to message timeline
       messageTimeline.appendChild(thoughtMsg);
-      thoughtMsg.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      
+      // Scroll to make the new bubble visible
+      thoughtMsg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       
       // Also create neural flow canvas
-      createNeuralFlowCanvas(taskId, content, isNliTask);
+      const neuralFlow = createNeuralFlowCanvas(taskId, content, isNliTask);
       
+      console.log(`[createOrUpdateThoughtBubble] Created new thought bubble ${thoughtId} for task ${taskId}`);
       return thoughtMsg;
     } else {
       console.error('[createOrUpdateThoughtBubble] No message timeline container found');
@@ -3074,8 +3116,55 @@ export function CommandCenter(props = {}) {
       taskId = 'temp-' + Date.now();
       console.log(`[CommandCenter] Generated temporary taskId ${taskId} for invalid payload`);
     }
+  
+    // Check if this task is already marked as complete using multiple selectors and patterns
+    const completeSelectors = [
+      // Standard completed task selectors
+      `[data-task-id="${taskId}"].complete`,
+      `[data-task-id="${taskId}"].thought-complete`,
+      `[data-task-id="${taskId}"].task-complete-card`,
+      `[data-task-id="${taskId}"][data-complete="true"]`,
+      
+      // Typing bubble variants
+      `.typing-bubble[data-task-id="${taskId}"].complete`,
+      `.typing-bubble[data-task-id="${taskId}"].thought-complete`,
+      `.typing-bubble[data-task-id="${taskId}"].task-complete-card`,
+      
+      // Thought bubble variants
+      `.thought-bubble[data-task-id="${taskId}"].complete`,
+      `.thought-bubble[data-task-id="${taskId}"].thought-complete`,
+      `.thought-bubble[data-task-id="${taskId}"].task-complete-card`,
+      
+      // Message item variants
+      `.msg-item[data-task-id="${taskId}"].complete`,
+      `.msg-item[data-task-id="${taskId}"].thought-complete`,
+      `.msg-item[data-task-id="${taskId}"].task-complete-card`
+    ];
     
-    // Ensure we have a valid command
+    // Check for any matching complete elements
+    const existingCompleteContainer = document.querySelector(completeSelectors.join(','));
+    
+    if (existingCompleteContainer) {
+      console.log(`[handleTaskStart] Task ${taskId} is already marked as complete, skipping update`, {
+        element: existingCompleteContainer,
+        className: existingCompleteContainer.className,
+        dataset: existingCompleteContainer.dataset
+      });
+      
+      // If this is a duplicate start event for a completed task, we should still return early
+      // but log a warning if we're in development mode
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[handleTaskStart] Duplicate start event for completed task', {
+          taskId,
+          payload,
+          stack: new Error().stack
+        });
+      }
+      
+      return; // Exit early if the task is already complete
+    }
+    
+    // Rest of the function remains the same...
     const command = payload.command || 
                   (payload.payload && payload.payload.command) || 
                   (payload.prompt) || 
@@ -3083,7 +3172,7 @@ export function CommandCenter(props = {}) {
     
     // Check for existing task first
     const state = tasksStore.getState();
-    const existingTask = state.active.find(task => task._id === taskId);
+    const existingTask = state.active.find(task => task._id === taskId);  
     
     if (existingTask) {
       console.log(`[CommandCenter] Task ${taskId} already exists, updating status only`);
@@ -3595,7 +3684,19 @@ export function CommandCenter(props = {}) {
     
     const planEntries = tasksStore.getState().stepLogs[taskId] || [];
     const lastPlan = planEntries.filter(l => l.type === 'planLog').slice(-1)[0];
-    const planText = lastPlan ? lastPlan.message : '';
+    let planText = lastPlan ? lastPlan.message : '';
+    
+    // Convert URLs in plan text to clickable links
+    if (planText) {
+      planText = planText.replace(
+        /(https?:\/\/[^\s]+)/g, 
+        url => {
+          const displayUrl = url.length > 50 ? url.substring(0, 47) + '...' : url;
+          const encodedUrl = encodeURIComponent(url);
+          return `<a href="javascript:void(0)" class="status-link open-link" data-url="${encodedUrl}">${displayUrl}</a>`;
+        }
+      );
+    }
     
     const timelineEl = document.querySelector('.message-timeline-container');
     if (timelineEl) {
@@ -3800,15 +3901,35 @@ export function CommandCenter(props = {}) {
   function transitionThoughtBubble(taskId, forceTransition = false) {
     console.log(`[DEBUG] Attempting to transition thought bubble for task ${taskId}, forceTransition=${forceTransition}`);
     
-    // Create an array of selector strategies to maximize our chances of finding the bubble
+    // Specific selectors targeting only the intended thought bubbles
     const selectors = [
-      `.thought-bubble[data-task-id="${taskId}"]`, // Exact match with data attribute
-      `.typing-bubble[data-task-id="${taskId}"]`,  // Typing state with data attribute
-      `.message-item[data-task-id="${taskId}"] .thought-bubble`, // Parent-child relationship
-      `.message-item[data-task-id="${taskId}"] .typing-bubble`, // Parent-child with typing
-      `.message-content[data-task-id="${taskId}"] .thought-bubble`, // Alternative parent-child
-      `[data-task-id="${taskId}"].thought-bubble`, // Alternative attribute syntax
-      `[data-task-id="${taskId}"]`  // Any element with taskId (last resort)
+      // Format 1: Direct matches with data-task-id (highest priority)
+      `.thought-bubble[data-task-id="${taskId}"]`,
+      `.typing-bubble[data-task-id="${taskId}"]`,
+      
+      // Format 2: Message items with data-task-id and thought classes
+      `.msg-thought-item[data-task-id="${taskId}"]`,
+      
+      // Format 3: Message items with matching message ID pattern
+      `.msg-item.msg-thought.msg-thought-item[data-message-id^="thought-"]`,
+      
+      // Format 4: Direct attribute matches (compatibility)
+      `[data-task-id="${taskId}"].thought-bubble`,
+      `[data-task-id="${taskId}"].typing-bubble`,
+      
+      // Format 5: Nested message content with task ID
+      `.message-item[data-task-id="${taskId}"] > .thought-bubble`,
+      `.message-item[data-task-id="${taskId}"] > .typing-bubble`,
+      
+      // Format 6: Message content containers
+      `.message-content[data-task-id="${taskId}"] > .thought-bubble`,
+      
+      // Fallback: Generic task ID matches
+      `[data-task-id="${taskId}"][class*="thought"],
+       [data-task-id="${taskId}"][class*="typing"]`,
+       
+      // Fallback: Any message item with task ID
+      `.msg-item[data-task-id="${taskId}"]`
     ];
     
     // Try multiple selector strategies until we find a bubble
@@ -3828,12 +3949,19 @@ export function CommandCenter(props = {}) {
     if (!bubble) {
       console.warn(`[DEBUG] Could not find thought bubble with primary selectors`);
       
-      // Try looking for all bubbles and find one that might match
-      const allBubbles = document.querySelectorAll('.thought-bubble, .typing-bubble, .msg-thought-item');
-      console.log(`[DEBUG] Found ${allBubbles.length} total bubbles in document, searching for match...`);
+      // Try looking for all possible message formats
+      const allPossibleBubbles = document.querySelectorAll(`
+        .thought-bubble, 
+        .typing-bubble, 
+        .msg-thought-item,
+        .msg-item.msg-thought,
+        [data-task-id="${taskId}"]
+      `);
       
-      // Look for a bubble that contains the taskId in any attribute or content
-      for (const possibleBubble of allBubbles) {
+      console.log(`[DEBUG] Found ${allPossibleBubbles.length} potential bubbles, searching for match...`);
+      
+      // Look for a bubble that matches our task ID or content
+      for (const possibleBubble of allPossibleBubbles) {
         // Check data attributes
         if (possibleBubble.dataset.taskId === taskId) {
           bubble = possibleBubble;
@@ -3842,8 +3970,9 @@ export function CommandCenter(props = {}) {
           break;
         }
         
-        // Check if taskId is in any of the bubble's content
-        if (possibleBubble.innerHTML && possibleBubble.innerHTML.includes(taskId)) {
+        // Check if taskId is in the bubble's content or any of its children
+        const bubbleContent = possibleBubble.outerHTML || '';
+        if (bubbleContent.includes(taskId)) {
           bubble = possibleBubble;
           foundSelector = 'content-search';
           console.log(`[DEBUG] Found bubble via content search`);
@@ -3851,12 +3980,17 @@ export function CommandCenter(props = {}) {
         }
       }
       
-      // Still no bubble? Last resort: transition ALL recent bubbles
+      // Last resort: If we're forcing transition, find any bubble that looks like it's in a thinking state
       if (!bubble && forceTransition) {
         console.log(`[DEBUG] No specific bubble found, force-transitioning all recent bubbles`);
-        document.querySelectorAll('.thought-bubble, .typing-bubble, .msg-thought-item').forEach(b => {
+        document.querySelectorAll(`
+          .typing-bubble,
+          .msg-thought-item:not(.complete),
+          .msg-item.msg-thought:not(.complete)
+        `).forEach(b => {
           if (b.classList.contains('typing-bubble') || 
               b.style.opacity === '0.6' || 
+              b.style.opacity === '0.9' ||
               b.style.fontStyle === 'italic' ||
               !b.classList.contains('complete')) {
             // Apply transition to all possible candidates
