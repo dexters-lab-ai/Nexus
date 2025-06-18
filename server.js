@@ -2718,7 +2718,6 @@ async function getPuppeteerLaunchOptions() {
   try {
     if (isProduction) {
       // Production-specific settings
-      // Note: headless mode is already set at the top level
       // In production, prioritize the path from environment variables
       const possiblePaths = [
         process.env.PUPPETEER_EXECUTABLE_PATH,
@@ -2727,6 +2726,16 @@ async function getPuppeteerLaunchOptions() {
         '/usr/bin/chromium-browser',
         '/usr/bin/google-chrome-stable'
       ].filter(Boolean);
+      
+      // Ensure display is set for Xvfb
+      if (!process.env.DISPLAY) {
+        process.env.DISPLAY = ':99';
+      }
+      
+      // Add display to args if not already present
+      if (!launchOptions.args.some(arg => arg.startsWith('--display='))) {
+        launchOptions.args.push(`--display=${process.env.DISPLAY}`);
+      }
 
       // Try each path until we find one that exists
       let foundPath = false;
