@@ -126,8 +126,21 @@ nav a i {
     padding: 0 15px;
   }
   
+  /* Hide O.P.E.R.A.T.O.R text on mobile */
   .logo h1 {
-    font-size: 20px;
+    display: none;
+  }
+  
+  /* Adjust logo size for mobile */
+  .logo {
+    gap: 8px;
+  }
+  
+  .logo img.logo-svg {
+    width: 24px;
+    height: 24px;
+    zoom: 2.5;
+    margin-right: -15px; /* Compensate for the hidden text */
   }
   
   nav {
