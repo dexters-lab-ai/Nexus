@@ -710,6 +710,24 @@
   letter-spacing: 1px;
 }
 
+@media (max-width: 768px) {
+  header {
+    padding: 0 15px !important;
+  }
+  
+  /* Hide O.P.E.R.A.T.O.R text on mobile */
+  .logo-text {
+    display: none !important;
+  }
+  
+  .nav-logo img.logo-svg {
+    width: 27px !important;
+    height: 27px !important;
+    margin-left: -15px !important; /* Compensate for the hidden text */
+  }
+  
+}
+
 /* Deprecated nav-links removed */
 
 .nav-tools {

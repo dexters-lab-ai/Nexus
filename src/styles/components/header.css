@@ -123,47 +123,24 @@ nav a i {
 
 @media (max-width: 768px) {
   header {
-    padding: 0 15px;
+    padding: 0 15px !important;
   }
   
   /* Hide O.P.E.R.A.T.O.R text on mobile */
   .logo h1 {
-    display: none;
+    display: none !important;
   }
   
   /* Adjust logo size for mobile */
   .logo {
-    gap: 8px;
+    gap: 8px !important;
   }
   
   .logo img.logo-svg {
-    width: 24px;
-    height: 24px;
-    zoom: 2.5;
-    margin-right: -15px; /* Compensate for the hidden text */
+    width: 24px !important;
+    height: 24px !important;
+    zoom: 2.5 !important;
+    margin-right: -15px !important; /* Compensate for the hidden text */
   }
   
-  nav {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: rgba(10, 14, 23, 0.95);
-    backdrop-filter: blur(10px);
-    height: 60px;
-    justify-content: space-around;
-    border-top: 1px solid var(--dark-border);
-    padding: 0 15px;
-  }
-  
-  nav a {
-    flex-direction: column;
-    font-size: 12px;
-    padding: 8px 12px;
-    gap: 4px;
-  }
-  
-  nav a i {
-    font-size: 18px;
-  }
 }
