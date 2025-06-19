@@ -13,6 +13,7 @@ import { getPuppeteerLaunchOptions } from './puppeteerConfig.js';
 import YamlMap from '../models/YamlMap.js';
 import { generateReport } from './reportGenerator.js';
 import OpenAI from 'openai';
+import os from 'os';
 
 // Configure Puppeteer with stealth plugin
 puppeteer.use(StealthPlugin());
@@ -460,6 +461,14 @@ export async function processYamlMapTask(options) {
       // Set environment variables for container compatibility
       process.env.CHROME_DEVEL_SANDBOX = '/tmp/chrome-sandbox';
       process.env.DISPLAY = ':99';
+      
+      // Create a unique temporary directory for this browser instance
+      const tempDir = path.join(os.tmpdir(), `puppeteer-profile-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`);
+      fs.mkdirSync(tempDir, { recursive: true });
+      
+      // Add user data directory to launch options
+      launchOptions.userDataDir = tempDir;
+      launchOptions.args.push(`--user-data-dir=${tempDir}`);
 
       console.log(`[ProcessYamlTask] Launching browser with options:`, 
         JSON.stringify({
@@ -479,9 +488,20 @@ export async function processYamlMapTask(options) {
         console.log('[ProcessYamlTask] Cleaning up browser before exit...');
         try {
           if (browser) {
-            const pages = await browser.pages();
-            await Promise.all(pages.map(p => p.close().catch(console.error)));
-            await browser.close().catch(console.error);
+            try {
+              const pages = await browser.pages();
+              await Promise.all(pages.map(p => p.close().catch(console.error)));
+              await browser.close().catch(console.error);
+            } finally {
+              // Clean up the temporary directory
+              if (tempDir && fs.existsSync(tempDir)) {
+                try {
+                  fs.rmSync(tempDir, { recursive: true, force: true });
+                } catch (e) {
+                  console.error('Error cleaning up temp directory:', e);
+                }
+              }
+            }
           }
         } catch (e) {
           console.error('Error during browser cleanup:', e);
