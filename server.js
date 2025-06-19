@@ -2602,20 +2602,49 @@ async function getPuppeteerLaunchOptions() {
 
   // Base options common to dev & prod
   const launchOptions = {
-    // Use headless mode in production unless explicitly disabled
+    // Always use headless in production, can be toggled in dev
     headless: isProd ? 'new' : false,
+    // Core settings
     ignoreHTTPSErrors: true,
     defaultViewport: { width: 1280, height: 720, deviceScaleFactor: 1 },
-    // Enable GPU acceleration in headless mode
+    // Timeout settings
+    timeout: 30000, // 30 seconds timeout for browser launch
+    // Enable debug logging
+    dumpio: true,
+    // Disable default args handling to avoid conflicts
+    ignoreDefaultArgs: [],
+    // Chrome/Chromium arguments
     args: [
-      // sandbox / security
+      // Basic security and sandbox
       '--no-sandbox',
       '--disable-setuid-sandbox',
-
-      // window
+      '--disable-gpu',
+      // Performance optimizations
+      '--disable-dev-shm-usage',
+      '--disable-software-rasterizer',
+      '--disable-accelerated-2d-canvas',
+      '--no-zygote',
+      '--single-process',
+      // Feature flags
+      '--disable-gpu-sandbox',
+      '--disable-features=TranslateUI,AutomationControlled,NetworkService,IdleDetection,IsolateOrigins,site-per-process',
+      '--disable-site-isolation-trials',
+      '--disable-web-security',
+      '--disable-sync',
+      '--disable-translate',
+      // UI/UX
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--mute-audio',
+      '--disable-infobars',
       '--window-size=1280,720',
       '--start-maximized',
       '--hide-scrollbars',
+      // Xvfb/display settings (Xvfb should be started before Node)
+      '--display=:99',
+      // Debugging (minimal to avoid hangs)
+      '--enable-logging',
+      '--v=1',
 
       // performance & disable noisy features
       '--disable-dev-shm-usage',
@@ -2648,7 +2677,7 @@ async function getPuppeteerLaunchOptions() {
     timeout: isProd ? 60000 : 30000,
     env: {
       ...process.env,
-      // Display settings
+      // X Server settings (Xvfb should be running on :99)
       DISPLAY: process.env.DISPLAY || ':99',
       // Disable accessibility bridge
       NO_AT_BRIDGE: '1',
@@ -2656,21 +2685,23 @@ async function getPuppeteerLaunchOptions() {
       DBUS_SESSION_BUS_ADDRESS: '/dev/null',
       // Set up Chrome runtime directory
       XDG_RUNTIME_DIR: '/tmp/chrome-runtime',
-      // Set Chrome sandbox path
+      // Set Chrome sandbox path (must be chmod 755 and owned by Node user)
       CHROME_DEVEL_SANDBOX: '/tmp/chrome-sandbox',
       // Disable GPU process
       GPU_SINGLE_ALLOC_PERCENT: '100',
       GPU_MAX_ALLOC_PERCENT: '100',
-      // Disable GPU acceleration
+      // Force software rendering
       LIBGL_ALWAYS_SOFTWARE: '1',
-      // Disable sandbox and GPU blacklist
-      CHROME_EXTRA_LAUNCH_ARGS: '--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage',
       // Disable Chrome's first run and default browser check
       CHROME_CRASHED: 'true',
-      // Disable Chrome's crash reporter
-      CHROME_HEADLESS: '1',
+      // Indicate headless mode
+      CHROME_HEADLESS: isProd ? '1' : '0',
       // Disable Chrome's metrics reporting
-      CHROME_IPC_LOGGING: '0'
+      CHROME_IPC_LOGGING: '0',
+      // Ensure we're not running as root
+      CHROME_LAUNCHER_DEBUG: '1',
+      // Disable sandbox for container environments (use with caution)
+      CHROME_ALLOWED_ORIGINS: '*'
     }
   };
 

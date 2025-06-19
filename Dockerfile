@@ -319,57 +319,40 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo '    echo "[Startup] Xvfb is ready after $i attempts";' >> /usr/local/bin/startup.sh && \
     echo '    # Verify display is working' >> /usr/local/bin/startup.sh && \
     echo '    if ! xdpyinfo -display :99 >/dev/null 2>&1; then' >> /usr/local/bin/startup.sh && \
-    echo '      echo "[WARN] Xvfb is running but display is not accessible, retrying..."' >> /usr/local/bin/startup.sh && \
-    echo '      continue' >> /usr/local/bin/startup.sh && \
-    echo '    fi' >> /usr/local/bin/startup.sh && \
-    echo '    break;' >> /usr/local/bin/startup.sh && \
-    echo '  fi' >> /usr/local/bin/startup.sh && \
-    echo '  if [ $i -eq 30 ]; then' >> /usr/local/bin/startup.sh && \
-    echo '    echo "[ERROR] Xvfb failed to start after 30 seconds"' >> /usr/local/bin/startup.sh && \
-    echo '    echo "=== Xvfb Process Status ==="' >> /usr/local/bin/startup.sh && \
-    echo '    ps aux | grep -i xvfb | grep -v grep' >> /usr/local/bin/startup.sh && \
-    echo '    echo ""' >> /usr/local/bin/startup.sh && \
-    echo '    echo "=== Xvfb Log ==="' >> /usr/local/bin/startup.sh && \
-    echo '    cat /tmp/xvfb.log' >> /usr/local/bin/startup.sh && \
-    echo '    echo ""' >> /usr/local/bin/startup.sh && \
-    echo '    echo "=== Display Info ==="' >> /usr/local/bin/startup.sh && \
-    echo '    xdpyinfo -display :99 2>&1 || echo "Failed to get display info"' >> /usr/local/bin/startup.sh && \
-    echo '    echo ""' >> /usr/local/bin/startup.sh && \
-    echo '    echo "=== Environment Variables ==="' >> /usr/local/bin/startup.sh && \
-    echo '    env | grep -i "DISPLAY\|XAUTHORITY"' >> /usr/local/bin/startup.sh && \
-    echo '    exit 1' >> /usr/local/bin/startup.sh && \
-    echo '  fi' >> /usr/local/bin/startup.sh && \
-    echo '  echo "[Startup] Waiting for Xvfb to be ready (attempt $i/30)..."' >> /usr/local/bin/startup.sh && \
-    echo '  sleep 1' >> /usr/local/bin/startup.sh && \
-    echo 'done' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
-    echo '# Additional check to ensure display is accessible' >> /usr/local/bin/startup.sh && \
-    echo 'echo "[Startup] Verifying display is accessible..."' >> /usr/local/bin/startup.sh && \
+    echo '### Start Xvfb ###' >> /usr/local/bin/startup.sh && \
+    echo 'echo "[Startup] Starting Xvfb on display :99..."' >> /usr/local/bin/startup.sh && \
+    echo 'Xvfb :99 -screen 0 1280x720x24 -ac +extension GLX +render -noreset > /dev/null 2>&1 &' >> /usr/local/bin/startup.sh && \
+    echo 'Xvfb_pid=\$!' >> /usr/local/bin/startup.sh && \
+    echo 'sleep 2' >> /usr/local/bin/startup.sh && \
+    echo '' >> /usr/local/bin/startup.sh && \
+    echo '### Verify Xvfb is running ###' >> /usr/local/bin/startup.sh && \
     echo 'if ! xdpyinfo -display :99 >/dev/null 2>&1; then' >> /usr/local/bin/startup.sh && \
     echo '  echo "[ERROR] Display :99 is not accessible after Xvfb startup"' >> /usr/local/bin/startup.sh && \
     echo '  exit 1' >> /usr/local/bin/startup.sh && \
     echo 'fi' >> /usr/local/bin/startup.sh && \
     echo 'echo "[Startup] Xvfb is ready and display is accessible"' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
-    echo '### System Information ###' >> /usr/local/bin/startup.sh && \
-    echo 'echo ""' >> /usr/local/bin/startup.sh && \
-    echo 'echo "=== System Information ==="' >> /usr/local/bin/startup.sh && \
-    echo 'echo "Hostname: $(hostname)"' >> /usr/local/bin/startup.sh && \
-    echo 'echo "User: $(whoami)"' >> /usr/local/bin/startup.sh && \
-    echo 'echo "Working directory: $(pwd)"' >> /usr/local/bin/startup.sh && \
-    echo 'uname -a' >> /usr/local/bin/startup.sh && \
-    echo 'echo ""' >> /usr/local/bin/startup.sh && \
-    echo 'echo "=== Environment Variables ==="' >> /usr/local/bin/startup.sh && \
-    echo 'env | grep -E "CHROME|PUPPETEER|DISPLAY|SCREEN|XVFB|XDG|NODE" | sort' >> /usr/local/bin/startup.sh && \
+    echo '### Verify Chrome works ###' >> /usr/local/bin/startup.sh && \
+    echo 'echo "[Startup] Verifying Chrome..."' >> /usr/local/bin/startup.sh && \
+    echo 'if ! /usr/bin/chromium --version; then' >> /usr/local/bin/startup.sh && \
+    echo '  echo "[ERROR] Chrome failed to start"' >> /usr/local/bin/startup.sh && \
+    echo '  exit 1' >> /usr/local/bin/startup.sh && \
+    echo 'fi' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
-    echo 'echo "=== Chromium Information ==="' >> /usr/local/bin/startup.sh && \
-    echo 'echo "Chromium version: $(/usr/bin/chromium --version 2>&1 || echo "Chromium not found")"' >> /usr/local/bin/startup.sh && \
-    echo 'echo "Chromium path: $(which chromium) ($(readlink -f $(which chromium) 2>/dev/null || echo 'not found'))"' >> /usr/local/bin/startup.sh && \
-    echo 'echo "Chromium capabilities: $(ls -l $(which chromium) 2>/dev/null)"' >> /usr/local/bin/startup.sh && \
-    echo 'echo ""' >> /usr/local/bin/startup.sh && \
-    echo 'echo "=== Xvfb Status ==="' >> /usr/local/bin/startup.sh && \
-    echo 'ps aux | grep -i "[x]vfb" || echo "No Xvfb process found"' >> /usr/local/bin/startup.sh && \
+    echo '### Start Application ###' >> /usr/local/bin/startup.sh && \
+    echo 'echo "[Startup] Starting application..."' >> /usr/local/bin/startup.sh && \
+    echo 'exec node server.js' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
+    echo '### Cleanup on exit ###' >> /usr/local/bin/startup.sh && \
+    echo 'cleanup() {' >> /usr/local/bin/startup.sh && \
+    echo '  echo "[Shutdown] Shutting down..."' >> /usr/local/bin/startup.sh && \
+    echo '  if [ -n "\$Xvfb_pid" ]; then' >> /usr/local/bin/startup.sh && \
+    echo '    echo "[Shutdown] Stopping Xvfb..."' >> /usr/local/bin/startup.sh && \
+    echo '    kill -TERM "\$Xvfb_pid" || true' >> /usr/local/bin/startup.sh && \
+    echo '  fi' >> /usr/local/bin/startup.sh && \
+    echo '  exit 0' >> /usr/local/bin/startup.sh && \
+    echo '}' >> /usr/local/bin/startup.sh && \
     echo 'echo "=== Display Info ==="' >> /usr/local/bin/startup.sh && \
     echo 'xdpyinfo -display :99 >/dev/null 2>&1 && (echo "X server is available"; xdpyinfo -display :99 | grep -A 8 "^name") || echo "X server not available"' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
