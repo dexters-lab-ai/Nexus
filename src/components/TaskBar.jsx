@@ -819,7 +819,7 @@ export function TaskBar(props = {}) {
       
       completedTasks.forEach(task => {
         const existingItem = document.querySelector(`.task-bar-task-item[data-task-id="${task._id}"]`);
-        
+        console.log('task_full_log', task);
         if (!existingItem || !existingItem.closest('.completed-tasks-container')) {
           const taskItem = document.createElement('div');
           taskItem.className = 'task-bar-task-item completed';

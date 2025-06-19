@@ -13,7 +13,7 @@
   --footer-height: 40px;
   --command-center-height: 200px;
   --command-center-expanded-height: 300px;
-  --timeline-max-height: calc(100vh - var(--header-height) - var(--command-center-height) - var(--footer-height));
+  --timeline-max-height: calc(100vh - var(--header-height) - var(--command-center-height));
   --animation-duration: 0.3s;
   --border-radius: 8px;
 }
