@@ -2611,181 +2611,184 @@ async function getDebugLaunchOptions() {
  * @returns {Object} Puppeteer launch options
  */
 async function getPuppeteerLaunchOptions() {
-  const isProd    = process.env.NODE_ENV === 'production';
-  const isWindows= process.env.NODE_ENV === 'win32';
-
-  // Base options common to dev & prod
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  // Common launch options for all environments
   const launchOptions = {
-    // Always use headless in production, can be toggled in dev
-    headless: isProd ? 'new' : false,
-    // Core settings
+    headless: isProduction ? 'new' : false,
     ignoreHTTPSErrors: true,
     defaultViewport: { width: 1280, height: 720, deviceScaleFactor: 1 },
-    // Timeout settings
-    timeout: 30000, // 30 seconds timeout for browser launch
-    // Enable debug logging
-    dumpio: true,
-    // Disable default args handling to avoid conflicts
-    ignoreDefaultArgs: [],
-    // Chrome/Chromium arguments
     args: [
-      // Basic security and sandbox
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-gpu',
-      // Performance optimizations
       '--disable-dev-shm-usage',
+      '--headless=new',
+      
+      // Performance optimizations
+      '--disable-extensions',
+      '--window-size=1280,720',
+      '--disable-gpu',
       '--disable-software-rasterizer',
       '--disable-accelerated-2d-canvas',
-      '--no-zygote',
-      '--single-process',
-      // Feature flags
-      '--disable-gpu-sandbox',
-      '--disable-features=TranslateUI,AutomationControlled,NetworkService,IdleDetection,IsolateOrigins,site-per-process',
-      '--disable-site-isolation-trials',
-      '--disable-web-security',
-      '--disable-sync',
-      '--disable-translate',
-      // UI/UX
       '--no-first-run',
-      '--no-default-browser-check',
-      '--mute-audio',
-      '--disable-infobars',
-      '--window-size=1280,720',
-      '--start-maximized',
-      '--hide-scrollbars',
-      // Xvfb/display settings (Xvfb should be started before Node)
-      '--display=:99',
-      // Performance optimizations
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--disable-extensions',
+      '--no-zygote',
+      
+      // Disable unnecessary features
       '--disable-background-networking',
       '--disable-background-timer-throttling',
       '--disable-backgrounding-occluded-windows',
+      '--disable-breakpad',
       '--disable-client-side-phishing-detection',
       '--disable-component-extensions-with-background-pages',
       '--disable-default-apps',
-      '--disable-features=TranslateUI,AutomationControlled,NetworkService,IdleDetection,IsolateOrigins,site-per-process',
-      '--disable-site-isolation-trials',
-      '--disable-web-security',
-      '--disable-sync',
-      '--disable-translate',
-      '--no-first-run',
-      '--no-default-browser-check',
       '--disable-hang-monitor',
+      '--disable-ipc-flooding-protection',
       '--disable-popup-blocking',
       '--disable-prompt-on-repost',
       '--disable-renderer-backgrounding',
-      '--disable-ipc-flooding-protection',
-      '--disable-breakpad',
-      '--mute-audio',
+      '--disable-sync',
+      '--metrics-recording-only',
+      '--no-default-browser-check',
       '--password-store=basic',
-      '--use-mock-keychain'
-    ],
-    dumpio: true,      // stream Chromium stdout/stderr
-    timeout: isProd ? 60000 : 30000,
-    env: {
-      ...process.env,
-      // X Server settings (Xvfb should be running on :99)
-      DISPLAY: process.env.DISPLAY || ':99',
-      // Disable accessibility bridge
-      NO_AT_BRIDGE: '1',
-      // Disable D-Bus
-      DBUS_SESSION_BUS_ADDRESS: '/dev/null',
-      // Set up Chrome runtime directory
-      XDG_RUNTIME_DIR: '/tmp/chrome-runtime',
-      // Set Chrome sandbox path (must be chmod 755 and owned by Node user)
-      CHROME_DEVEL_SANDBOX: '/tmp/chrome-sandbox',
-      // Disable GPU process
-      GPU_SINGLE_ALLOC_PERCENT: '100',
-      GPU_MAX_ALLOC_PERCENT: '100',
-      // Force software rendering
-      LIBGL_ALWAYS_SOFTWARE: '1',
-      // Disable Chrome's first run and default browser check
-      CHROME_CRASHED: 'true',
-      // Indicate headless mode
-      CHROME_HEADLESS: isProd ? '1' : '0',
-      // Disable Chrome's metrics reporting
-      CHROME_IPC_LOGGING: '0',
-      // Ensure we're not running as root
-      CHROME_LAUNCHER_DEBUG: '1',
-      // Disable sandbox for container environments (use with caution)
-      CHROME_ALLOWED_ORIGINS: '*'
-    }
+      '--use-mock-keychain',
+      '--mute-audio',
+      '--safebrowsing-disable-auto-update',
+      '--single-process',
+      '--disable-webgl',
+      '--disable-threaded-animation',
+      '--disable-threaded-scrolling',
+      '--disable-in-process-stack-traces',
+      '--disable-logging',
+      '--output=/dev/null',
+      '--disable-3d-apis',
+      '--disable-d3d11',
+      '--disable-d3d12',
+      '--disable-direct-composition',
+      '--disable-direct-dwrite',
+      
+      // Security
+      '--disable-features=AudioServiceOutOfProcess,TranslateUI,Translate,ImprovedCookieControls,' +
+      'LazyFrameLoading,GlobalMediaControls,MediaRouter,NetworkService,OutOfBlinkCors,' +
+      'OutOfProcessPdf,OverlayScrollbar,PasswordGeneration,RendererCodeIntegrity,' +
+      'SpareRendererForSitePerProcess,TopChromeTouchUi,VizDisplayCompositor,IsolateOrigins,site-per-process',
+      '--disable-site-isolation-trials',
+      '--disable-web-security',
+      '--disable-blink-features=AutomationControlled',
+      
+      // Window settings
+      '--window-position=0,0',
+      '--start-maximized',
+      '--hide-scrollbars'
+    ]
   };
-
-  // In prod, prefer pipe mode for more reliable stdout streaming
-  if (isProd) {
-    launchOptions.pipe = true;
-
-    // Figure out an executable path
-    const candidates = [
-      process.env.PUPPETEER_EXECUTABLE_PATH,
-      process.env.CHROME_BIN,
-      '/usr/bin/chromium-browser',
-      '/usr/bin/chromium',
-      '/usr/bin/google-chrome-stable'
-    ].filter(Boolean);
-
-    for (const exe of candidates) {
-      if (fs.existsSync(exe)) {
-        launchOptions.executablePath = exe;
-        console.log(`[Puppeteer] Using browser at: ${exe}`);
-        break;
-      }
-    }
-
-    if (!launchOptions.executablePath) {
-      // fallback to Puppeteer’s bundled Chromium
-      launchOptions.executablePath = await puppeteer.executablePath();
-      console.log('[Puppeteer] Falling back to bundled Chromium');
-    }
-
-    // Ensure our sandbox wrapper exists and is executable
-    try {
-      // Only create sandbox if it doesn't exist
-      const sb = '/tmp/chrome-sandbox/chrome';  // Note the path change to match Docker setup
-      try {
+  
+  try {
+    if (isProduction) {
+      // In production, prioritize the path from environment variables
+      const possiblePaths = [
+        process.env.PUPPETEER_EXECUTABLE_PATH,   // Explicit override first
+        process.env.CHROME_BIN,                  // Then Dockerfile ENV
+        '/usr/bin/chromium',                     // Standard Debian/Ubuntu
+        '/usr/bin/chromium-browser',             // Alternative path
+        '/usr/bin/google-chrome-stable'          // Fallback to Chrome
+      ].filter(Boolean);
+      
+      // Try each path until we find one that exists
+      let foundPath = false;
+      for (const execPath of possiblePaths) {
+        if (!execPath) continue;
+        
         try {
-          await fs.promises.access(sb, fs.constants.X_OK);
-          console.log(`[Puppeteer] Using existing sandbox at ${sb}`);
-        } catch {
-          console.log(`[Puppeteer] Creating sandbox at ${sb}`);
-          await fs.promises.mkdir('/tmp/chrome-sandbox', { recursive: true });
-          await fs.promises.writeFile(
-            sb,
-            '#!/bin/sh\nexec /usr/bin/chromium --no-sandbox "$@"',
-            { mode: 0o755 }
-          );
+          if (fs.existsSync(execPath)) {
+            launchOptions.executablePath = execPath;
+            console.log(`[Production] Using Chromium at: ${execPath}`);
+            foundPath = true;
+            break;
+          } else {
+            console.log(`[Puppeteer] Chromium not found at: ${execPath}`);
+          }
+        } catch (error) {
+          console.error(`[Puppeteer] Error checking path ${execPath}:`, error.message);
         }
-        process.env.CHROME_DEVEL_SANDBOX = sb;
-      } catch (error) {
-        console.error('[Puppeteer] Failed to set up Chrome sandbox:', error);
       }
-      console.log('[Puppeteer] Sandbox and user-data dir configured');
-    } catch (err) {
-      console.error('[Puppeteer] Sandbox setup error:', err);
+      
+      if (!foundPath) {
+        console.warn('[Production] No valid Chromium path found in environment variables or default locations');
+        console.warn('Falling back to Puppeteer\'s bundled Chromium');
+        launchOptions.executablePath = await puppeteer.executablePath();
+      }
+      
+      // Production-specific settings
+      launchOptions.dumpio = true; // Enable for debugging
+      launchOptions.pipe = true;   // Use pipe instead of WebSocket
+      
+      // Ensure proper permissions for Chrome sandbox
+      if (launchOptions.executablePath && fs.existsSync(launchOptions.executablePath)) {
+        try {
+          await fs.promises.chmod(launchOptions.executablePath, 0o755);
+          
+          // Set up Chrome sandbox wrapper
+          const sandboxPath = process.env.CHROME_DEVEL_SANDBOX || '/tmp/chrome-sandbox';
+          if (!fs.existsSync(sandboxPath)) {
+            await fs.promises.writeFile(
+              sandboxPath,
+              '#!/bin/sh\nexec "$@" --no-sandbox',
+              { mode: 0o755 }
+            );
+          }
+          
+          // Ensure the sandbox wrapper is executable
+          await fs.promises.chmod(sandboxPath, 0o755);
+          
+          // Set environment variable for the sandbox
+          process.env.CHROME_DEVEL_SANDBOX = sandboxPath;
+          
+          // Create necessary directories
+          await Promise.all([
+            fs.promises.mkdir('/tmp/chrome-user-data', { recursive: true }),
+            fs.promises.mkdir('/tmp/chrome', { recursive: true })
+          ]);
+          
+          // Set environment variables
+          launchOptions.env = {
+            ...process.env,
+            CHROME_DEVEL_SANDBOX: sandboxPath,
+            DISPLAY: ':99',
+            NO_AT_BRIDGE: '1',
+            DBUS_SESSION_BUS_ADDRESS: '/dev/null',
+            XDG_RUNTIME_DIR: '/tmp/chrome'
+          };
+          
+          // Set the user data directory to a writable location
+          const userDataDir = path.join(process.cwd(), 'chrome-profile');
+          if (!fs.existsSync(userDataDir)) {
+            fs.mkdirSync(userDataDir, { recursive: true });
+          }
+          launchOptions.userDataDir = userDataDir;
+          
+          console.log('[Production] Configured Chromium with optimized settings for Docker');
+        } catch (err) {
+          console.error('Error setting up Chrome sandbox:', err);
+        }
+      }
+    } else {
+      // Development settings
+      launchOptions.dumpio = true;
+      launchOptions.timeout = 30000;
     }
+    
+    console.log('Puppeteer launch options:', {
+      executablePath: launchOptions.executablePath || 'puppeteer-default',
+      headless: launchOptions.headless,
+      argsCount: launchOptions.args?.length || 0
+    });
+    
+    return launchOptions;
+  } catch (error) {
+    console.error('Error in getPuppeteerLaunchOptions:', error);
+    throw error;
   }
-  else {
-    // DEV: on Windows, explicitly point to Chrome if you like
-    if (isWindows) {
-      launchOptions.executablePath =
-        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-    }
-  }
-
-  console.log('[Puppeteer] Final launch options:', {
-    executablePath: launchOptions.executablePath || '(bundled)',
-    headless:        launchOptions.headless,
-    pipe:            launchOptions.pipe || false,
-    argsCount:       launchOptions.args.length
-  });
-
-  return launchOptions;
 }
-
 
 /**
  * Sleep for a specified number of milliseconds
