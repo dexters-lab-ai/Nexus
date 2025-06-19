@@ -6,7 +6,30 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 import { PuppeteerAgent } from '@midscene/web/puppeteer';
+import { getPuppeteerLaunchOptions } from './puppeteerConfig.js';
+
+// Configure Puppeteer with stealth plugin
+puppeteer.use(StealthPlugin());
+
+// Get Puppeteer launch options
+const getYamlPuppeteerOptions = async () => {
+  const options = await getPuppeteerLaunchOptions();
+  
+  // Add any YAML-specific overrides here if needed
+  return {
+    ...options,
+    // Ensure we have a valid viewport for YAML execution
+    defaultViewport: {
+      width: 1280,
+      height: 800,
+      deviceScaleFactor: 1,
+      ...(options.defaultViewport || {})
+    }
+  };
+};
 import YamlMap from '../models/YamlMap.js';
 import { generateReport } from './reportGenerator.js';
 import OpenAI from 'openai';
@@ -16,6 +39,31 @@ import { dirname } from 'path';
 let openaiClient;
 if (process.env.OPENAI_API_KEY) {
   try {
+    // Initialize Puppeteer agent with proper configuration
+    let agent;
+    try {
+      console.log('Initializing PuppeteerAgent with custom configuration...');
+      
+      // Get the launch options with YAML-specific overrides
+      const launchOptions = await getYamlPuppeteerOptions();
+      console.log('Using Puppeteer launch options for YAML:', JSON.stringify(launchOptions, null, 2));
+      
+      // Initialize the agent with our custom options
+      agent = new PuppeteerAgent({
+        ...launchOptions,
+        // Ensure we're using the stealth plugin
+        puppeteer: puppeteer
+      });
+      
+      console.log('PuppeteerAgent initialized successfully with custom configuration');
+    } catch (error) {
+      console.error('Error initializing PuppeteerAgent:', { 
+        error: error.toString(),
+        stack: error.stack,
+        env: process.env
+      });
+      throw new Error(`Failed to initialize PuppeteerAgent: ${error.message}`);
+    }
     openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     console.log('[YAML Processor] OpenAI client initialized successfully.');
   } catch (e) {

@@ -304,7 +304,7 @@
 }
 
 .yaml-editor-form {
-  width: 350px;
+  width: auto;
   padding: 20px;
   border-right: 1px solid var(--border);
   overflow-y: auto;
