@@ -10,6 +10,9 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { PuppeteerAgent } from '@midscene/web/puppeteer';
 import { getPuppeteerLaunchOptions } from './puppeteerConfig.js';
+import YamlMap from '../models/YamlMap.js';
+import { generateReport } from './reportGenerator.js';
+import OpenAI from 'openai';
 
 // Configure Puppeteer with stealth plugin
 puppeteer.use(StealthPlugin());
@@ -30,11 +33,6 @@ const getYamlPuppeteerOptions = async () => {
     }
   };
 };
-import YamlMap from '../models/YamlMap.js';
-import { generateReport } from './reportGenerator.js';
-import OpenAI from 'openai';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
 
 let openaiClient;
 if (process.env.OPENAI_API_KEY) {
