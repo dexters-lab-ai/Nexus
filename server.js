@@ -2734,29 +2734,24 @@ async function getPuppeteerLaunchOptions() {
 
     // Ensure our sandbox wrapper exists and is executable
     try {
-      const sb = '/tmp/chrome-sandbox';
+      // Only create sandbox if it doesn't exist
+      const sb = '/tmp/chrome-sandbox/chrome';  // Note the path change to match Docker setup
       try {
-        // Create or update the sandbox wrapper script
-        await fs.promises.writeFile(
-          sb,
-          '#!/bin/sh\nexec "$@" --no-sandbox',
-          { mode: 0o755 }
-        );
-        
-        // Ensure the file has the correct permissions
-        await fs.promises.chmod(sb, 0o755);
-        
-        // Log the file stats for verification
-        const stats = await fs.promises.stat(sb);
-        console.log(`[Puppeteer] Sandbox wrapper created at ${sb} with mode ${stats.mode.toString(8)}`);
-        
-        // Set the sandbox environment variable
+        try {
+          await fs.promises.access(sb, fs.constants.X_OK);
+          console.log(`[Puppeteer] Using existing sandbox at ${sb}`);
+        } catch {
+          console.log(`[Puppeteer] Creating sandbox at ${sb}`);
+          await fs.promises.mkdir('/tmp/chrome-sandbox', { recursive: true });
+          await fs.promises.writeFile(
+            sb,
+            '#!/bin/sh\nexec /usr/bin/chromium --no-sandbox "$@"',
+            { mode: 0o755 }
+          );
+        }
         process.env.CHROME_DEVEL_SANDBOX = sb;
-        
       } catch (error) {
         console.error('[Puppeteer] Failed to set up Chrome sandbox:', error);
-        // Don't fail hard, but log the warning
-        console.warn('[Puppeteer] Chrome sandbox may not work correctly. Running with reduced security.');
       }
       console.log('[Puppeteer] Sandbox and user-data dir configured');
     } catch (err) {

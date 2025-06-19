@@ -370,8 +370,36 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     chmod +x /usr/local/bin/startup.sh && \
     chown node:node /usr/local/bin/startup.sh
 
+# Set up Chrome sandbox with proper permissions
+RUN mkdir -p /tmp/chrome-sandbox && \
+    chmod 755 /tmp/chrome-sandbox && \
+    touch /tmp/chrome-sandbox/chrome && \
+    chmod 755 /tmp/chrome-sandbox/chrome && \
+    echo '#!/bin/sh' > /tmp/chrome-sandbox/chrome && \
+    echo 'exec /usr/bin/chromium --no-sandbox "$@"' >> /tmp/chrome-sandbox/chrome && \
+    chmod +x /tmp/chrome-sandbox/chrome
+
+# Verify sandbox setup
+RUN ls -la /tmp/chrome-sandbox && \
+    ls -l /tmp/chrome-sandbox/chrome
+
+# Set environment variable for Chrome sandbox
+ENV CHROME_DEVEL_SANDBOX=/tmp/chrome-sandbox/chrome
+
 # Switch to non-root user
 USER node
+
+# Create Chrome sandbox directory in user's home and set permissions
+RUN mkdir -p /home/node/chrome-sandbox && \
+    chmod 755 /home/node/chrome-sandbox && \
+    touch /home/node/chrome-sandbox/chrome && \
+    chmod 755 /home/node/chrome-sandbox/chrome && \
+    echo '#!/bin/sh' > /home/node/chrome-sandbox/chrome && \
+    echo 'exec /usr/bin/chromium --no-sandbox "$@"' >> /home/node/chrome-sandbox/chrome && \
+    chmod +x /home/node/chrome-sandbox/chrome
+
+# Set environment variable for Chrome sandbox in user context
+ENV CHROME_DEVEL_SANDBOX=/home/node/chrome-sandbox/chrome
 
 # Start the application using the startup script
 CMD ["/bin/sh", "/usr/local/bin/startup.sh"]
