@@ -129,6 +129,17 @@ RUN set -x \
         curl \
         gnupg \
         wget \
+        procps \
+        x11-utils \
+        xvfb \
+        x11vnc \
+        x11-xkb-utils \
+        xfonts-100dpi \
+        xfonts-75dpi \
+        xfonts-scalable \
+        xfonts-cyrillic \
+        xserver-xorg-core \
+        x11-xserver-utils \
     # Add Debian repository configuration
     && echo 'deb http://deb.debian.org/debian bullseye main' > /etc/apt/sources.list.d/bullseye.list \
     && echo 'deb http://deb.debian.org/debian-security bullseye-security main' >> /etc/apt/sources.list.d/bullseye.list \
@@ -158,15 +169,6 @@ RUN set -x \
         libxfixes3 \
         libxrandr2 \
         xdg-utils \
-        xvfb \
-        x11vnc \
-        x11-xkb-utils \
-        xfonts-100dpi \
-        xfonts-75dpi \
-        xfonts-scalable \
-        xfonts-cyrillic \
-        xserver-xorg-core \
-        x11-xserver-utils \
     # Clean up
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
@@ -188,16 +190,10 @@ ENV CHROME_BIN=/usr/bin/chromium \
     NODE_ENV=production \
     # X11 and display settings
     DISPLAY=:99 \
-    SCREEN_WIDTH=1280 \
-    SCREEN_HEIGHT=720 \
-    SCREEN_DEPTH=24 \
-    SCREEN_DPI=96 \
-    # Chromium settings
+    # Chromium settings - these will be used by server.js
     CHROME_DEVEL_SANDBOX=/tmp/chrome-sandbox \
-    CHROME_EXTRA_LAUNCH_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage \
-    CHROME_REMOTE_DEBUGGING_PORT=9222 \
-    CHROME_REMOTE_DEBUGGING_ADDRESS=0.0.0.0 \
     # System settings
+    NODE_OPTIONS=--max_old_space_size=4096 \
     DBUS_SESSION_BUS_ADDRESS=/dev/null \
     NO_AT_BRIDGE=1 \
     XDG_RUNTIME_DIR=/tmp/chrome \
@@ -292,6 +288,7 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo 'export PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium' >> /usr/local/bin/startup.sh && \
     echo 'export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true' >> /usr/local/bin/startup.sh && \
     echo 'export NODE_ENV=production' >> /usr/local/bin/startup.sh && \
+    echo 'export CHROME_DEVEL_SANDBOX=/tmp/chrome-sandbox' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
     echo '### Directory Setup ###' >> /usr/local/bin/startup.sh && \
     echo 'echo "[Startup] Creating and setting up directories..."' >> /usr/local/bin/startup.sh && \
@@ -300,14 +297,17 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
     echo '### Chrome Sandbox Setup ###' >> /usr/local/bin/startup.sh && \
     echo 'echo "[Startup] Setting up Chrome sandbox..."' >> /usr/local/bin/startup.sh && \
-    echo 'echo "#!/bin/sh" > /tmp/chrome-sandbox' >> /usr/local/bin/startup.sh && \
-    echo 'echo "exec \$@ --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage \$CHROME_EXTRA_ARGS" >> /tmp/chrome-sandbox' >> /usr/local/bin/startup.sh && \
-    echo 'chmod +x /tmp/chrome-sandbox' >> /usr/local/bin/startup.sh && \
+    echo 'mkdir -p /tmp/chrome-sandbox' >> /usr/local/bin/startup.sh && \
+    echo 'chmod 755 /tmp/chrome-sandbox' >> /usr/local/bin/startup.sh && \
+    echo 'echo "#!/bin/sh" > /tmp/chrome-sandbox/chrome' >> /usr/local/bin/startup.sh && \
+    echo 'echo "exec \$@ --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage \$CHROME_EXTRA_ARGS" >> /tmp/chrome-sandbox/chrome' >> /usr/local/bin/startup.sh && \
+    echo 'chmod +x /tmp/chrome-sandbox/chrome' >> /usr/local/bin/startup.sh && \
     echo 'export CHROME_DEVEL_SANDBOX=/tmp/chrome-sandbox' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
     echo '### Xvfb Startup ###' >> /usr/local/bin/startup.sh && \
     echo 'echo "[Startup] Starting Xvfb..."' >> /usr/local/bin/startup.sh && \
-    echo 'Xvfb :99 -screen 0 ${SCREEN_WIDTH}x${SCREEN_HEIGHT}x${SCREEN_DEPTH} -ac +extension RANDR +render -noreset >/tmp/xvfb.log 2>&1 &' >> /usr/local/bin/startup.sh && \
+    echo 'rm -f /tmp/.X99-lock /tmp/.X11-unix/X99' >> /usr/local/bin/startup.sh && \
+    echo 'Xvfb :99 -screen 0 1280x720x24 -ac +extension RANDR +render -noreset >/tmp/xvfb.log 2>&1 &' >> /usr/local/bin/startup.sh && \
     echo 'Xvfb_PID=$!' >> /usr/local/bin/startup.sh && \
     echo 'echo "Xvfb started with PID: $Xvfb_PID"' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
@@ -316,22 +316,15 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo 'for i in {1..30}; do' >> /usr/local/bin/startup.sh && \
     echo '  xdpyinfo -display :99 >/dev/null 2>&1' >> /usr/local/bin/startup.sh && \
     echo '  if [ $? -eq 0 ]; then' >> /usr/local/bin/startup.sh && \
-    echo '    echo "[Startup] Xvfb is ready after $i attempts";' >> /usr/local/bin/startup.sh && \
-    echo '    # Verify display is working' >> /usr/local/bin/startup.sh && \
-    echo '    if ! xdpyinfo -display :99 >/dev/null 2>&1; then' >> /usr/local/bin/startup.sh && \
-    echo '' >> /usr/local/bin/startup.sh && \
-    echo '### Start Xvfb ###' >> /usr/local/bin/startup.sh && \
-    echo 'echo "[Startup] Starting Xvfb on display :99..."' >> /usr/local/bin/startup.sh && \
-    echo 'Xvfb :99 -screen 0 1280x720x24 -ac +extension GLX +render -noreset > /dev/null 2>&1 &' >> /usr/local/bin/startup.sh && \
-    echo 'Xvfb_pid=\$!' >> /usr/local/bin/startup.sh && \
-    echo 'sleep 2' >> /usr/local/bin/startup.sh && \
-    echo '' >> /usr/local/bin/startup.sh && \
-    echo '### Verify Xvfb is running ###' >> /usr/local/bin/startup.sh && \
-    echo 'if ! xdpyinfo -display :99 >/dev/null 2>&1; then' >> /usr/local/bin/startup.sh && \
-    echo '  echo "[ERROR] Display :99 is not accessible after Xvfb startup"' >> /usr/local/bin/startup.sh && \
-    echo '  exit 1' >> /usr/local/bin/startup.sh && \
-    echo 'fi' >> /usr/local/bin/startup.sh && \
-    echo 'echo "[Startup] Xvfb is ready and display is accessible"' >> /usr/local/bin/startup.sh && \
+    echo '    echo "[Startup] Xvfb is ready after $i attempts"' >> /usr/local/bin/startup.sh && \
+    echo '    break' >> /usr/local/bin/startup.sh && \
+    echo '  fi' >> /usr/local/bin/startup.sh && \
+    echo '  if [ $i -eq 30 ]; then' >> /usr/local/bin/startup.sh && \
+    echo '    echo "[ERROR] Xvfb failed to start after 30 attempts"' >> /usr/local/bin/startup.sh && \
+    echo '    exit 1' >> /usr/local/bin/startup.sh && \
+    echo '  fi' >> /usr/local/bin/startup.sh && \
+    echo '  sleep 1' >> /usr/local/bin/startup.sh && \
+    echo 'done' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
     echo '### Verify Chrome works ###' >> /usr/local/bin/startup.sh && \
     echo 'echo "[Startup] Verifying Chrome..."' >> /usr/local/bin/startup.sh && \
@@ -347,9 +340,9 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo '### Cleanup on exit ###' >> /usr/local/bin/startup.sh && \
     echo 'cleanup() {' >> /usr/local/bin/startup.sh && \
     echo '  echo "[Shutdown] Shutting down..."' >> /usr/local/bin/startup.sh && \
-    echo '  if [ -n "\$Xvfb_pid" ]; then' >> /usr/local/bin/startup.sh && \
+    echo '  if [ -n "$Xvfb_PID" ]; then' >> /usr/local/bin/startup.sh && \
     echo '    echo "[Shutdown] Stopping Xvfb..."' >> /usr/local/bin/startup.sh && \
-    echo '    kill -TERM "\$Xvfb_pid" || true' >> /usr/local/bin/startup.sh && \
+    echo '    kill -TERM "$Xvfb_PID" || true' >> /usr/local/bin/startup.sh && \
     echo '  fi' >> /usr/local/bin/startup.sh && \
     echo '  exit 0' >> /usr/local/bin/startup.sh && \
     echo '}' >> /usr/local/bin/startup.sh && \
