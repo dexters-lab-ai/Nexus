@@ -317,11 +317,6 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo '  xdpyinfo -display :99 >/dev/null 2>&1' >> /usr/local/bin/startup.sh && \
     echo '  if [ $? -eq 0 ]; then' >> /usr/local/bin/startup.sh && \
     echo '    echo "[Startup] Xvfb is ready after $i attempts";' >> /usr/local/bin/startup.sh && \
-    echo '    # Verify display is working' >> /usr/local/bin/startup.sh && \
-    echo '    if ! xdpyinfo -display :99 >/dev/null 2>&1; then' >> /usr/local/bin/startup.sh && \
-    echo '      echo "[WARN] Xvfb is running but display is not accessible, retrying..."' >> /usr/local/bin/startup.sh && \
-    echo '      continue' >> /usr/local/bin/startup.sh && \
-    echo '    fi' >> /usr/local/bin/startup.sh && \
     echo '    break;' >> /usr/local/bin/startup.sh && \
     echo '  fi' >> /usr/local/bin/startup.sh && \
     echo '  if [ $i -eq 30 ]; then' >> /usr/local/bin/startup.sh && \
@@ -334,22 +329,10 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo '    echo ""' >> /usr/local/bin/startup.sh && \
     echo '    echo "=== Display Info ==="' >> /usr/local/bin/startup.sh && \
     echo '    xdpyinfo -display :99 2>&1 || echo "Failed to get display info"' >> /usr/local/bin/startup.sh && \
-    echo '    echo ""' >> /usr/local/bin/startup.sh && \
-    echo '    echo "=== Environment Variables ==="' >> /usr/local/bin/startup.sh && \
-    echo '    env | grep -i "DISPLAY\|XAUTHORITY"' >> /usr/local/bin/startup.sh && \
     echo '    exit 1' >> /usr/local/bin/startup.sh && \
     echo '  fi' >> /usr/local/bin/startup.sh && \
-    echo '  echo "[Startup] Waiting for Xvfb to be ready (attempt $i/30)..."' >> /usr/local/bin/startup.sh && \
     echo '  sleep 1' >> /usr/local/bin/startup.sh && \
     echo 'done' >> /usr/local/bin/startup.sh && \
-    echo '' >> /usr/local/bin/startup.sh && \
-    echo '# Additional check to ensure display is accessible' >> /usr/local/bin/startup.sh && \
-    echo 'echo "[Startup] Verifying display is accessible..."' >> /usr/local/bin/startup.sh && \
-    echo 'if ! xdpyinfo -display :99 >/dev/null 2>&1; then' >> /usr/local/bin/startup.sh && \
-    echo '  echo "[ERROR] Display :99 is not accessible after Xvfb startup"' >> /usr/local/bin/startup.sh && \
-    echo '  exit 1' >> /usr/local/bin/startup.sh && \
-    echo 'fi' >> /usr/local/bin/startup.sh && \
-    echo 'echo "[Startup] Xvfb is ready and display is accessible"' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
     echo '### System Information ###' >> /usr/local/bin/startup.sh && \
     echo 'echo ""' >> /usr/local/bin/startup.sh && \
