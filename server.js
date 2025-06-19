@@ -2597,200 +2597,139 @@ puppeteerExtra.use(StealthPlugin());
  * @returns {Object} Puppeteer launch options
  */
 async function getPuppeteerLaunchOptions() {
-  const isProduction = process.env.NODE_ENV === 'production';
-  const isWindows = process.platform === 'win32';
-  
-  // Base launch options
+  const isProd    = process.env.NODE_ENV === 'production';
+  const isWindows= process.platform === 'win32';
+
+  // Base options common to dev & prod
   const launchOptions = {
-    headless: isProduction ? 'new' : false,
+    headless: false,              // always show the window
     ignoreHTTPSErrors: true,
-    defaultViewport: { 
-      width: 1280, 
-      height: 720,
-      deviceScaleFactor: 1
-    },
+    defaultViewport: { width: 1280, height: 720, deviceScaleFactor: 1 },
     args: [
-      // Essential flags for running in Docker
+      // sandbox / security
       '--no-sandbox',
       '--disable-setuid-sandbox',
+
+      // window
+      '--window-size=1280,720',
+      '--start-maximized',
+      '--hide-scrollbars',
+
+      // performance & disable noisy features
       '--disable-dev-shm-usage',
       '--disable-gpu',
-      '--disable-software-rasterizer',
-      '--disable-accelerated-2d-canvas',
-      '--disable-gpu-compositing',
-      '--disable-accelerated-video-decode',
-      '--disable-accelerated-video-encode',
-      '--disable-accelerated-mjpeg-decode',
-      '--disable-accelerated-mjpeg-encode',
-      '--disable-accelerated-vpx-decode',
-      '--disable-accelerated-vp9-decode',
-      '--disable-accelerated-vp9-encode',
-      '--disable-accelerated-webgl',
-      '--disable-accelerated-webgl2',
-      '--disable-3d-apis',
-      '--disable-webgl',
-      '--disable-webgl2',
-      '--use-gl=swiftshader',
-      '--disable-software-rasterizer',
-      '--disable-features=UseOzonePlatform',
-      
-      // Network optimizations
-      '--disable-features=NetworkService,NetworkServiceInProcess',
-      '--disable-blink-features=AutomationControlled',
-      '--disable-blink-features=IdleDetection',
-      '--disable-features=IsolateOrigins,site-per-process',
-      '--disable-site-isolation-trials',
-      '--disable-web-security',
-      '--allow-running-insecure-content',
-      
-      // Performance optimizations
+      '--disable-extensions',
+      '--disable-background-networking',
       '--disable-background-timer-throttling',
       '--disable-backgrounding-occluded-windows',
-      '--disable-background-networking',
-      '--disable-breakpad',
       '--disable-client-side-phishing-detection',
       '--disable-component-extensions-with-background-pages',
       '--disable-default-apps',
-      '--disable-extensions',
+      '--disable-features=TranslateUI,AutomationControlled,NetworkService,IdleDetection,IsolateOrigins,site-per-process',
+      '--disable-site-isolation-trials',
+      '--disable-web-security',
+      '--disable-sync',
+      '--disable-translate',
+      '--no-first-run',
+      '--no-default-browser-check',
       '--disable-hang-monitor',
-      '--disable-ipc-flooding-protection',
       '--disable-popup-blocking',
       '--disable-prompt-on-repost',
       '--disable-renderer-backgrounding',
-      '--disable-sync',
-      '--disable-translate',
-      '--disable-windows10-custom-titlebar',
-      '--disable-features=TranslateUI,BlinkGenPropertyTrees,EnablePortals,OutOfBlinkCors,OutOfProcessPdf,OverlayScrollbar,SpareRendererForSitePerProcess',
-      '--force-color-profile=srgb',
-      '--metrics-recording-only',
-      '--no-default-browser-check',
-      '--no-first-run',
-      '--safebrowsing-disable-auto-update',
-      '--password-store=basic',
-      '--use-mock-keychain',
+      '--disable-ipc-flooding-protection',
+      '--disable-breakpad',
       '--mute-audio',
-      '--no-zygote',
-      '--disable-bundled-ppapi-flash',
-      
-      // Window and display settings
-      '--window-size=1280,720',
-      '--window-position=0,0',
-      '--remote-debugging-port=9222',
-      '--remote-debugging-address=0.0.0.0',
-      '--log-level=1',
-      '--v=0',
-      '--vmodule=*third_party/libphonenumber/*=0',
-      '--enable-logging=stderr',
-      '--log-file=/dev/null'
+      '--password-store=basic',
+      '--use-mock-keychain'
     ],
-    ignoreDefaultArgs: ['--enable-automation'],
-    handleSIGINT: false,
-    handleSIGTERM: false,
-    handleSIGHUP: false,
-    dumpio: true,
+    dumpio: true,      // stream Chromium stdout/stderr
+    timeout: isProd ? 60000 : 30000,
     env: {
       ...process.env,
-      // Ensure display is set for Xvfb
       DISPLAY: process.env.DISPLAY || ':99',
-      // Disable unnecessary features
       NO_AT_BRIDGE: '1',
       DBUS_SESSION_BUS_ADDRESS: '/dev/null',
-      // Set up Chrome environment
       XDG_RUNTIME_DIR: '/tmp/chrome-runtime',
-      CHROME_DEVEL_SANDBOX: '/tmp/chrome-sandbox',
-      // Additional environment variables for stability
-      LANG: 'en_US.UTF-8',
-      LANGUAGE: 'en_US:en',
-      LC_ALL: 'en_US.UTF-8',
-      // Disable various background network services
-      GOOGLE_API_KEY: 'no',
-      GOOGLE_DEFAULT_CLIENT_ID: 'no',
-      GOOGLE_DEFAULT_CLIENT_SECRET: 'no'
-    },
-    // Timeout for browser launch (60 seconds)
-    timeout: 60000
+      CHROME_DEVEL_SANDBOX: '/tmp/chrome-sandbox'
+    }
   };
 
-  try {
-    if (isProduction) {
-      console.log('[Puppeteer] Configuring for production environment');
-      
-      // Set executable path from environment or use default
-      const possiblePaths = [
-        process.env.PUPPETEER_EXECUTABLE_PATH,
-        process.env.CHROME_BIN,
-        '/usr/bin/chromium',
-        '/usr/bin/chromium-browser',
-        '/usr/bin/google-chrome-stable'
-      ].filter(Boolean);
+  // In prod, prefer pipe mode for more reliable stdout streaming
+  if (isProd) {
+    launchOptions.pipe = true;
 
-      // Find first valid executable path
-      for (const execPath of possiblePaths) {
-        try {
-          if (execPath && fs.existsSync(execPath)) {
-            launchOptions.executablePath = execPath;
-            console.log(`[Puppeteer] Using browser at: ${execPath}`);
-            break;
-          }
-        } catch (error) {
-          console.error(`[Puppeteer] Error checking path ${execPath}:`, error.message);
-        }
-      }
+    // Figure out an executable path
+    const candidates = [
+      process.env.PUPPETEER_EXECUTABLE_PATH,
+      process.env.CHROME_BIN,
+      '/usr/bin/chromium-browser',
+      '/usr/bin/chromium',
+      '/usr/bin/google-chrome-stable'
+    ].filter(Boolean);
 
-      // Set up sandbox wrapper
-      try {
-        const sandboxPath = '/tmp/chrome-sandbox';
-        if (!fs.existsSync(sandboxPath)) {
-          await fs.promises.writeFile(
-            sandboxPath,
-            '#!/bin/sh\nexec "$@" --no-sandbox',
-            { mode: 0o755 }
-          );
-          console.log('[Puppeteer] Created sandbox wrapper');
-        }
-        
-        // Set user data directory
-        const userDataDir = path.join(process.cwd(), 'chrome-profile');
-        if (!fs.existsSync(userDataDir)) {
-          await fs.promises.mkdir(userDataDir, { recursive: true });
-        }
-        launchOptions.userDataDir = userDataDir;
-        
-        console.log('[Puppeteer] Configured with user data directory:', userDataDir);
-      } catch (error) {
-        console.error('[Puppeteer] Error setting up sandbox:', error);
-      }
-    } else {
-      // Development settings
-      console.log('[Puppeteer] Configuring for development environment');
-      launchOptions.headless = false;
-      launchOptions.dumpio = true;
-      launchOptions.timeout = 30000;
-      
-      // On Windows, specify the Chrome executable path
-      if (isWindows) {
-        launchOptions.executablePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+    for (const exe of candidates) {
+      if (fs.existsSync(exe)) {
+        launchOptions.executablePath = exe;
+        console.log(`[Puppeteer] Using browser at: ${exe}`);
+        break;
       }
     }
-    
-    // Log final configuration
-    console.log('[Puppeteer] Launch configuration:', {
-      executablePath: launchOptions.executablePath || 'default',
-      headless: launchOptions.headless,
-      userDataDir: launchOptions.userDataDir || 'default',
-      env: {
-        DISPLAY: launchOptions.env?.DISPLAY,
-        XDG_RUNTIME_DIR: launchOptions.env?.XDG_RUNTIME_DIR,
-        CHROME_DEVEL_SANDBOX: launchOptions.env?.CHROME_DEVEL_SANDBOX
+
+    if (!launchOptions.executablePath) {
+      // fallback to Puppeteer’s bundled Chromium
+      launchOptions.executablePath = await puppeteer.executablePath();
+      console.log('[Puppeteer] Falling back to bundled Chromium');
+    }
+
+    // Ensure our sandbox wrapper exists and is executable
+    try {
+      const sb = '/tmp/chrome-sandbox';
+      try {
+        // Create or update the sandbox wrapper script
+        await fs.promises.writeFile(
+          sb,
+          '#!/bin/sh\nexec "$@" --no-sandbox',
+          { mode: 0o755 }
+        );
+        
+        // Ensure the file has the correct permissions
+        await fs.promises.chmod(sb, 0o755);
+        
+        // Log the file stats for verification
+        const stats = await fs.promises.stat(sb);
+        console.log(`[Puppeteer] Sandbox wrapper created at ${sb} with mode ${stats.mode.toString(8)}`);
+        
+        // Set the sandbox environment variable
+        process.env.CHROME_DEVEL_SANDBOX = sb;
+        
+      } catch (error) {
+        console.error('[Puppeteer] Failed to set up Chrome sandbox:', error);
+        // Don't fail hard, but log the warning
+        console.warn('[Puppeteer] Chrome sandbox may not work correctly. Running with reduced security.');
       }
-    });
-    
-    return launchOptions;
-  } catch (error) {
-    console.error('[Puppeteer] Error in getPuppeteerLaunchOptions:', error);
-    throw error;
+      console.log('[Puppeteer] Sandbox and user-data dir configured');
+    } catch (err) {
+      console.error('[Puppeteer] Sandbox setup error:', err);
+    }
   }
+  else {
+    // DEV: on Windows, explicitly point to Chrome if you like
+    if (isWindows) {
+      launchOptions.executablePath =
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+    }
+  }
+
+  console.log('[Puppeteer] Final launch options:', {
+    executablePath: launchOptions.executablePath || '(bundled)',
+    headless:        launchOptions.headless,
+    pipe:            launchOptions.pipe || false,
+    argsCount:       launchOptions.args.length
+  });
+
+  return launchOptions;
 }
+
 
 /**
  * Sleep for a specified number of milliseconds
