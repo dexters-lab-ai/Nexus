@@ -2602,9 +2602,11 @@ async function getPuppeteerLaunchOptions() {
 
   // Base options common to dev & prod
   const launchOptions = {
-    headless: false,              // always show the window
+    // Use headless mode in production unless explicitly disabled
+    headless: isProd ? 'new' : false,
     ignoreHTTPSErrors: true,
     defaultViewport: { width: 1280, height: 720, deviceScaleFactor: 1 },
+    // Enable GPU acceleration in headless mode
     args: [
       // sandbox / security
       '--no-sandbox',
@@ -2646,11 +2648,29 @@ async function getPuppeteerLaunchOptions() {
     timeout: isProd ? 60000 : 30000,
     env: {
       ...process.env,
+      // Display settings
       DISPLAY: process.env.DISPLAY || ':99',
+      // Disable accessibility bridge
       NO_AT_BRIDGE: '1',
+      // Disable D-Bus
       DBUS_SESSION_BUS_ADDRESS: '/dev/null',
+      // Set up Chrome runtime directory
       XDG_RUNTIME_DIR: '/tmp/chrome-runtime',
-      CHROME_DEVEL_SANDBOX: '/tmp/chrome-sandbox'
+      // Set Chrome sandbox path
+      CHROME_DEVEL_SANDBOX: '/tmp/chrome-sandbox',
+      // Disable GPU process
+      GPU_SINGLE_ALLOC_PERCENT: '100',
+      GPU_MAX_ALLOC_PERCENT: '100',
+      // Disable GPU acceleration
+      LIBGL_ALWAYS_SOFTWARE: '1',
+      // Disable sandbox and GPU blacklist
+      CHROME_EXTRA_LAUNCH_ARGS: '--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage',
+      // Disable Chrome's first run and default browser check
+      CHROME_CRASHED: 'true',
+      // Disable Chrome's crash reporter
+      CHROME_HEADLESS: '1',
+      // Disable Chrome's metrics reporting
+      CHROME_IPC_LOGGING: '0'
     }
   };
 
