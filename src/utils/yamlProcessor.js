@@ -34,34 +34,10 @@ const getYamlPuppeteerOptions = async () => {
   };
 };
 
+// Initialize OpenAI client if API key is available
 let openaiClient;
 if (process.env.OPENAI_API_KEY) {
   try {
-    // Initialize Puppeteer agent with proper configuration
-    let agent;
-    try {
-      console.log('Initializing PuppeteerAgent with custom configuration...');
-      
-      // Get the launch options with YAML-specific overrides
-      const launchOptions = await getYamlPuppeteerOptions();
-      console.log('Using Puppeteer launch options for YAML:', JSON.stringify(launchOptions, null, 2));
-      
-      // Initialize the agent with our custom options
-      agent = new PuppeteerAgent({
-        ...launchOptions,
-        // Ensure we're using the stealth plugin
-        puppeteer: puppeteer
-      });
-      
-      console.log('PuppeteerAgent initialized successfully with custom configuration');
-    } catch (error) {
-      console.error('Error initializing PuppeteerAgent:', { 
-        error: error.toString(),
-        stack: error.stack,
-        env: process.env
-      });
-      throw new Error(`Failed to initialize PuppeteerAgent: ${error.message}`);
-    }
     openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     console.log('[YAML Processor] OpenAI client initialized successfully.');
   } catch (e) {
@@ -456,59 +432,120 @@ export async function processYamlMapTask(options) {
     await updateTaskInDatabase(taskId, { progress: 20 });
 
     yamlMap.usageCount = (yamlMap.usageCount || 0) + 1;
-    yamlMap.lastUsed = new Date();
-    await yamlMap.save();
+    // Initialize Puppeteer with centralized configuration
+    let browser;
+    let page;
+    let agent;
 
-    console.log(`[ProcessYamlTask] Launching puppeteer browser for task ${taskId}`);
-    let browser, page, agent;
     try {
-      browser = await puppeteer.launch({
-        headless: false,
-        defaultViewport: { width: 1280, height: 768 },
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-      });
-      await updateTaskInDatabase(taskId, { progress: 25 });
+      console.log(`[ProcessYamlTask] Initializing browser for task ${taskId}`);
+      const launchOptions = await getYamlPuppeteerOptions();
+      
+      // Force headless mode for consistency
+      launchOptions.headless = 'new';
+      
+      // Add any additional browser arguments needed for container environments
+      launchOptions.args = [
+        ...(launchOptions.args || []),
+        '--disable-dev-shm-usage',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-gpu',
+        '--disable-software-rasterizer',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--disable-site-isolation-trials'
+      ];
 
-      console.log(`[ProcessYamlTask] Creating new page for task ${taskId}`);
+      // Set environment variables for container compatibility
+      process.env.CHROME_DEVEL_SANDBOX = '/tmp/chrome-sandbox';
+      process.env.DISPLAY = ':99';
+
+      console.log(`[ProcessYamlTask] Launching browser with options:`, 
+        JSON.stringify({
+          ...launchOptions,
+          // Don't log the entire environment for security
+          env: { ...Object.keys(launchOptions.env || {}).reduce((acc, key) => ({
+            ...acc,
+            [key]: key.includes('KEY') || key.includes('SECRET') || key.includes('TOKEN') ? '***REDACTED***' : launchOptions.env[key]
+          }), {}) }
+        }, null, 2)
+      );
+
+      browser = await puppeteer.launch(launchOptions);
+      
+      // Set up browser close handler for clean shutdown
+      const cleanExit = async () => {
+        console.log('[ProcessYamlTask] Cleaning up browser before exit...');
+        try {
+          if (browser) {
+            const pages = await browser.pages();
+            await Promise.all(pages.map(p => p.close().catch(console.error)));
+            await browser.close().catch(console.error);
+          }
+        } catch (e) {
+          console.error('Error during browser cleanup:', e);
+        }
+        process.exit(0);
+      };
+
+      // Handle various process termination signals
+      process.on('SIGTERM', cleanExit);
+      process.on('SIGINT', cleanExit);
+      process.on('SIGHUP', cleanExit);
+      process.on('uncaughtException', (err) => {
+        console.error('Uncaught exception:', err);
+        cleanExit();
+      });
+      process.on('unhandledRejection', (reason, promise) => {
+        console.error('Unhandled rejection at:', promise, 'reason:', reason);
+        cleanExit();
+      });
+
+      // Create a new page
       page = await browser.newPage();
+      
+      // Set a default viewport if not set
       await page.setViewport({
         width: 1280,
-        height: 768,
+        height: 800,
         deviceScaleFactor: 1
       });
 
-      if (yamlMapUrl !== 'N/A') {
-        try {
-          const urlObj = new URL(yamlMapUrl);
-          if (urlObj.protocol === 'http:' || urlObj.protocol === 'https:') {
-            console.log(`[ProcessYamlTask] Navigating to URL: ${yamlMapUrl}`);
-            await page.goto(yamlMapUrl);
-            // Extract page text after navigation
-            rawExtractedText = await page.evaluate(() => document.body.innerText).catch(err => {
-              logYaml(`Error extracting page text`, { error: err.toString() });
-              return '';
-            });
-            rawExtractedText = rawExtractedText.substring(0, 3000); // Limit size
-          } else {
-            console.warn(`[ProcessYamlTask] Invalid URL protocol: ${yamlMapUrl} - skipping navigation`);
-          }
-        } catch (urlError) {
-          console.warn(`[ProcessYamlTask] Invalid URL format provided: ${yamlMapUrl} - skipping navigation`);
-        }
-      } else {
-        console.log(`[ProcessYamlTask] No URL provided - skipping navigation`);
-      }
-
-      console.log(`[ProcessYamlTask] Creating Nexus agent with page for task ${taskId}`);
-      agent = new PuppeteerAgent(page);
       console.log(`[ProcessYamlTask] Browser initialized for task ${taskId}`);
       await updateTaskInDatabase(taskId, { progress: 40 });
 
-      console.log(`[ProcessYamlTask] Executing YAML for task ${taskId}`);
-      await updateTaskInDatabase(taskId, { progress: 50 });
+      console.log(`[ProcessYamlTask] Creating Nexus agent with page for task ${taskId}`);
+      agent = new PuppeteerAgent(page);
+      console.log(`[ProcessYamlTask] Agent initialized for task ${taskId}`);
     } catch (initError) {
       console.error(`[ProcessYamlTask] Error initializing PuppeteerAgent:`, initError);
+      // Clean up resources if they were partially initialized
+      if (page) await page.close().catch(console.error);
+      if (browser) await browser.close().catch(console.error);
       throw initError;
+    }
+
+    if (yamlMapUrl !== 'N/A') {
+      try {
+        const urlObj = new URL(yamlMapUrl);
+        if (urlObj.protocol === 'http:' || urlObj.protocol === 'https:') {
+          console.log(`[ProcessYamlTask] Navigating to URL: ${yamlMapUrl}`);
+          await page.goto(yamlMapUrl);
+          // Extract page text after navigation
+          rawExtractedText = await page.evaluate(() => document.body.innerText).catch(err => {
+            logYaml(`Error extracting page text`, { error: err.toString() });
+            return '';
+          });
+          rawExtractedText = rawExtractedText.substring(0, 3000); // Limit size
+        } else {
+          console.warn(`[ProcessYamlTask] Invalid URL protocol: ${yamlMapUrl} - skipping navigation`);
+        }
+      } catch (urlError) {
+        console.warn(`[ProcessYamlTask] Invalid URL format provided: ${yamlMapUrl} - skipping navigation`);
+      }
+    } else {
+      console.log(`[ProcessYamlTask] No URL provided - skipping navigation`);
     }
 
     const yamlContent = yamlMap.yaml;
