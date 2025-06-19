@@ -3,9 +3,17 @@
  * Centralized configuration for Puppeteer launch options
  */
 
+import puppeteer from 'puppeteer';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 /**
  * Get Puppeteer launch options with appropriate settings for the current environment
- * @returns {Object} Puppeteer launch options
+ * @returns {Promise<Object>} Puppeteer launch options
  */
 async function getPuppeteerLaunchOptions() {
   const isProduction = process.env.NODE_ENV === 'production';
