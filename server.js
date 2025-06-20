@@ -261,8 +261,18 @@ function setupWebSocketServer(server) {
     }
   });
   
-  // WebSocket connection handler - individual connection management is handled in the upgrade handler
+  // Handle WebSocket connection
   wss.on('connection', (ws) => {
+    // Add to connections set
+    allConnections.add(ws);
+    
+    // Set up cleanup when connection closes
+    ws.on('close', () => {
+      if (allConnections) {
+        allConnections.delete(ws);
+      }
+    });
+    
     // Connection logging is handled in the upgrade handler
     // All event handlers are set up in the upgrade handler to avoid duplication
   });
@@ -402,7 +412,7 @@ function setupWebSocketServer(server) {
                       }
                     }, 5000); // 5 seconds to receive pong
                   } catch (error) {
-                    console.error(`[WebSocket] Error sending ping to ${ws.userId}:`, error.message);
+                    console.error(`[${connectionId}] Error sending ping to ${ws.userId}:`, error.message);
                     ws.terminate();
                   }
                 }
@@ -423,7 +433,7 @@ function setupWebSocketServer(server) {
                 try {
                   ws.ping();
                 } catch (error) {
-                  console.error(`[WebSocket] Error sending ping:`, error);
+                  console.error(`[${connectionId}] Error sending ping:`, error);
                 }
               }
             }, 45000); // Send ping every 45 seconds (less than the 60s timeout)
@@ -617,33 +627,17 @@ function setupWebSocketServer(server) {
               ws.pingTimeout = null;
             }
             
-            // Remove from global connections
-            allConnections.delete(ws);
-            
-            // Remove from user connections
-            if (userId && userConnections.has(userId)) {
-              const userWsSet = userConnections.get(userId);
-              if (userWsSet) {
-                userWsSet.delete(ws);
-                
-                if (userWsSet.size === 0) {
-                  userConnections.delete(userId);
-                  console.log(`[WebSocket] Removed last connection for user ${userId}`);
-                }
-              }
-            }
-            
-            // Clean up any message queue if it exists
-            if (ws.messageQueue) {
-              ws.messageQueue = null;
-            }
-            
             // Clear any event listeners to prevent memory leaks
             ws.removeAllListeners('pong');
             ws.removeAllListeners('ping');
             ws.removeAllListeners('message');
             ws.removeAllListeners('close');
             ws.removeAllListeners('error');
+            
+            // Remove from allConnections set
+            if (allConnections) {
+              allConnections.delete(ws);
+            }
             
             // Force close the connection if it's still open
             if (ws.readyState === WebSocket.OPEN) {
@@ -675,9 +669,8 @@ function setupWebSocketServer(server) {
             cleanupConnection();
             
             // Log connection statistics
-            const activeConnections = allConnections.size;
             const activeUsers = userConnections.size;
-            console.log(`[WebSocket] Connection stats - Active: ${activeConnections}, Users: ${activeUsers}`);
+            console.log(`[WebSocket] Connection stats - Users: ${activeUsers}`);
           };
           
           // Handle errors
@@ -709,10 +702,25 @@ function setupWebSocketServer(server) {
           ws.on('close', handleClose);
           ws.on('error', handleError);
           
+          // Handle pong messages
+          const handlePong = () => {
+            if (ws.pingTimeout) {
+              clearTimeout(ws.pingTimeout);
+              ws.pingTimeout = null;
+            }
+            ws.isAlive = true;
+          };
+          
           // Set up ping interval for this connection
           const pingInterval = setInterval(() => {
             if (ws.readyState === ws.OPEN) {
               try {
+                // Set a timeout to detect unresponsive connections
+                ws.pingTimeout = setTimeout(() => {
+                  console.log(`[${connectionId}] No pong received, terminating connection`);
+                  ws.terminate();
+                }, 10000); // 10 second timeout for pong
+                
                 ws.ping();
                 console.log(`[${connectionId}] Sent ping`);
               } catch (error) {
@@ -725,20 +733,37 @@ function setupWebSocketServer(server) {
           // Store the interval ID for cleanup
           ws.pingInterval = pingInterval;
           
+          // Set up pong handler
+          ws.on('pong', handlePong);
+          
           // Set up a one-time handler for when the connection is closed
           const onClose = () => {
             clearInterval(pingInterval);
-            ws.off('close', onClose);
-            ws.off('error', onClose);
-            ws.off('pong', handlePong);
-            //ws.off('ping', handlePing);
-            ws.off('message', handleMessage);
-            ws.off('close', handleClose);
-            ws.off('error', handleError);
+            
+            // Clear any pending ping timeout
+            if (ws.pingTimeout) {
+              clearTimeout(ws.pingTimeout);
+              ws.pingTimeout = null;
+            }
+            
+            // Remove all event listeners
+            ws.removeAllListeners('pong');
+            ws.removeAllListeners('message');
+            ws.removeAllListeners('close');
+            ws.removeAllListeners('error');
+            
+            // Remove from allConnections set if it exists
+            if (allConnections) {
+              allConnections.delete(ws);
+            }
           };
           
+          // Set up close and error handlers
           ws.once('close', onClose);
-          ws.once('error', onClose);
+          ws.once('error', (error) => {
+            console.error(`[${connectionId}] WebSocket error:`, error);
+            onClose();
+          });
         });
       } catch (error) {
         console.error('[WebSocket] Upgrade error:', error);
@@ -757,13 +782,30 @@ function setupWebSocketServer(server) {
   // Track all ping intervals for cleanup
   const pingIntervals = new Map();
   
-  // Clean up all intervals when server closes
+  // Track all active connections
+  const allConnections = new Set();
+  
+  // Clean up when server closes
   wss.on('close', () => {
-    console.log('WebSocket server closing, cleaning up intervals...');
+    console.log('WebSocket server closing, cleaning up...');
+    
+    // Clear all ping intervals
     for (const [connectionId, interval] of pingIntervals.entries()) {
       clearInterval(interval);
       pingIntervals.delete(connectionId);
     }
+    
+    // Close all active connections
+    for (const ws of allConnections) {
+      try {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.terminate();
+        }
+      } catch (e) {
+        console.error('Error terminating connection:', e);
+      }
+    }
+    allConnections.clear();
   });
   
   // Helper function to setup ping interval for a connection
