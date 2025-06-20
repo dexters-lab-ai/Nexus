@@ -102,28 +102,47 @@ router.get('/search', requireAuth, async (req, res) => {
  */
 router.get('/:id', requireAuth, async (req, res) => {
   try {
+    // Ensure we're sending JSON
+    res.set('Content-Type', 'application/json');
+    
     const userId = req.session.user;
     const yamlMap = await YamlMap.findById(req.params.id);
     
     if (!yamlMap) {
-      return res.status(404).json({ success: false, error: 'YAML map not found' });
+      return res.status(404).json({ 
+        success: false, 
+        error: 'YAML map not found' 
+      });
     }
     
     // Check if user has access (owner or public map)
-    if (yamlMap.userId !== userId && !yamlMap.isPublic) {
-      return res.status(403).json({ success: false, error: 'You do not have permission to view this YAML map' });
+    if (yamlMap.userId.toString() !== userId.toString() && !yamlMap.isPublic) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'You do not have permission to view this YAML map' 
+      });
     }
     
-    res.json({ 
+    const response = { 
       success: true, 
       yamlMap: {
         ...yamlMap.toObject(),
-        isOwner: yamlMap.userId === userId
+        isOwner: yamlMap.userId.toString() === userId.toString()
       }
-    });
+    };
+    
+    console.log('Sending YAML map response:', JSON.stringify(response, null, 2));
+    return res.json(response);
+    
   } catch (error) {
-    console.error('Error fetching YAML map:', error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error('Error in GET /api/yaml-maps/:id:', error);
+    
+    // Ensure we're sending JSON even for errors
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 

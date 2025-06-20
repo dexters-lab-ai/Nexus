@@ -137,9 +137,6 @@ app.get('/api/health', (req, res) => {
   }
 });
 
-// Track all active WebSocket connections
-const allConnections = new Set();
-
 // Track connection attempts and failures
 const connectionAttempts = new Map();
 
@@ -212,6 +209,12 @@ function setupWebSocketServer(server) {
       serverMaxWindowBits: 10,
       concurrencyLimit: 10,
       threshold: 1024
+    },
+    clientTracking: true,
+    verifyClient: (info, done) => {
+      // This runs before the upgrade request is accepted
+      // We'll handle session validation during the upgrade
+      done(true);
     }
   });
 
@@ -220,46 +223,121 @@ function setupWebSocketServer(server) {
 
   // WebSocket server event listeners
   wss.on('listening', () => {
-    console.log('[WebSocket] Server is ready for WebSocket connections');
+    console.log('[WebSocket] Server ready');
+    
+    // Set up periodic cleanup of dead connections and check connection health
+    setInterval(() => {
+      const now = Date.now();
+      
+      // Check all user connections
+      for (const [userId, connections] of userConnections.entries()) {
+        for (const ws of connections) {
+          // Check if connection is still alive
+          if (ws.isAlive === false) {
+            console.log(`[WebSocket] Terminating dead connection for user ${userId}`);
+            ws.terminate();
+            connections.delete(ws);
+            continue;
+          }
+          
+          // Mark as not alive until next ping
+          ws.isAlive = false;
+          ws.ping();
+        }
+        
+        // Remove user entry if no more connections
+        if (connections.size === 0) {
+          userConnections.delete(userId);
+          unsentMessages.delete(userId);
+        }
+      }
+    }, 30000); // Check every 30 seconds
   });
 
   wss.on('error', (error) => {
-    console.error('[WebSocket] Server error:', error);
+    console.error('[WebSocket] Server error:', error.message);
+    if (process.env.NODE_ENV === 'development') {
+      console.error(error.stack);
+    }
+  });
+  
+  // WebSocket connection handler - individual connection management is handled in the upgrade handler
+  wss.on('connection', (ws) => {
+    // Connection logging is handled in the upgrade handler
+    // All event handlers are set up in the upgrade handler to avoid duplication
   });
 
   // Handle HTTP server upgrade for WebSocket connections
   server.on('upgrade', (request, socket, head) => {
     // Set a connection timeout
-    socket.setTimeout(5000, () => {
+    socket.setTimeout(10000, () => {
       if (!socket.destroyed) {
         console.log('[WebSocket] Connection upgrade timed out');
+        socket.write('HTTP/1.1 408 Request Timeout\r\n\r\n');
         socket.destroy();
       }
     });
 
-    // Verify session using the middleware with a simplified approach
-    sessionMiddleware(request, {}, (error) => {
+    // Skip session validation for health checks
+    if (request.url === '/health') {
+      socket.write('HTTP/1.1 200 OK\r\n\r\n');
+      return socket.destroy();
+    }
+    
+    // Add CORS headers for WebSocket upgrade
+    const origin = request.headers.origin;
+    if (origin && isOriginAllowed(origin)) {
+      request.headers['access-control-allow-origin'] = origin;
+      request.headers['access-control-allow-credentials'] = 'true';
+    }
+
+    // Handle WebSocket upgrade with session validation
+    sessionMiddleware(request, {}, async (err) => {
+      if (err) {
+        console.error('[WebSocket] Session middleware error:', err);
+        socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
+        return socket.destroy();
+      }
+      
       try {
-        if (error) {
-          console.error('[WebSocket] Session middleware error:', error);
+        // Ensure session exists
+        if (!request.session) {
+          request.session = {};
+        }
+        
+        const session = request.session;
+        let userId = session.userId || session.user; // Handle both formats
+        let isNewSession = !userId;
+        
+        // Only create guest session for new sessions that aren't API requests
+        if (isNewSession && !request.url.startsWith('/api/')) {
+          userId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          session.userId = userId; // Use consistent property name
+          session.user = userId; // Keep both for backward compatibility
+          console.log('[WebSocket] Created new guest session:', userId);
+          
+          // Save the session before proceeding
+          await new Promise((resolve, reject) => {
+            session.save((err) => {
+              if (err) {
+                console.error('[WebSocket] Error saving session:', err);
+                return reject(err);
+              }
+              resolve();
+            });
+          });
+        }
+        
+        if (!userId) {
+          console.error('[WebSocket] No user ID in session');
           socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
           return socket.destroy();
         }
-
-        // Get session from request
-        const session = request.session || {};
-        const isAuthenticated = !!session.user && !session.user.startsWith('guest_');
-        const userId = session.user || `guest_${randomBytes(8).toString('hex')}`;
         
-        // Verify origin
-        const origin = request.headers.origin;
-        if (!isOriginAllowed(origin)) {
-          console.error(`[WebSocket] Origin not allowed: ${origin}`);
-          socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
-          return socket.destroy();
-        }
-
-        // Proceed with upgrade
+        // Determine if user is authenticated
+        const isAuthenticated = userId && !userId.startsWith('guest_');
+        
+        // Proceed with WebSocket upgrade
         wss.handleUpgrade(request, socket, head, (ws) => {
           // Clear the timeout as we've successfully upgraded
           socket.setTimeout(0);
@@ -268,7 +346,7 @@ function setupWebSocketServer(server) {
           const connectionId = `${Date.now()}-${randomBytes(4).toString('hex')}`;
           const clientIp = request.socket.remoteAddress;
           
-          // Store connection info
+          // Store connection info using consistent property names
           ws.userId = userId;
           ws.isAuthenticated = isAuthenticated;
           ws.connectedAt = Date.now();
@@ -276,8 +354,19 @@ function setupWebSocketServer(server) {
           ws.isAlive = true;
           ws.connectionId = connectionId;
           
-          // Set up pong handler for this connection (for native WebSocket pings)
-          const handlePong = (data) => {
+          console.log(`[WebSocket] New connection: ${connectionId} (${isAuthenticated ? 'authenticated' : 'guest'})`);
+          
+          // Add to user connections tracking
+          if (!userConnections.has(userId)) {
+            userConnections.set(userId, new Set());
+          }
+          userConnections.get(userId).add(ws);
+          
+          // Log connection count for this user
+          console.log(`[WebSocket] User ${userId} now has ${userConnections.get(userId).size} active connections`);
+          
+          // Set up ping/pong for connection health
+          ws.on('pong', () => {
             const now = Date.now();
             ws.isAlive = true;
             ws.lastPong = now;
@@ -290,49 +379,64 @@ function setupWebSocketServer(server) {
               ws.pingTimeout = null;
             }
             
-            if (process.env.NODE_ENV !== 'production' && ws.lastPingTime) {
-              const rtt = now - ws.lastPingTime;
-              console.log(`[${connectionId}] Received native pong (RTT: ${rtt}ms)`);
-            }
-            
-            // For native pings, send a pong response
-            try {
-              if (data && data.length > 0) {
-                // If there was data with the ping, include it in the pong
-                ws.pong(data);
+            // Set a new ping timeout
+            ws.pingTimeout = setTimeout(() => {
+              if (ws.readyState !== WebSocket.OPEN) return;
+              
+              if (ws.waitingForPong) {
+                // No pong received in time, terminate connection
+                console.log(`[WebSocket] No pong received from ${ws.userId}, terminating connection`);
+                ws.terminate();
               } else {
-                // Otherwise just send an empty pong
-                ws.pong();
+                // Send a ping if connection is still open
+                if (ws.readyState === WebSocket.OPEN) {
+                  try {
+                    ws.waitingForPong = true;
+                    ws.ping();
+                    
+                    // Set a shorter timeout to wait for the pong
+                    ws.pingTimeout = setTimeout(() => {
+                      if (ws.waitingForPong && ws.readyState === WebSocket.OPEN) {
+                        console.log(`[WebSocket] No pong received from ${ws.userId} after ping, terminating connection`);
+                        ws.terminate();
+                      }
+                    }, 5000); // 5 seconds to receive pong
+                  } catch (error) {
+                    console.error(`[WebSocket] Error sending ping to ${ws.userId}:`, error.message);
+                    ws.terminate();
+                  }
+                }
               }
-            } catch (e) {
-              console.error(`[${connectionId}] Error sending pong:`, e);
-            }
-          };
-          
-          // Set up event listeners
-          ws.on('pong', handlePong);
+            }, 30000); // Send ping every 30 seconds
+          });
           
           // Set up ping interval for this connection
+          const setupPingInterval = (ws) => {
+            // Clear any existing interval
+            if (ws.pingInterval) {
+              clearInterval(ws.pingInterval);
+            }
+            
+            // Set up new interval to send pings
+            ws.pingInterval = setInterval(() => {
+              if (ws.readyState === WebSocket.OPEN) {
+                try {
+                  ws.ping();
+                } catch (error) {
+                  console.error(`[WebSocket] Error sending ping:`, error);
+                }
+              }
+            }, 45000); // Send ping every 45 seconds (less than the 60s timeout)
+          };
+          
+          // Initialize ping interval
           setupPingInterval(ws);
           
           // Send initial ping to start the keepalive
           ws.ping(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
 
-          // Add to connection tracking
-          allConnections.add(ws);
-          if (!userConnections.has(userId)) {
-            userConnections.set(userId, new Set());
-          }
-          userConnections.get(userId).add(ws);
-
-          console.log(`[WebSocket] New ${isAuthenticated ? 'authenticated' : 'guest'} connection`, {
-            connectionId,
-            userId,
-            isAuthenticated,
-            ip: clientIp,
-            totalConnections: allConnections.size,
-            userConnections: userConnections.get(userId).size
-          });
+          // Connection is already tracked in userConnections
+          console.log(`[WebSocket] New ${isAuthenticated ? 'auth' : 'guest'} connection: ${connectionId}`);
           
           // Send welcome message
           const welcomeMsg = {
@@ -431,7 +535,7 @@ function setupWebSocketServer(server) {
                 if (data.originalTimestamp) {
                   const rtt = now - data.originalTimestamp;
                   if (process.env.NODE_ENV !== 'production') {
-                    console.log(`[${connectionId}] Received pong (RTT: ${rtt}ms)`);
+                    // Received pong, connection healthy
                   }
                 }
                 return;
@@ -565,7 +669,7 @@ function setupWebSocketServer(server) {
               duration: ws.connectedAt ? `${((Date.now() - ws.connectedAt) / 1000).toFixed(2)}s` : 'unknown'
             };
             
-            console.log(`[WebSocket] Connection closed:`, closeInfo);
+            console.log(`[WebSocket] Connection closed: ${connectionId}`);
             
             // Clean up resources
             cleanupConnection();
@@ -586,7 +690,7 @@ function setupWebSocketServer(server) {
               timestamp: new Date().toISOString()
             };
             
-            console.error(`[WebSocket] Connection error:`, errorInfo);
+            console.error(`[WebSocket] Connection error: ${error.message || 'Unknown error'}`);
             
             // Clean up resources
             cleanupConnection();
@@ -858,26 +962,25 @@ global.NEXUS_PATHS = {
   ARTIFACTS_DIR: ARTIFACTS_DIR
 };
 
-// Logger Mr Winston
+// Logger Configuration - Simplified
 const logger = winston.createLogger({
-  level: 'info',
+  level: 'warn', // Default to warn level
   format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
+    winston.format.timestamp({ format: 'HH:mm:ss' }),
+    winston.format.errors({ stack: NODE_ENV !== 'production' }),
+    winston.format.splat(),
+    winston.format.simple()
   ),
+  defaultMeta: { service: 'nexus-backend' },
   transports: [
-    new winston.transports.File({ filename: path.join(LOG_DIR, 'error.log'), level: 'error' }),
-    new winston.transports.File({ filename: path.join(LOG_DIR, 'combined.log') })
+    new winston.transports.Console()
   ]
 });
 
-if (NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: winston.format.simple()
-  }));
+// Only log startup message if not in test environment
+if (process.env.NODE_ENV !== 'test') {
+  logger.info(`Nexus run directory structure prepared at ${NEXUS_RUN_DIR}`);
 }
-
-logger.info(`Nexus run directory structure prepared at ${NEXUS_RUN_DIR}`);
 
 /**
  * Helper function to conditionally log debug messages.
@@ -1045,8 +1148,15 @@ app.use(sessionMiddleware);
 // 8.3 GUEST SESSION HANDLING
 // ======================================
 app.use((req, res, next) => {
-  // If no session user ID, create a guest session
-  if (!req.session.user) {
+  // Skip session creation for WebSocket upgrade, API validation, and socket.io requests
+  if (req.path === '/api/auth/validate-session' || 
+      req.path.startsWith('/socket.io/') || 
+      req.headers.upgrade === 'websocket') {
+    return next();
+  }
+  
+  // Only create guest session for non-API routes
+  if (!req.session.user && !req.path.startsWith('/api/')) {
     req.session.user = `guest_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
     console.log('Created guest session:', req.session.user);
   }
@@ -1181,13 +1291,25 @@ app.use((req, res, next) => {
 });
 
 // 8.6 CDN and cookie fixer middleware
-// 8.7 Request Logging - only log errors (4xx and 5xx) and skip health checks
+// 8.7 Request Logging - only log server errors (5xx) and skip common non-error paths
 app.use((req, res, next) => {
   const start = Date.now();
   const { method, url, ip } = req;
   
-  // Skip logging for health checks
-  if (url === '/api/health') {
+  // Skip logging for common non-error paths
+  const skipPaths = [
+    '/api/health',
+    '/favicon.ico',
+    '/robots.txt',
+    '/sitemap.xml',
+    '/static/',
+    '/assets/',
+    '/_next/',
+    '/__nextjs_',
+    '/_nuxt/'
+  ];
+  
+  if (skipPaths.some(path => url.startsWith(path))) {
     return next();
   }
   
@@ -1196,17 +1318,28 @@ app.use((req, res, next) => {
     const { statusCode } = res;
     const contentLength = res.get('Content-Length') || 0;
     
-    // Only log errors (4xx and 5xx status codes)
-    if (statusCode >= 400) {
-      logger.info(`${method} ${url} ${statusCode} - ${duration}ms - ${contentLength}b`, {
+    // Log 5xx errors (server errors) and 404s for non-API routes in development
+    const shouldLog = 
+      statusCode >= 500 || 
+      (process.env.NODE_ENV === 'development' && statusCode === 404 && !url.startsWith('/api/'));
+    
+    if (shouldLog) {
+      const logData = {
         method,
         url,
         status: statusCode,
-        duration,
-        contentLength,
+        duration: `${duration}ms`,
+        contentLength: contentLength ? `${contentLength}b` : '0b',
         ip,
         userAgent: req.headers['user-agent']
-      });
+      };
+      
+      // Use appropriate log level based on status code
+      if (statusCode >= 500) {
+        logger.error('Server error', logData);
+      } else {
+        logger.warn('Client error', logData);
+      }
     }
   });
   
@@ -1387,129 +1520,9 @@ import messagesRouter from './src/routes/messages.js';
 import { setStaticFileHeaders } from './src/middleware/staticAssets.js';
 import serveStaticAssets from './src/middleware/staticAssets.js';
 
-// 2. STATIC FILES (must come before authentication)
+// 1. API ROUTES (must come before static files and catch-all)
 // =================================================
-// In development, we don't serve static files from the backend
-// as they are handled by Vite dev server on port 3000
-if (process.env.NODE_ENV !== 'development') {
-  // Serve static files from dist in production
-  app.use(express.static(path.join(__dirname, 'dist'), {
-    setHeaders: (res, path) => {
-      // Set CORS headers for all static files
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      
-      // Set proper content type based on file extension
-      const ext = path.split('.').pop().toLowerCase();
-      if (ext === 'css') {
-        res.setHeader('Content-Type', 'text/css');
-      } else if (ext === 'js') {
-        res.setHeader('Content-Type', 'application/javascript');
-      } else if (['png', 'jpg', 'jpeg', 'gif', 'svg'].includes(ext)) {
-        res.setHeader('Content-Type', `image/${ext === 'jpg' ? 'jpeg' : ext}`);
-      }
-    }
-  }));
-  
-  // Serve webfonts from public/webfonts with correct MIME types
-  app.use('/webfonts', express.static(path.join(__dirname, 'public', 'webfonts'), {
-    setHeaders: (res, filePath) => {
-      // Set appropriate content type based on file extension
-      const ext = path.extname(filePath).toLowerCase().substring(1);
-      if (ext === 'woff2') {
-        res.setHeader('Content-Type', 'font/woff2');
-      } else if (ext === 'woff') {
-        res.setHeader('Content-Type', 'font/woff');
-      } else if (ext === 'ttf') {
-        res.setHeader('Content-Type', 'font/ttf');
-      } else if (ext === 'eot') {
-        res.setHeader('Content-Type', 'application/vnd.ms-fontobject');
-      } else if (ext === 'svg') {
-        res.setHeader('Content-Type', 'image/svg+xml');
-      }
-      // Add caching headers
-      res.setHeader('Cache-Control', 'public, max-age=31536000');
-    }
-  }));
-
-  // Serve public directory for other static assets with proper MIME types
-  app.use(express.static(path.join(__dirname, 'public'), {
-    setHeaders: (res, filePath) => {
-      // Set proper content type based on file extension
-      const ext = path.extname(filePath).toLowerCase();
-      if (ext === '.svg') {
-        res.setHeader('Content-Type', 'image/svg+xml');
-      } else if (ext === '.css') {
-        res.setHeader('Content-Type', 'text/css');
-      } else if (ext === '.js') {
-        res.setHeader('Content-Type', 'application/javascript');
-      } else if (['.png', '.jpg', '.jpeg', '.gif'].includes(ext)) {
-        res.setHeader('Content-Type', `image/${ext.slice(1)}`);
-      } else if (ext === '.ico') {
-        res.setHeader('Content-Type', 'image/x-icon');
-      }
-    }
-  }));
-  
-  // Serve CSS files from dist/css and its subdirectories
-  app.use('/css', express.static(path.join(__dirname, 'dist', 'css'), {
-    setHeaders: (res, filePath) => {
-      // Only set Content-Type for CSS files
-      if (filePath.endsWith('.css')) {
-        res.setHeader('Content-Type', 'text/css');
-      } else if (filePath.endsWith('.svg')) {
-        res.setHeader('Content-Type', 'image/svg+xml');
-      }
-    },
-    // Enable directory listing to serve files from subdirectories
-    index: false,
-    redirect: false
-  }));
-  
-  // Serve static files from dist directory with proper MIME types
-  app.use(express.static(path.join(__dirname, 'dist'), {
-    setHeaders: (res, filePath) => {
-      // Set proper content type based on file extension
-      const ext = path.extname(filePath).toLowerCase();
-      if (ext === '.css') {
-        res.setHeader('Content-Type', 'text/css');
-      } else if (ext === '.svg') {
-        res.setHeader('Content-Type', 'image/svg+xml');
-      } else if (ext === '.js') {
-        res.setHeader('Content-Type', 'application/javascript');
-      } else if (['.png', '.jpg', '.jpeg', '.gif'].includes(ext)) {
-        res.setHeader('Content-Type', `image/${ext.slice(1)}`);
-      } else if (ext === '.ico') {
-        res.setHeader('Content-Type', 'image/x-icon');
-      }
-    }
-  }));
-  
-  console.log('Serving static files from:', path.join(__dirname, 'dist'));
-}
-
-// ======================================
-// 8.4 REPORT SERVING MIDDLEWARE
-// ======================================
-// Set up report serving and redirector middleware
-// This must be after static file serving to ensure proper routing
-reportHandlers.setupReportServing(app);
-reportHandlers.setupReportRedirector(app);
-console.log('Report serving middleware initialized');
-
-// Serve nexus_run directory with proper caching
-app.use('/nexus_run', express.static(NEXUS_RUN_DIR, {
-  setHeaders: (res, path) => {
-    // Ensure proper caching for static files
-    res.setHeader('Cache-Control', 'public, max-age=31536000');
-  }
-}));
-
-// Legacy redirect for midscene_run -> nexus_run
-app.use('/midscene_run', (req, res) => {
-  const subPath = req.path;
-  const newPath = `/nexus_run${subPath}`;
-  res.redirect(301, newPath);
-});
+app.use('/api/yaml-maps', yamlMapsRoutes);
 
 // Authentication guard middleware
 /*
@@ -2025,6 +2038,132 @@ pages.forEach(page => {
 app.get('/favicon.ico', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/assets/images/dail-fav.png'));
 });
+
+
+// 2. STATIC FILES (must come before authentication)
+// =================================================
+// In development, we don't serve static files from the backend
+// as they are handled by Vite dev server on port 3000
+if (process.env.NODE_ENV !== 'development') {
+  // Serve static files from dist in production
+  app.use(express.static(path.join(__dirname, 'dist'), {
+    setHeaders: (res, path) => {
+      // Set CORS headers for all static files
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      
+      // Set proper content type based on file extension
+      const ext = path.split('.').pop().toLowerCase();
+      if (ext === 'css') {
+        res.setHeader('Content-Type', 'text/css');
+      } else if (ext === 'js') {
+        res.setHeader('Content-Type', 'application/javascript');
+      } else if (['png', 'jpg', 'jpeg', 'gif', 'svg'].includes(ext)) {
+        res.setHeader('Content-Type', `image/${ext === 'jpg' ? 'jpeg' : ext}`);
+      }
+    }
+  }));
+  
+  // Serve webfonts from public/webfonts with correct MIME types
+  app.use('/webfonts', express.static(path.join(__dirname, 'public', 'webfonts'), {
+    setHeaders: (res, filePath) => {
+      // Set appropriate content type based on file extension
+      const ext = path.extname(filePath).toLowerCase().substring(1);
+      if (ext === 'woff2') {
+        res.setHeader('Content-Type', 'font/woff2');
+      } else if (ext === 'woff') {
+        res.setHeader('Content-Type', 'font/woff');
+      } else if (ext === 'ttf') {
+        res.setHeader('Content-Type', 'font/ttf');
+      } else if (ext === 'eot') {
+        res.setHeader('Content-Type', 'application/vnd.ms-fontobject');
+      } else if (ext === 'svg') {
+        res.setHeader('Content-Type', 'image/svg+xml');
+      }
+      // Add caching headers
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+    }
+  }));
+
+  // Serve public directory for other static assets with proper MIME types
+  app.use(express.static(path.join(__dirname, 'public'), {
+    setHeaders: (res, filePath) => {
+      // Set proper content type based on file extension
+      const ext = path.extname(filePath).toLowerCase();
+      if (ext === '.svg') {
+        res.setHeader('Content-Type', 'image/svg+xml');
+      } else if (ext === '.css') {
+        res.setHeader('Content-Type', 'text/css');
+      } else if (ext === '.js') {
+        res.setHeader('Content-Type', 'application/javascript');
+      } else if (['.png', '.jpg', '.jpeg', '.gif'].includes(ext)) {
+        res.setHeader('Content-Type', `image/${ext.slice(1)}`);
+      } else if (ext === '.ico') {
+        res.setHeader('Content-Type', 'image/x-icon');
+      }
+    }
+  }));
+  
+  // Serve CSS files from dist/css and its subdirectories
+  app.use('/css', express.static(path.join(__dirname, 'dist', 'css'), {
+    setHeaders: (res, filePath) => {
+      // Only set Content-Type for CSS files
+      if (filePath.endsWith('.css')) {
+        res.setHeader('Content-Type', 'text/css');
+      } else if (filePath.endsWith('.svg')) {
+        res.setHeader('Content-Type', 'image/svg+xml');
+      }
+    },
+    // Enable directory listing to serve files from subdirectories
+    index: false,
+    redirect: false
+  }));
+  
+  // Serve static files from dist directory with proper MIME types
+  app.use(express.static(path.join(__dirname, 'dist'), {
+    setHeaders: (res, filePath) => {
+      // Set proper content type based on file extension
+      const ext = path.extname(filePath).toLowerCase();
+      if (ext === '.css') {
+        res.setHeader('Content-Type', 'text/css');
+      } else if (ext === '.svg') {
+        res.setHeader('Content-Type', 'image/svg+xml');
+      } else if (ext === '.js') {
+        res.setHeader('Content-Type', 'application/javascript');
+      } else if (['.png', '.jpg', '.jpeg', '.gif'].includes(ext)) {
+        res.setHeader('Content-Type', `image/${ext.slice(1)}`);
+      } else if (ext === '.ico') {
+        res.setHeader('Content-Type', 'image/x-icon');
+      }
+    }
+  }));
+  
+  console.log('Serving static files from:', path.join(__dirname, 'dist'));
+}
+
+// ======================================
+// 8.4 REPORT SERVING MIDDLEWARE
+// ======================================
+// Set up report serving and redirector middleware
+// This must be after static file serving to ensure proper routing
+reportHandlers.setupReportServing(app);
+reportHandlers.setupReportRedirector(app);
+console.log('Report serving middleware initialized');
+
+// Serve nexus_run directory with proper caching
+app.use('/nexus_run', express.static(NEXUS_RUN_DIR, {
+  setHeaders: (res, path) => {
+    // Ensure proper caching for static files
+    res.setHeader('Cache-Control', 'public, max-age=31536000');
+  }
+}));
+
+// Legacy redirect for midscene_run -> nexus_run
+app.use('/midscene_run', (req, res) => {
+  const subPath = req.path;
+  const newPath = `/nexus_run${subPath}`;
+  res.redirect(301, newPath);
+});
+
 
 // =====================================================
 // 3. 404 & SPA Catch All HANDLERS 

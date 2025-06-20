@@ -3,6 +3,8 @@
  * Provides a modal for creating and editing YAML maps
  */
 
+import api from '../utils/api';
+
 // Example YAML template for new maps
 const exampleYaml = `tasks:
   - name: search weather
@@ -43,36 +45,44 @@ class YamlMapEditor {
       this.setIsLoading(true);
       this.setError(null);
       
-      const response = await fetch(`/api/yaml-maps/${mapId}`, {
-        credentials: 'include'
-      });
+      console.log('Fetching YAML map with ID:', mapId);
+      const response = await api.yamlMaps.getById(mapId);
+      console.log('Received YAML map data:', response);
       
-      if (!response.ok) {
-        throw new Error(`Failed to load YAML map: ${response.status}`);
+      // Ensure we have a proper response with yamlMap
+      if (!response || !response.yamlMap) {
+        throw new Error('Invalid response format from server');
       }
       
-      const data = await response.json();
+      const { yamlMap } = response;
       
-      if (data.success && data.yamlMap) {
-        this.formData = {
-          name: data.yamlMap.name || '',
-          description: data.yamlMap.description || '',
-          url: data.yamlMap.url || '',
-          tags: data.yamlMap.tags || [],
-          yaml: data.yamlMap.yaml || '',
-          isPublic: data.yamlMap.isPublic || false
-        };
-        this.renderForm();
-      } else {
-        throw new Error(data.error || 'Failed to load YAML map');
-      }
+      // Initialize form data with defaults and override with API data
+      this.formData = {
+        // Default values
+        name: '',
+        description: '',
+        url: '',
+        tags: [],
+        yaml: exampleYaml,
+        isPublic: false,
+        // Spread yamlMap data to override defaults
+        ...yamlMap,
+        // Ensure critical fields have fallbacks
+        yaml: yamlMap.yaml || exampleYaml,
+        tags: Array.isArray(yamlMap.tags) ? yamlMap.tags : [],
+        // Ensure we have an ID if it exists
+        _id: yamlMap._id || null
+      };
+      
+      console.log('Form data after merge:', this.formData);
+      this.renderForm();
     } catch (error) {
       console.error('Error loading YAML map:', error);
-      this.setError(error.message);
+      this.setError(error.message || 'Failed to load YAML map');
     } finally {
       this.setIsLoading(false);
     }
-  }
+  };
 
   // Handle form field changes
   handleChange(e) {
@@ -105,7 +115,7 @@ class YamlMapEditor {
         }
       }
     }
-  }
+  };
   
   // Update line numbers based on YAML content
   updateLineNumbers() {
@@ -130,12 +140,12 @@ class YamlMapEditor {
     textarea.addEventListener('scroll', () => {
       lineNumbers.scrollTop = textarea.scrollTop;
     });
-  }
+  };
 
   // Handle tag input changes
   handleTagInputChange(e) {
     this.tagInput = e.target.value;
-  }
+  };
 
   // Add a new tag
   handleAddTag() {
@@ -150,13 +160,13 @@ class YamlMapEditor {
     this.formData.tags.push(this.tagInput.trim());
     this.tagInput = '';
     this.renderTags();
-  }
+  };
 
   // Remove a tag
   handleRemoveTag(tagToRemove) {
     this.formData.tags = this.formData.tags.filter(tag => tag !== tagToRemove);
     this.renderTags();
-  }
+  };
 
   // Use template YAML
   useTemplate() {
@@ -165,25 +175,25 @@ class YamlMapEditor {
     if (yamlTextarea) {
       yamlTextarea.value = exampleYaml;
     }
-  }
+  };
 
   // Set loading state
   setIsLoading(isLoading) {
     this.isLoading = isLoading;
     this.renderLoadingState();
-  }
+  };
 
   // Set saving state
   setIsSaving(isSaving) {
     this.isSaving = isSaving;
     this.renderSavingState();
-  }
+  };
 
   // Set error message
   setError(error) {
     this.error = error;
     this.renderError();
-  }
+  };
 
   // Render loading state
   renderLoadingState() {
@@ -200,7 +210,7 @@ class YamlMapEditor {
       if (form) form.style.display = 'flex';
       if (loader) loader.style.display = 'none';
     }
-  }
+  };
 
   // Render saving state
   renderSavingState() {
@@ -244,7 +254,7 @@ class YamlMapEditor {
         saveOverlay.style.display = 'none';
       }
     }
-  }
+  };
 
   // Render error message
   renderError() {
@@ -259,7 +269,7 @@ class YamlMapEditor {
     } else if (errorEl) {
       errorEl.style.display = 'none';
     }
-  }
+  };
 
   // Render tags
   renderTags() {
@@ -292,7 +302,7 @@ class YamlMapEditor {
     if (tagInput) {
       tagInput.value = this.tagInput;
     }
-  }
+  };
 
   // Enhanced YAML validation for agent.runYaml() compatibility
   validateYaml(yamlText) {
@@ -393,11 +403,11 @@ class YamlMapEditor {
     } catch (error) {
       return { valid: false, error: `YAML validation error: ${error.message}` };
     }
-  }
+  };
 
   // Handle form submission
   async handleSubmit(e = null) {
-    // The preventDefault is now handled in the event listener
+    if (e) e.preventDefault();
     
     console.log('Submitting YAML Map form');
     
@@ -426,36 +436,17 @@ class YamlMapEditor {
       this.setIsSaving(true);
       this.setError(null);
       
-      const url = this.isEditing 
-        ? `/api/yaml-maps/${this.initialMapId}` 
-        : '/api/yaml-maps';
+      const data = this.isEditing
+        ? await api.yamlMaps.update(this.initialMapId, yamlMap)
+        : await api.yamlMaps.create(yamlMap);
       
-      const response = await fetch(url, {
-        method: this.isEditing ? 'PUT' : 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(this.formData)
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to ${this.isEditing ? 'update' : 'create'} YAML map: ${response.status}`);
+      if (this.onSaveCallback) {
+        this.onSaveCallback(data);
       }
-      
-      const data = await response.json();
-      
-      if (data.success && data.yamlMap) {
-        if (this.onSaveCallback) {
-          this.onSaveCallback(data.yamlMap);
-        }
-        this.handleClose();
-      } else {
-        throw new Error(data.error || `Failed to ${this.isEditing ? 'update' : 'create'} YAML map`);
-      }
+      this.handleClose();
     } catch (error) {
       console.error(`Error ${this.isEditing ? 'updating' : 'creating'} YAML map:`, error);
-      this.setError(error.message);
+      this.setError(error.message || `Failed to ${this.isEditing ? 'update' : 'create'} YAML map`);
     } finally {
       this.setIsSaving(false);
     }

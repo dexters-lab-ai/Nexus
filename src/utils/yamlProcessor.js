@@ -10,6 +10,31 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { PuppeteerAgent } from '@midscene/web/puppeteer';
 import { getPuppeteerLaunchOptions } from './puppeteerConfig.js';
+
+// Track browser instances for cleanup
+let activeBrowsers = new Set();
+
+/**
+ * Clean up browser instances
+ * @param {Error} [error] - Optional error that occurred
+ * @returns {Promise<void>}
+ */
+async function cleanupBrowser(error) {
+  if (error) {
+    console.error('[YAML] Error during cleanup:', error);
+  }
+  
+  const browsersToClose = Array.from(activeBrowsers);
+  activeBrowsers.clear();
+  
+  await Promise.allSettled(
+    browsersToClose.map(browser => 
+      browser.close().catch(err => 
+        console.error('[YAML] Error closing browser:', err)
+      )
+    )
+  );
+}
 import YamlMap from '../models/YamlMap.js';
 import { generateReport } from './reportGenerator.js';
 import OpenAI from 'openai';
@@ -483,15 +508,26 @@ export async function processYamlMapTask(options) {
 
       browser = await puppeteer.launch(launchOptions);
       
-      // Set up browser close handler for clean shutdown
-      const cleanExit = async () => {
-        console.log('[ProcessYamlTask] Cleaning up browser before exit...');
+      // Set up browser cleanup function
+      const cleanupBrowser = async (error = null) => {
+        console.log('[ProcessYamlTask] Cleaning up browser resources...');
+        const errors = [];
+        
         try {
           if (browser) {
             try {
               const pages = await browser.pages();
-              await Promise.all(pages.map(p => p.close().catch(console.error)));
-              await browser.close().catch(console.error);
+              await Promise.all(pages.map(p => p.close().catch(e => {
+                console.error('Error closing page:', e);
+                errors.push(e);
+              })));
+              await browser.close().catch(e => {
+                console.error('Error closing browser:', e);
+                errors.push(e);
+              });
+            } catch (e) {
+              console.error('Error during browser cleanup:', e);
+              errors.push(e);
             } finally {
               // Clean up the temporary directory
               if (tempDir && fs.existsSync(tempDir)) {
@@ -499,27 +535,62 @@ export async function processYamlMapTask(options) {
                   fs.rmSync(tempDir, { recursive: true, force: true });
                 } catch (e) {
                   console.error('Error cleaning up temp directory:', e);
+                  errors.push(e);
                 }
               }
             }
           }
+          
+          // Remove all event listeners to prevent memory leaks
+          process.removeAllListeners('SIGTERM');
+          process.removeAllListeners('SIGINT');
+          process.removeAllListeners('SIGHUP');
+          process.removeAllListeners('uncaughtException');
+          process.removeAllListeners('unhandledRejection');
+          
+          if (error) {
+            console.error('[ProcessYamlTask] Error during YAML processing:', error);
+            // Only throw if we're not already handling an error
+            if (!error.handled) {
+              throw error;
+            }
+          }
+          
+          return errors.length > 0 ? errors : null;
         } catch (e) {
-          console.error('Error during browser cleanup:', e);
+          console.error('Unexpected error during cleanup:', e);
+          throw e;
         }
-        process.exit(0);
       };
 
-      // Handle various process termination signals
-      process.on('SIGTERM', cleanExit);
-      process.on('SIGINT', cleanExit);
-      process.on('SIGHUP', cleanExit);
+      // Handle process termination signals - but don't exit the process
+      const handleShutdown = async (signal) => {
+        console.log(`[ProcessYamlTask] Received ${signal}, cleaning up...`);
+        try {
+          await cleanupBrowser();
+          console.log(`[ProcessYamlTask] Cleanup complete after ${signal}`);
+        } catch (e) {
+          console.error(`[ProcessYamlTask] Error during ${signal} cleanup:`, e);
+        }
+      };
+
+      // Set up signal handlers
+      process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+      process.on('SIGINT', () => handleShutdown('SIGINT'));
+      process.on('SIGHUP', () => handleShutdown('SIGHUP'));
+      
+      // Handle uncaught exceptions and rejections
       process.on('uncaughtException', (err) => {
-        console.error('Uncaught exception:', err);
-        cleanExit();
+        console.error('[ProcessYamlTask] Uncaught exception:', err);
+        err.handled = true;
+        cleanupBrowser(err).catch(console.error);
       });
+      
       process.on('unhandledRejection', (reason, promise) => {
-        console.error('Unhandled rejection at:', promise, 'reason:', reason);
-        cleanExit();
+        console.error('[ProcessYamlTask] Unhandled rejection at:', promise, 'reason:', reason);
+        const err = reason instanceof Error ? reason : new Error(String(reason));
+        err.handled = true;
+        cleanupBrowser(err).catch(console.error);
       });
 
       // Create a new page
@@ -540,10 +611,40 @@ export async function processYamlMapTask(options) {
       console.log(`[ProcessYamlTask] Agent initialized for task ${taskId}`);
     } catch (initError) {
       console.error(`[ProcessYamlTask] Error initializing PuppeteerAgent:`, initError);
-      // Clean up resources if they were partially initialized
-      if (page) await page.close().catch(console.error);
-      if (browser) await browser.close().catch(console.error);
-      throw initError;
+      try {
+        // Clean up resources if they were partially initialized
+        if (page) await page.close().catch(console.error);
+        if (browser) await browser.close().catch(console.error);
+      } catch (cleanupError) {
+        console.error('[ProcessYamlTask] Error during cleanup after initialization failure:', cleanupError);
+      }
+      
+      // Log the error and continue with the task
+      logYaml('Error initializing browser', { 
+        error: initError.message,
+        stack: initError.stack
+      });
+      
+      // Update task status to failed
+      await updateTaskInDatabase(taskId, { 
+        status: 'failed',
+        error: `Failed to initialize browser: ${initError.message}`,
+        progress: 100
+      });
+      
+      // Return a proper error response instead of throwing
+      return {
+        success: false,
+        error: `Failed to initialize browser: ${initError.message}`,
+        errorDetails: process.env.NODE_ENV === 'development' ? 
+          { stack: initError.stack } : undefined,
+        yamlLog,
+        steps: steps.map(step => ({
+          ...step,
+          status: 'failed',
+          error: initError.message
+        }))
+      };
     }
 
     if (yamlMapUrl !== 'N/A') {
@@ -568,31 +669,92 @@ export async function processYamlMapTask(options) {
       console.log(`[ProcessYamlTask] No URL provided - skipping navigation`);
     }
 
-    const yamlContent = yamlMap.yaml;
-    const taskMatches = yamlContent.match(/name:/g);
-    const totalTasks = taskMatches ? taskMatches.length : 0;
-    let lastProgressUpdate = 40;
-    let stepCount = 0;
+      // Ensure we have a valid YAML content
+      if (!yamlMap.yaml || typeof yamlMap.yaml !== 'string') {
+        throw new Error('Invalid or missing YAML content');
+      }
+      
+      const yamlContent = yamlMap.yaml;
+      const taskMatches = yamlContent.match(/name:/g);
+      const totalTasks = taskMatches ? taskMatches.length : 0;
+      let lastProgressUpdate = 40;
+      let stepCount = 0;
+      
+      // Track if we've encountered an error during execution
+      let executionError = null;
 
     const progressCallback = (stepInfo) => {
-      stepCount++;
-      const executionProgress = Math.min(50, Math.floor((stepCount / (totalTasks * 2)) * 50));
-      const totalProgress = 50 + executionProgress;
-      if (totalProgress > lastProgressUpdate) {
-        lastProgressUpdate = totalProgress;
-        sendProgressUpdate(totalProgress, `Executing YAML step: ${stepInfo.command || 'Unknown action'}`, {
-          action: stepInfo.command,
-          url: stepInfo.url || yamlMapUrl
-        });
+      try {
+        stepCount++;
+        const executionProgress = Math.min(50, Math.floor((stepCount / (totalTasks * 2)) * 50));
+        const totalProgress = 50 + executionProgress;
+        if (totalProgress > lastProgressUpdate) {
+          lastProgressUpdate = totalProgress;
+          sendProgressUpdate(totalProgress, `Executing YAML step: ${stepInfo.command || 'Unknown action'}`, {
+            action: stepInfo.command,
+            url: stepInfo.url || yamlMapUrl
+          });
+        }
+      } catch (error) {
+        console.error('[ProcessYamlTask] Error in progress callback:', error);
       }
     };
 
-    const agentRunOutput = await agent.runYaml(yamlMap.yaml, {
-      progressCallback,
-      enableLogging: true
-    });
-    const executionResult = agentRunOutput.result;
-    // const agentExecutionLog = agentRunOutput.log; // Example if other properties are needed
+    let agentRunOutput;
+    let executionResult;
+    
+    try {
+      console.log(`[ProcessYamlTask] Starting YAML execution for task ${taskId}`);
+      agentRunOutput = await agent.runYaml(yamlMap.yaml, {
+        progressCallback,
+        enableLogging: true
+      });
+      executionResult = agentRunOutput?.result;
+      
+      if (!executionResult) {
+        throw new Error('No execution result returned from YAML processor');
+      }
+      
+      console.log(`[ProcessYamlTask] YAML execution completed for task ${taskId}`);
+    } catch (executionError) {
+      console.error(`[ProcessYamlTask] Error during YAML execution for task ${taskId}:`, executionError);
+      executionError = executionError;
+      
+      // Log the error
+      logYaml('Error during YAML execution', { 
+        error: executionError.message,
+        stack: executionError.stack
+      });
+      
+      // Update task status
+      await updateTaskInDatabase(taskId, { 
+        status: 'failed',
+        error: `YAML execution failed: ${executionError.message}`,
+        progress: 100
+      });
+      
+      // Clean up resources
+      await cleanupBrowser(executionError).catch(console.error);
+      
+      // Return error response
+      return {
+        success: false,
+        error: `YAML execution failed: ${executionError.message}`,
+        errorDetails: process.env.NODE_ENV === 'development' ? 
+          { stack: executionError.stack } : undefined,
+        yamlLog,
+        steps: steps.map(step => ({
+          ...step,
+          status: 'failed',
+          error: executionError.message
+        }))
+      };
+    } finally {
+      // Ensure we always clean up resources, even if there was an error
+      if (!executionError) {
+        await cleanupBrowser().catch(console.error);
+      }
+    }
 
     const endTime = Date.now();
     console.log(`[ProcessYamlTask] YAML execution completed for task ${taskId}`);

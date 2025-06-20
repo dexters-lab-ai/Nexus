@@ -1,4 +1,5 @@
 // WebSocketManager.js - Refactored and cleaned up
+import { api } from './api';
 const connectionStates = {
   DISCONNECTED: 'disconnected',
   CONNECTING: 'connecting',
@@ -646,34 +647,17 @@ class WebSocketManager {
     }
 
     try {
-      const apiBase = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-        ? `http://${window.location.hostname}:3420`
-        : window.location.origin;
+      this.log('Validating session using API client...');
+      const result = await api.auth.validateSession();
       
-      this.log('Validating session...');
-      const response = await fetch(`${apiBase}/api/validate-session`, {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      });
+      // The API client will handle 404 and other errors, returning a valid response
+      // or throwing an appropriate error that we catch below
+      return result?.valid === true;
       
-      if (!response.ok) {
-        // If the endpoint doesn't exist (404), treat as validation passed
-        if (response.status === 404) {
-          this.log('Session validation endpoint not found, skipping validation');
-          return true;
-        }
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      return data.valid === true;
     } catch (error) {
-      // For network errors or missing endpoints, log but continue
-      this.log('Session validation not available, continuing without it');
+      // For any errors during validation (network, server errors, etc.),
+      // log the error but continue operation
+      this.log('Session validation error, continuing without it:', error.message);
       return true;
     }
   }

@@ -1317,8 +1317,17 @@ export default function Sidebar(props = {}) {
                     const contentPart = item.querySelector('.yaml-map-content');
                     if (contentPart) {
                       contentPart.style.cursor = 'pointer';
-                      contentPart.addEventListener('click', () => {
-                        viewYamlMap(map._id);
+                      contentPart.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        // Use window to access the function if it's in the global scope
+                        if (typeof window.viewYamlMap === 'function') {
+                          window.viewYamlMap(map._id);
+                        } else if (typeof viewYamlMap === 'function') {
+                          viewYamlMap(map._id);
+                        } else {
+                          console.error('viewYamlMap function not found');
+                        }
                       });
                     }
                     

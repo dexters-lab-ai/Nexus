@@ -463,6 +463,11 @@ export const api = {
   // Authentication endpoints
   auth: {
     /**
+     * Validate the current user session
+     * @returns {Promise<{valid: boolean, user?: Object, isGuest?: boolean, userId?: string}>} - Session validation result
+     */
+    validateSession: () => get('/auth/validate-session'),
+    /**
      * User login
      * @param {string} email - User email
      * @param {string} password - User password
@@ -560,6 +565,76 @@ export const api = {
     }
   },
   
+  // YAML Maps endpoints
+  yamlMaps: {
+    /**
+     * Get all YAML maps for the current user
+     * @param {string} [search] - Optional search query
+     * @returns {Promise<Array>} - List of YAML maps
+     */
+    getAll(search) {
+      const params = {};
+      if (search) params.q = search;
+      return get('/api/yaml-maps', params);
+    },
+
+    /**
+     * Get a single YAML map by ID
+     * @param {string} id - YAML map ID
+     * @returns {Promise<Object>} - YAML map data
+     */
+    getById(id) {
+      return get(`/api/yaml-maps/${id}`);
+    },
+
+    /**
+     * Create a new YAML map
+     * @param {Object} data - YAML map data { name, description, yaml, isPublic, tags }
+     * @returns {Promise<Object>} - Created YAML map
+     */
+    create(data) {
+      return post('/api/yaml-maps', data);
+    },
+
+    /**
+     * Update a YAML map
+     * @param {string} id - YAML map ID
+     * @param {Object} data - Updated YAML map data
+     * @returns {Promise<Object>} - Updated YAML map
+     */
+    update(id, data) {
+      return put(`/api/yaml-maps/${id}`, data);
+    },
+
+    /**
+     * Delete a YAML map
+     * @param {string} id - YAML map ID to delete
+     * @returns {Promise<{success: boolean}>} - Deletion status
+     */
+    delete(id) {
+      return del(`/api/yaml-maps/${id}`);
+    },
+
+    /**
+     * Track usage of a YAML map
+     * @param {string} id - YAML map ID
+     * @returns {Promise<{success: boolean}>} - Usage tracking status
+     */
+    trackUsage(id) {
+      return post(`/api/yaml-maps/${id}/use`);
+    },
+
+    /**
+     * Toggle favorite status of a YAML map
+     * @param {string} id - YAML map ID
+     * @param {boolean} isFavorite - Whether to favorite or unfavorite
+     * @returns {Promise<Object>} - Updated YAML map
+     */
+    toggleFavorite(id, isFavorite) {
+      return patch(`/api/yaml-maps/${id}/favorite`, { isFavorite });
+    }
+  },
+
   // Billing endpoints
   billing: {
     /**

@@ -138,7 +138,7 @@ export default defineConfig(({ mode }) => {
     root: __dirname,
     publicDir: 'public',
     base: '/',
-    logLevel: 'warn',
+    logLevel: 'error', // Only show errors
     server: {
       host,
       port,
@@ -378,7 +378,7 @@ export default defineConfig(({ mode }) => {
                     source: content
                   });
                 } catch (error) {
-                  console.warn(`[vite:copy-styles] Could not process ${file}:`, error.message);
+                  // Suppress file processing warnings
                 }
               }
             }

@@ -48,46 +48,119 @@ const YamlMapEditorModal = ({ initialMapId = null, onClose, onSave }) => {
       - aiQuery: "the result shows the weather info, {description: string}"
 `;
 
-  // Load existing map data when editing
+  // Reset form when initialMapId changes
   useEffect(() => {
-    if (initialMapId) {
-      loadMapData(initialMapId);
-    } else {
-      // Set default template for new maps
-      setFormData(prev => ({ ...prev, yaml: exampleYaml }));
-    }
+    let isMounted = true;
+    
+    const resetAndLoad = async () => {
+      // Reset form state when opening a different map
+      if (isMounted) {
+        setFormData({
+          name: '',
+          description: '',
+          tags: [],
+          yaml: exampleYaml,
+          isPublic: false
+        });
+        setError(null);
+      }
+      
+      if (initialMapId && isMounted) {
+        try {
+          await loadMapData(initialMapId);
+        } catch (error) {
+          console.error('[YamlMapEditor] Error in initial load:', error);
+        }
+      }
+    };
+    
+    resetAndLoad();
+    
+    return () => {
+      isMounted = false;
+    };
   }, [initialMapId]);
+  
+  // Reset form when modal is closed and reopened
+  useEffect(() => {
+    // This will run when the component mounts and when onClose changes
+    return () => {
+      // Reset form when modal is closed
+      setFormData({
+        name: '',
+        description: '',
+        tags: [],
+        yaml: exampleYaml,
+        isPublic: false
+      });
+      setError(null);
+    };
+  }, [onClose]);
 
-  // Load map data from the server
+  // Load map data from the server - matches Sidebar's approach
   const loadMapData = async (mapId) => {
+    // Skip if no mapId is provided
+    if (!mapId) return;
+    
     try {
+      console.log(`[YamlMapEditor] Loading map data for ID: ${mapId}`);
       setIsLoading(true);
       setError(null);
       
+      // Match the Sidebar's fetch approach
       const response = await fetch(`/api/yaml-maps/${mapId}`, {
-        credentials: 'include'
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
+        }
       });
       
-      if (!response.ok) {
-        throw new Error(`Failed to load YAML map: ${response.status}`);
+      // First, check if the response is JSON
+      const contentType = response.headers.get('content-type');
+      const responseText = await response.text();
+      
+      if (!contentType || !contentType.includes('application/json')) {
+        console.error('[YamlMapEditor] Received non-JSON response:', {
+          status: response.status,
+          statusText: response.statusText,
+          contentType,
+          body: responseText.substring(0, 500) // Log first 500 chars to avoid huge logs
+        });
+        throw new Error('Server returned an invalid response. Please try again.');
       }
       
-      const data = await response.json();
+      // If we got here, it's JSON
+      const data = JSON.parse(responseText);
+      
+      if (!response.ok) {
+        console.error(`[YamlMapEditor] Error response: ${response.status}`, data);
+        throw new Error(data.error || `Failed to load YAML map: ${response.status} ${response.statusText}`);
+      }
+      
+      console.log('[YamlMapEditor] Received map data:', data);
       
       if (data.success && data.yamlMap) {
-        setFormData({
-          name: data.yamlMap.name || '',
-          description: data.yamlMap.description || '',
-          tags: data.yamlMap.tags || [],
-          yaml: data.yamlMap.yaml || '',
-          isPublic: data.yamlMap.isPublic || false
-        });
+        // Verify we're still supposed to be loading this map
+        if (mapId === initialMapId) {
+          setFormData({
+            name: data.yamlMap.name || '',
+            description: data.yamlMap.description || '',
+            tags: data.yamlMap.tags || [],
+            yaml: data.yamlMap.yaml || '',
+            isPublic: data.yamlMap.isPublic || false
+          });
+        }
       } else {
-        throw new Error(data.error || 'Failed to load YAML map');
+        throw new Error(data.error || 'Failed to load YAML map: Invalid response format');
       }
     } catch (error) {
-      console.error('Error loading YAML map:', error);
+      console.error('[YamlMapEditor] Error loading YAML map:', error);
       setError(error.message);
+      
+      // Rethrow to allow parent components to handle if needed
+      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -318,16 +391,16 @@ const YamlMapEditorModal = ({ initialMapId = null, onClose, onSave }) => {
                 <div className="yaml-editor-info">
                   <h4>YAML Map Structure</h4>
                   <p>
-                    YAML Maps follow the MidsceneJS YAML format for automation flows.
+                    YAML Maps follow the Recommended YAML format for automation flows.
                     Each map can contain multiple tasks with a series of actions in the flow.
                   </p>
                   <p>
                     <a 
-                      href="https://midscenejs.com/api.html#agentrunyaml" 
+                      href="https://dexters-ai-lab.gitbook.io/dexters-ai-lab/getting-started/publish-your-docs-1" 
                       target="_blank" 
                       rel="noreferrer"
                     >
-                      View MidsceneJS YAML Documentation →
+                      View Recommended YAML Documentation →
                     </a>
                   </p>
                   <button 
@@ -406,36 +479,62 @@ const YamlMapEditorModal = ({ initialMapId = null, onClose, onSave }) => {
   );
 };
 
+// Track the current editor instance
+let currentEditorInstance = null;
+
 // Export a static method to open the editor
-YamlMapEditorModal.open = (mapId) => {
-  // Create the modal container if it doesn't exist
-  let modalContainer = document.getElementById('yaml-editor-modal-container');
-  if (!modalContainer) {
-    modalContainer = document.createElement('div');
-    modalContainer.id = 'yaml-editor-modal-container';
-    document.body.appendChild(modalContainer);
+export const open = (mapId) => {
+  // Close any existing editor instance
+  if (currentEditorInstance) {
+    currentEditorInstance.close();
+    currentEditorInstance = null;
   }
   
-  // Render the component into the container
-  // This requires React to be available globally
-  if (window.React && window.ReactDOM) {
-    window.ReactDOM.render(
-      window.React.createElement(YamlMapEditorModal, {
-        initialMapId: mapId,
-        onClose: () => {
-          window.ReactDOM.unmountComponentAtNode(modalContainer);
-        },
-        onSave: (yamlMap) => {
+  // Create a new modal container
+  const modalContainer = document.createElement('div');
+  modalContainer.className = 'yaml-map-editor-container';
+  document.body.appendChild(modalContainer);
+  
+  // Helper function to clean up the modal
+  const cleanup = () => {
+    if (modalContainer && modalContainer.parentNode) {
+      modalContainer.parentNode.removeChild(modalContainer);
+    }
+    currentEditorInstance = null;
+  };
+  
+  // Create a promise that resolves when the modal is closed
+  return new Promise((resolve) => {
+    // Create a root for the modal
+    const { createRoot } = require('react-dom/client');
+    const root = createRoot(modalContainer);
+    
+    // Render the modal
+    root.render(
+      <YamlMapEditorModal
+        initialMapId={mapId}
+        onClose={() => {
+          cleanup();
+          resolve();
+        }}
+        onSave={(yamlMap) => {
           // Emit an event that the map was saved
           const event = new CustomEvent('yaml-map-saved', { detail: yamlMap });
           document.dispatchEvent(event);
-        }
-      }),
-      modalContainer
+          cleanup();
+          resolve(yamlMap);
+        }}
+      />
     );
-  } else {
-    console.error('React or ReactDOM not available globally');
-  }
+    
+    // Store the current instance
+    currentEditorInstance = {
+      close: () => {
+        cleanup();
+        resolve();
+      }
+    };
+  });
 };
 
 // Make the component globally available

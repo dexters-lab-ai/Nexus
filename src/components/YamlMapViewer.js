@@ -243,7 +243,7 @@ class YamlMapViewer {
           </ol>
           <p>
             <a 
-              href="https://midscenejs.com/api.html#agentrunyaml" 
+              href="https://dexters-ai-lab.gitbook.io/dexters-ai-lab/getting-started/publish-your-docs-1" 
               target="_blank" 
               rel="noreferrer"
             >
