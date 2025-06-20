@@ -1320,13 +1320,34 @@ export default function Sidebar(props = {}) {
                       contentPart.addEventListener('click', (e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        // Use window to access the function if it's in the global scope
-                        if (typeof window.viewYamlMap === 'function') {
-                          window.viewYamlMap(map._id);
-                        } else if (typeof viewYamlMap === 'function') {
-                          viewYamlMap(map._id);
-                        } else {
-                          console.error('viewYamlMap function not found');
+                        console.log('YAML map item clicked, map ID:', map._id);
+                        
+                        // Try to open the YAML editor directly
+                        try {
+                          // First try to use the YamlMapEditor if available
+                          if (typeof YamlMapEditor !== 'undefined' && typeof YamlMapEditor.open === 'function') {
+                            console.log('Opening YAML editor with ID:', map._id);
+                            YamlMapEditor.open(map._id);
+                            return;
+                          }
+                          
+                          // Fall back to window.viewYamlMap if available
+                          if (typeof window.viewYamlMap === 'function') {
+                            console.log('Using window.viewYamlMap');
+                            window.viewYamlMap(map._id);
+                            return;
+                          }
+                          
+                          // Last resort: try to find the function in the component scope
+                          if (typeof viewYamlMap === 'function') {
+                            console.log('Using local viewYamlMap');
+                            viewYamlMap(map._id);
+                            return;
+                          }
+                          
+                          console.error('No valid method found to open YAML map');
+                        } catch (error) {
+                          console.error('Error opening YAML map:', error);
                         }
                       });
                     }
@@ -1669,8 +1690,19 @@ export default function Sidebar(props = {}) {
   }
   
   // View YAML map details - direct implementation
-  function viewYamlMap(mapId) {
+  const viewYamlMap = (mapId) => {
     console.log('Direct YAML map view function called for map:', mapId);
+    
+    // First try to use the YamlMapEditor component if available
+    try {
+      if (typeof YamlMapEditor !== 'undefined') {
+        console.log('YamlMapEditor is defined, calling open()');
+        YamlMapEditor.open(mapId);
+        return;
+      }
+    } catch (error) {
+      console.error('Error opening YAML editor:', error);
+    }
     
     // First emit the event for compatibility with other components
     eventBus.emit('view-yaml-map', { mapId });
@@ -2169,6 +2201,9 @@ export default function Sidebar(props = {}) {
     // Emit event for other components
     eventBus.emit('sidebar-toggled', { collapsed: isCollapsed });
   }
+
+  // Expose viewYamlMap to the window object
+  window.viewYamlMap = viewYamlMap;
 
   return container;
 }

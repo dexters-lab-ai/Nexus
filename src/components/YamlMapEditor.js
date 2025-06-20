@@ -41,6 +41,12 @@ class YamlMapEditor {
 
   // Load map data from the server
   async loadMapData(mapId) {
+    if (!mapId) {
+      console.log('No map ID provided, initializing with empty form');
+      this.resetForm();
+      return;
+    }
+
     try {
       this.setIsLoading(true);
       this.setError(null);
@@ -56,32 +62,55 @@ class YamlMapEditor {
       
       const { yamlMap } = response;
       
-      // Initialize form data with defaults and override with API data
+      // Reset form data before applying new data
+      this.resetForm();
+      
+      // Update form data with the loaded map
       this.formData = {
-        // Default values
-        name: '',
-        description: '',
-        url: '',
-        tags: [],
-        yaml: exampleYaml,
-        isPublic: false,
-        // Spread yamlMap data to override defaults
-        ...yamlMap,
-        // Ensure critical fields have fallbacks
+        ...this.formData, // Keep any existing form data that might be set
+        // Update with the loaded map data
+        name: yamlMap.name || '',
+        description: yamlMap.description || '',
+        url: yamlMap.url || '',
         yaml: yamlMap.yaml || exampleYaml,
-        tags: Array.isArray(yamlMap.tags) ? yamlMap.tags : [],
-        // Ensure we have an ID if it exists
+        isPublic: !!yamlMap.isPublic,
+        tags: Array.isArray(yamlMap.tags) ? [...yamlMap.tags] : [],
         _id: yamlMap._id || null
       };
       
-      console.log('Form data after merge:', this.formData);
+      console.log('Form data after loading map:', this.formData);
+      
+      // Force a re-render of the form
       this.renderForm();
+      
+      // Update the editor content if it exists
+      const yamlTextarea = this.modalContainer?.querySelector('textarea[name="yaml"]');
+      if (yamlTextarea) {
+        yamlTextarea.value = this.formData.yaml;
+        this.renderYamlPreview();
+        this.updateLineNumbers();
+      }
+      
     } catch (error) {
       console.error('Error loading YAML map:', error);
       this.setError(error.message || 'Failed to load YAML map');
     } finally {
       this.setIsLoading(false);
     }
+  };
+  
+  // Reset form to initial state
+  resetForm() {
+    this.formData = {
+      name: '',
+      description: '',
+      url: '',
+      tags: [],
+      yaml: exampleYaml,
+      isPublic: false,
+      _id: null
+    };
+    this.tagInput = '';
   };
 
   // Handle form field changes
@@ -191,8 +220,29 @@ class YamlMapEditor {
 
   // Set error message
   setError(error) {
+    console.log('Setting error:', error);
     this.error = error;
-    this.renderError();
+    
+    // Ensure the error container is visible
+    const errorContainer = this.modalContainer?.querySelector('.yaml-editor-error');
+    if (errorContainer) {
+      errorContainer.style.display = error ? 'block' : 'none';
+      errorContainer.textContent = error || '';
+      
+      // Scroll to error if it's not visible
+      if (error) {
+        errorContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+    
+    // If we're setting an error, ensure the loading state is cleared
+    if (error) {
+      this.setIsSaving(false);
+      const saveOverlay = this.modalContainer?.querySelector('.yaml-editor-save-overlay');
+      if (saveOverlay) {
+        saveOverlay.remove();
+      }
+    }
   };
 
   // Render loading state
@@ -410,45 +460,108 @@ class YamlMapEditor {
     if (e) e.preventDefault();
     
     console.log('Submitting YAML Map form');
+    console.log('Current form data:', JSON.stringify(this.formData, null, 2));
     
-    const yamlMap = { ...this.formData };
-    delete yamlMap.tagInput;
-    
-    if (!yamlMap.name || !yamlMap.name.trim()) {
-      this.setError('Name is required');
-      return;
-    }
-    
-    // Validate YAML content
-    const yamlValidation = this.validateYaml(yamlMap.yaml);
-    if (!yamlValidation.valid) {
-      this.setError(yamlValidation.error);
-      return;
-    }
-    
-    // Basic validation for YAML structure
-    if (!this.formData.yaml.includes('tasks:') && !this.formData.yaml.includes('flow:')) {
-      this.setError('Invalid YAML format. YAML must include tasks and flow sections.');
-      return;
-    }
+    // Clear any previous errors
+    this.setError(null);
     
     try {
-      this.setIsSaving(true);
-      this.setError(null);
+      // Ensure we have the latest form values
+      const nameInput = this.modalContainer?.querySelector('input[name="name"]');
+      if (nameInput) {
+        this.formData.name = nameInput.value.trim();
+      }
       
+      const descriptionInput = this.modalContainer?.querySelector('textarea[name="description"]');
+      if (descriptionInput) {
+        this.formData.description = descriptionInput.value;
+      }
+      
+      const urlInput = this.modalContainer?.querySelector('input[name="url"]');
+      if (urlInput) {
+        this.formData.url = urlInput.value.trim();
+      }
+      
+      const yamlTextarea = this.modalContainer?.querySelector('textarea[name="yaml"]');
+      if (yamlTextarea) {
+        this.formData.yaml = yamlTextarea.value;
+      }
+      
+      const isPublicCheckbox = this.modalContainer?.querySelector('input[name="isPublic"]');
+      if (isPublicCheckbox) {
+        this.formData.isPublic = isPublicCheckbox.checked;
+      }
+      
+      const yamlMap = { 
+        name: this.formData.name,
+        description: this.formData.description,
+        url: this.formData.url,
+        yaml: this.formData.yaml,
+        tags: [...(this.formData.tags || [])],
+        isPublic: !!this.formData.isPublic
+      };
+      
+      console.log('Prepared YAML map data for submission:', JSON.stringify(yamlMap, null, 2));
+      
+      // Validate form data
+      if (!yamlMap.name || !yamlMap.name.trim()) {
+        throw new Error('Name is required');
+      }
+      
+      // Validate YAML content
+      const yamlValidation = this.validateYaml(yamlMap.yaml);
+      if (!yamlValidation.valid) {
+        throw new Error(yamlValidation.error);
+      }
+      
+      // Basic validation for YAML structure
+      if (!yamlMap.yaml.includes('tasks:') && !yamlMap.yaml.includes('flow:')) {
+        throw new Error('Invalid YAML format. YAML must include tasks and flow sections.');
+      }
+      
+      // Set saving state
+      this.setIsSaving(true);
+      
+      // Make API call
       const data = this.isEditing
         ? await api.yamlMaps.update(this.initialMapId, yamlMap)
         : await api.yamlMaps.create(yamlMap);
       
+      // On success
       if (this.onSaveCallback) {
         this.onSaveCallback(data);
       }
       this.handleClose();
+      
     } catch (error) {
-      console.error(`Error ${this.isEditing ? 'updating' : 'creating'} YAML map:`, error);
-      this.setError(error.message || `Failed to ${this.isEditing ? 'update' : 'create'} YAML map`);
+      console.error('Error in form submission:', error);
+      
+      // Handle specific error cases
+      if (error.message === 'Name is required') {
+        this.setError('Name is required');
+      } 
+      // Handle permission denied errors specifically
+      else if (error.message && (error.message.includes('permission') || error.status === 403)) {
+        this.setError('You do not have permission to modify this YAML map. You can only edit your own maps.');
+      } 
+      // Handle YAML validation errors
+      else if (error.message && (error.message.includes('YAML') || error.message.includes('tasks:') || error.message.includes('flow:'))) {
+        this.setError(error.message);
+      }
+      // Handle network or other errors
+      else {
+        console.error('Unexpected error in form submission:', error);
+        this.setError('An unexpected error occurred. Please try again.');
+      }
     } finally {
+      // Always ensure loading state is reset
       this.setIsSaving(false);
+      
+      // Ensure any loading overlays are removed
+      const saveOverlay = this.modalContainer?.querySelector('.yaml-editor-save-overlay');
+      if (saveOverlay) {
+        saveOverlay.remove();
+      }
     }
   }
 
@@ -652,6 +765,7 @@ class YamlMapEditor {
                     type="text" 
                     name="name" 
                     placeholder="Enter a name for your YAML map"
+                    value="${this.formData.name || ''}"
                     required
                   />
                 </div>
@@ -1230,8 +1344,18 @@ class YamlMapEditor {
     // Name input
     const nameInput = this.modalContainer.querySelector('input[name="name"]');
     if (nameInput) {
+      // Set initial value from formData
+      nameInput.value = this.formData.name || '';
+      
       nameInput.addEventListener('input', (e) => {
         this.formData.name = e.target.value;
+        console.log('Name updated:', this.formData.name);
+      });
+      
+      // Also handle change event to catch all cases
+      nameInput.addEventListener('change', (e) => {
+        this.formData.name = e.target.value;
+        console.log('Name changed:', this.formData.name);
       });
     }
     
@@ -1346,8 +1470,12 @@ class YamlMapEditor {
   static open(mapId) {
     console.log(`Opening YamlMapEditor with mapId: ${mapId || 'new'}`);
     
-    // Check if an existing instance is available
-    if (window._yamlMapEditorInstance) {
+    // Check if we're opening a different map than the current one
+    const isDifferentMap = window._yamlMapEditorInstance && 
+                         window._yamlMapEditorInstance.initialMapId !== mapId;
+    
+    // If we have an existing instance and we're not opening a different map
+    if (window._yamlMapEditorInstance && !isDifferentMap) {
       console.log('Reusing existing YamlMapEditor instance');
       const editor = window._yamlMapEditorInstance;
       
@@ -1356,6 +1484,11 @@ class YamlMapEditor {
         editor.modalContainer.style.display = 'flex';
         return editor;
       }
+    } else if (isDifferentMap && window._yamlMapEditorInstance) {
+      console.log('Opening different map, resetting editor instance');
+      // If opening a different map, clean up the existing instance
+      window._yamlMapEditorInstance.handleClose();
+      window._yamlMapEditorInstance = null;
     }
     
     // Ensure the modal container exists

@@ -213,9 +213,27 @@ router.put('/:id', requireAuth, async (req, res) => {
       return res.status(404).json({ success: false, error: 'YAML map not found' });
     }
     
-    // Ensure user owns this YAML map
-    if (yamlMap.userId !== userId) {
-      return res.status(403).json({ success: false, error: 'You do not have permission to update this YAML map' });
+    // Debug logging for permission issues
+    console.log(`[YAML Maps API] Update permission check - Map User ID: ${yamlMap.userId}, Session User ID: ${userId}`);
+    
+    // Ensure user owns this YAML map - convert both to strings for comparison
+    const mapUserId = yamlMap.userId ? yamlMap.userId.toString() : null;
+    const sessionUserId = userId ? userId.toString() : null;
+    
+    if (mapUserId !== sessionUserId) {
+      console.error(`[YAML Maps API] Permission denied - Map User ID (${mapUserId}) does not match Session User ID (${sessionUserId})`);
+      return res.status(403).json({ 
+        success: false, 
+        error: 'You do not have permission to update this YAML map',
+        debug: {
+          mapUserId: mapUserId,
+          sessionUserId: sessionUserId,
+          types: {
+            mapUserId: typeof yamlMap.userId,
+            sessionUserId: typeof userId
+          }
+        }
+      });
     }
     
     // Basic validation for YAML structure
@@ -262,9 +280,24 @@ router.delete('/:id', requireAuth, async (req, res) => {
       return res.status(404).json({ success: false, error: 'YAML map not found' });
     }
     
-    // Ensure user owns this YAML map
-    if (yamlMap.userId !== userId) {
-      return res.status(403).json({ success: false, error: 'You do not have permission to delete this YAML map' });
+    // Ensure user owns this YAML map - convert both to strings for comparison
+    const mapUserId = yamlMap.userId ? yamlMap.userId.toString() : null;
+    const sessionUserId = userId ? userId.toString() : null;
+    
+    if (mapUserId !== sessionUserId) {
+      console.error(`[YAML Maps API] Delete permission denied - Map User ID (${mapUserId}) does not match Session User ID (${sessionUserId})`);
+      return res.status(403).json({ 
+        success: false, 
+        error: 'You do not have permission to delete this YAML map',
+        debug: {
+          mapUserId: mapUserId,
+          sessionUserId: sessionUserId,
+          types: {
+            mapUserId: typeof yamlMap.userId,
+            sessionUserId: typeof userId
+          }
+        }
+      });
     }
     
     await YamlMap.findByIdAndDelete(req.params.id);
