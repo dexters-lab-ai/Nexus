@@ -4,6 +4,7 @@ import Button from './base/Button.jsx';
 import { eventBus } from '../utils/events.js';
 import { stores } from '../store/index.js';
 import YamlMapEditor from './YamlMapEditor.js';
+import api from '../utils/api.js';
 
 // Prevent auto-execution of YamlMaps.js
 let preventYamlMapsAutoInit = true;
@@ -861,8 +862,33 @@ export default function Sidebar(props = {}) {
     const contentPart = card.querySelector('.yaml-map-card-content');
     if (contentPart) {
       contentPart.style.cursor = 'pointer';
-      contentPart.addEventListener('click', () => {
-        showMapDetails(map, isPublic);
+      contentPart.addEventListener('click', (e) => {
+        // Don't prevent default to allow proper event bubbling
+        e.stopPropagation();
+        console.log('[Sidebar] YAML map card clicked, opening viewer for map ID:', map._id);
+        
+        try {
+          // First try to use the viewer function directly
+          if (typeof viewYamlMap === 'function') {
+            console.log('[Sidebar] Opening with local viewYamlMap');
+            viewYamlMap(map._id);
+            return;
+          }
+          
+          // Fall back to window.viewYamlMap if available
+          if (typeof window.viewYamlMap === 'function') {
+            console.log('[Sidebar] Opening with window.viewYamlMap');
+            window.viewYamlMap(map._id);
+            return;
+          }
+          
+          // Fall back to showMapDetails if viewer not available
+          console.log('[Sidebar] Falling back to showMapDetails');
+          showMapDetails(map, isPublic);
+        } catch (error) {
+          console.error('[Sidebar] Error opening YAML viewer:', error);
+          showNotification('Error opening YAML viewer: ' + (error.message || 'Unknown error'), 'error');
+        }
       });
     }
     
@@ -1251,17 +1277,9 @@ export default function Sidebar(props = {}) {
           goToSlide(currentSlide + 1);
         }, 5000);
         
-        // Fetch YAML maps
-        fetch('/api/yaml-maps', {
-          method: 'GET',
-          credentials: 'include'
-        })
-          .then(response => {
-            if (!response.ok) {
-              throw new Error(`Failed to load YAML maps: ${response.status}`);
-            }
-            return response.json();
-          })
+        // Fetch YAML maps using the api.yamlMaps utility
+        api.yamlMaps.getAll()
+          .then(response => ({ success: true, yamlMaps: response }))
           .then(data => {
             if (data.success) {
               const loadingEl = yamlSection.querySelector('.yaml-maps-loading');
@@ -1317,37 +1335,45 @@ export default function Sidebar(props = {}) {
                     const contentPart = item.querySelector('.yaml-map-content');
                     if (contentPart) {
                       contentPart.style.cursor = 'pointer';
-                      contentPart.addEventListener('click', (e) => {
+                      contentPart.addEventListener('click', async (e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        console.log('YAML map item clicked, map ID:', map._id);
+                        console.log('[Sidebar] YAML map item clicked, map ID:', map._id);
                         
-                        // Try to open the YAML editor directly
+                        // Debug: Log available globals
+                        console.log('[Sidebar] Available globals:', {
+                          hasYamlMapEditor: typeof YamlMapEditor !== 'undefined',
+                          hasViewYamlMap: typeof window.viewYamlMap === 'function',
+                          hasLocalViewYamlMap: typeof viewYamlMap === 'function'
+                        });
+                        
                         try {
-                          // First try to use the YamlMapEditor if available
-                          if (typeof YamlMapEditor !== 'undefined' && typeof YamlMapEditor.open === 'function') {
-                            console.log('Opening YAML editor with ID:', map._id);
-                            YamlMapEditor.open(map._id);
+                          // Try to open the YAML editor directly first
+                          if (window.YamlMapEditor && typeof window.YamlMapEditor.open === 'function') {
+                            console.log('[Sidebar] Opening with YamlMapEditor.open');
+                            window.YamlMapEditor.open(map._id);
                             return;
                           }
                           
                           // Fall back to window.viewYamlMap if available
                           if (typeof window.viewYamlMap === 'function') {
-                            console.log('Using window.viewYamlMap');
+                            console.log('[Sidebar] Opening with window.viewYamlMap');
                             window.viewYamlMap(map._id);
                             return;
                           }
                           
                           // Last resort: try to find the function in the component scope
                           if (typeof viewYamlMap === 'function') {
-                            console.log('Using local viewYamlMap');
+                            console.log('[Sidebar] Opening with local viewYamlMap');
                             viewYamlMap(map._id);
                             return;
                           }
                           
-                          console.error('No valid method found to open YAML map');
+                          console.error('[Sidebar] No valid method found to open YAML map');
+                          showNotification('Error: Could not open YAML editor', 'error');
                         } catch (error) {
-                          console.error('Error opening YAML map:', error);
+                          console.error('[Sidebar] Error opening YAML map:', error);
+                          showNotification('Error opening YAML map: ' + (error.message || 'Unknown error'), 'error');
                         }
                       });
                     }
@@ -1689,27 +1715,19 @@ export default function Sidebar(props = {}) {
     }
   }
   
-  // View YAML map details - direct implementation
-  const viewYamlMap = (mapId) => {
-    console.log('Direct YAML map view function called for map:', mapId);
+  // View YAML map details - direct implementation (viewer only, no editing)
+  const viewYamlMap = async (mapId) => {
+    console.log('YAML map viewer function called for map:', mapId);
     
-    // First try to use the YamlMapEditor component if available
-    try {
-      if (typeof YamlMapEditor !== 'undefined') {
-        console.log('YamlMapEditor is defined, calling open()');
-        YamlMapEditor.open(mapId);
-        return;
-      }
-    } catch (error) {
-      console.error('Error opening YAML editor:', error);
-    }
-    
-    // First emit the event for compatibility with other components
+    // Emit the event for compatibility with other components
     eventBus.emit('view-yaml-map', { mapId });
     
-    // Direct implementation - create and show a modal with the YAML map
-    const yamlOverlayId = 'yaml-direct-overlay';
-    const yamlViewerId = 'yaml-direct-viewer';
+    // Create unique IDs for this viewer instance
+    const yamlOverlayId = `yaml-viewer-overlay-${Date.now()}`;
+    const yamlViewerId = `yaml-viewer-${Date.now()}`;
+    
+    // Track if the modal is open to prevent double-closing
+    let isModalOpen = true;
     
     // Remove any existing viewers to prevent duplicates
     const existingOverlay = document.getElementById(yamlOverlayId);
@@ -1784,10 +1802,84 @@ export default function Sidebar(props = {}) {
     // Add the overlay to the body
     document.body.appendChild(overlay);
     
+    // Function to load and display the YAML content
+    const loadYamlContent = async () => {
+      try {
+        const data = await api.yamlMaps.getById(mapId);
+        console.log('YAML map data received:', data);
+        const contentArea = viewer.querySelector('#yaml-content-area');
+        
+        if (!contentArea) {
+          console.error('Content area not found in viewer');
+          return;
+        }
+        
+        // Update the title
+        const titleElement = viewer.querySelector('h2');
+        if (titleElement) {
+          titleElement.textContent = data.name || 'YAML Map';
+        }
+        
+        // Display the YAML content in a read-only editor
+        contentArea.innerHTML = `
+          <div style="margin-bottom: 15px; color: var(--text-dim, #8ca0c1);">
+            ${data.description || 'No description provided.'}
+          </div>
+          <div style="margin-bottom: 15px;">
+            ${data.tags && data.tags.length > 0 ? 
+              `<div style="display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 15px;">
+                ${data.tags.map(tag => 
+                  `<span style="background: rgba(0, 119, 255, 0.1); color: var(--primary, #0077ff); 
+                               padding: 3px 8px; border-radius: 4px; font-size: 12px;">
+                    ${tag}
+                  </span>`
+                ).join('')}
+              </div>` : ''
+            }
+          </div>
+          <div style="flex: 1; overflow: auto; background: rgba(0, 0, 0, 0.2); border-radius: 6px; padding: 15px; font-family: 'Fira Code', 'Courier New', monospace; white-space: pre-wrap; word-break: break-word; font-size: 14px; line-height: 1.5;">
+            ${data.content || 'No content available.'}
+          </div>
+        `;
+      } catch (error) {
+        console.error('Error loading YAML map:', error);
+        const contentArea = viewer.querySelector('#yaml-content-area');
+        if (contentArea) {
+          contentArea.innerHTML = `
+            <div style="color: #ff6b6b; text-align: center; padding: 20px;">
+              Error loading YAML map: ${error.message || 'Unknown error'}
+            </div>
+          `;
+        }
+      }
+    };
+    
+    // Start loading the content
+    loadYamlContent();
+    
+    // Function to safely close the modal
+    const closeModal = () => {
+      if (!isModalOpen) return; // Prevent double-closing
+      isModalOpen = false;
+      
+      // Fade out the overlay
+      if (overlay && document.body.contains(overlay)) {
+        overlay.style.opacity = '0';
+        overlay.style.transition = 'opacity 0.2s ease';
+        
+        // Remove from DOM after animation
+        setTimeout(() => {
+          if (document.body.contains(overlay)) {
+            document.body.removeChild(overlay);
+          }
+        }, 200);
+      }
+    };
+    
     // Add event listeners
     overlay.addEventListener('click', e => {
       if (e.target === overlay) {
-        document.body.removeChild(overlay);
+        closeModal();
       }
     });
     
@@ -1795,11 +1887,33 @@ export default function Sidebar(props = {}) {
     setTimeout(() => {
       const closeBtn = document.getElementById('yaml-close-btn');
       if (closeBtn) {
-        closeBtn.addEventListener('click', () => {
-          document.body.removeChild(overlay);
+        closeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          closeModal();
         });
       }
     }, 0);
+    
+    // Add keyboard listener for ESC key
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isModalOpen) {
+        closeModal();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    
+    // Cleanup function to remove event listeners
+    const cleanup = () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+    
+    // Clean up when modal is closed
+    overlay.addEventListener('transitionend', function handler(e) {
+      if (e.propertyName === 'opacity' && !isModalOpen) {
+        cleanup();
+        overlay.removeEventListener('transitionend', handler);
+      }
+    });
     
     // Utility function to copy text to clipboard
     const copyToClipboard = (text, button) => {
@@ -1970,7 +2084,11 @@ export default function Sidebar(props = {}) {
               .catch(() => {
                 // If direct content fetch fails, try one more fallback to the raw endpoint
                 return fetch(`/api/yaml-maps/${mapId}/raw`, {
-                  credentials: 'include'
+                  credentials: 'include',
+                  headers: {
+                    'Accept': 'application/json, text/plain',
+                    'Cache-Control': 'no-cache'
+                  }
                 })
                 .then(response => response.text())
                 .catch(err => {
