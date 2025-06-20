@@ -28,11 +28,20 @@ async function cleanupBrowser(error) {
   activeBrowsers.clear();
   
   await Promise.allSettled(
-    browsersToClose.map(browser => 
-      browser.close().catch(err => 
-        console.error('[YAML] Error closing browser:', err)
-      )
-    )
+    browsersToClose.map(async browser => {
+      try {
+        // First close all pages
+        const pages = await browser.pages();
+        await Promise.allSettled(
+          pages.map(page => page.close().catch(() => {}))
+        );
+        
+        // Then close the browser
+        await browser.close();
+      } catch (err) {
+        console.error('[YAML] Error during browser cleanup:', err);
+      }
+    })
   );
 }
 import YamlMap from '../models/YamlMap.js';
@@ -43,20 +52,41 @@ import os from 'os';
 // Configure Puppeteer with stealth plugin
 puppeteer.use(StealthPlugin());
 
-// Get Puppeteer launch options
+// Get Puppeteer launch options with YAML-specific settings
 const getYamlPuppeteerOptions = async () => {
+  // Get base options
   const options = await getPuppeteerLaunchOptions();
   
-  // Add any YAML-specific overrides here if needed
+  // Use headless mode in production, non-headless in development
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  // Set viewport to be within GPT-4o limits (max 2000x768 or 768x2000)
+  const viewport = {
+    width: 1024,  // Reduced from 1280 to be safer
+    height: 768,   // Standard 4:3 ratio that fits within limits
+    deviceScaleFactor: 1,
+  };
+  
+  // Clean up args to remove any existing viewport or window-size args
+  const cleanedArgs = (options.args || []).filter(arg => 
+    !arg.startsWith('--window-size=') && 
+    !arg.startsWith('--start-maximized')
+  );
+  
+  // Add our viewport settings
+  cleanedArgs.push(`--window-size=${viewport.width},${viewport.height}`);
+  
   return {
     ...options,
-    // Ensure we have a valid viewport for YAML execution
-    defaultViewport: {
-      width: 1280,
-      height: 800,
-      deviceScaleFactor: 1,
-      ...(options.defaultViewport || {})
-    }
+    headless: isProduction ? 'new' : false,  // Headless in production, normal in development
+    defaultViewport: viewport,
+    args: cleanedArgs,
+    ignoreDefaultArgs: ['--enable-automation'],
+    // Ensure we have a clean user data directory for each instance
+    userDataDir: path.join(
+      os.tmpdir(), 
+      `puppeteer_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`
+    )
   };
 };
 
@@ -467,9 +497,6 @@ export async function processYamlMapTask(options) {
       console.log(`[ProcessYamlTask] Initializing browser for task ${taskId}`);
       const launchOptions = await getYamlPuppeteerOptions();
       
-      // Force headless mode for consistency
-      launchOptions.headless = 'new';
-      
       // Add any additional browser arguments needed for container environments
       launchOptions.args = [
         ...(launchOptions.args || []),
@@ -593,15 +620,63 @@ export async function processYamlMapTask(options) {
         cleanupBrowser(err).catch(console.error);
       });
 
-      // Create a new page
+      // Create a new page with better error handling
       page = await browser.newPage();
       
-      // Set a default viewport if not set
+      // Set viewport to match our YAML processor settings
       await page.setViewport({
-        width: 1280,
-        height: 800,
+        width: 1024,  // Matches GPT-4o limits (max 2000x768 or 768x2000)
+        height: 768,
         deviceScaleFactor: 1
       });
+      
+      // Handle page errors to prevent crashes
+      page.on('error', error => {
+        console.error('[ProcessYamlTask] Page error:', error);
+      });
+      
+      // Handle dialog events to prevent unhandled dialogs from blocking execution
+      page.on('dialog', async dialog => {
+        console.log(`[ProcessYamlTask] Dialog ${dialog.type()}: ${dialog.message()}`);
+        await dialog.dismiss().catch(() => {});
+      });
+      
+      // Track all pages in this browser instance
+      const pages = new Set([page]);
+      
+      // Handle new pages (tabs) being created
+      browser.on('targetcreated', async target => {
+        try {
+          const newPage = await target.page();
+          if (newPage && !pages.has(newPage)) {
+            console.log('[ProcessYamlTask] New page/tab opened');
+            pages.add(newPage);
+            
+            // Set up error handling for the new page
+            newPage.on('error', error => {
+              console.error('[ProcessYamlTask] Page error in new tab:', error);
+            });
+            
+            // Set viewport for the new page to match our settings
+            await newPage.setViewport({
+              width: 1024,
+              height: 768,
+              deviceScaleFactor: 1
+            });
+            
+            // When the new page is closed, clean it up
+            newPage.on('close', () => {
+              pages.delete(newPage);
+              console.log('[ProcessYamlTask] Page closed');
+            });
+          }
+        } catch (error) {
+          console.error('[ProcessYamlTask] Error handling new page:', error);
+        }
+      });
+      
+      // Store pages in the browser context for cleanup later
+      browser.pages = pages;
 
       console.log(`[ProcessYamlTask] Browser initialized for task ${taskId}`);
       await updateTaskInDatabase(taskId, { progress: 40 });
@@ -705,10 +780,37 @@ export async function processYamlMapTask(options) {
     
     try {
       console.log(`[ProcessYamlTask] Starting YAML execution for task ${taskId}`);
-      agentRunOutput = await agent.runYaml(yamlMap.yaml, {
-        progressCallback,
-        enableLogging: true
-      });
+      
+      // Add retry logic for YAML execution
+      const maxRetries = 3;
+      let lastError;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          agentRunOutput = await agent.runYaml(yamlMap.yaml, {
+            progressCallback,
+            enableLogging: true,
+            // Add any additional options needed for stability
+            waitUntil: 'networkidle2',
+            timeout: 30000 // 30 second timeout
+          });
+          break; // If successful, exit the retry loop
+        } catch (retryError) {
+          lastError = retryError;
+          console.error(`[ProcessYamlTask] Attempt ${attempt} failed:`, retryError);
+          
+          if (attempt < maxRetries) {
+            // Wait before retrying
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            console.log(`[ProcessYamlTask] Retrying (${attempt + 1}/${maxRetries})...`);
+          }
+        }
+      }
+      
+      // If we've exhausted all retries, throw the last error
+      if (!agentRunOutput && lastError) {
+        throw lastError;
+      }
       executionResult = agentRunOutput?.result;
       
       if (!executionResult) {
@@ -718,7 +820,31 @@ export async function processYamlMapTask(options) {
       console.log(`[ProcessYamlTask] YAML execution completed for task ${taskId}`);
     } catch (executionError) {
       console.error(`[ProcessYamlTask] Error during YAML execution for task ${taskId}:`, executionError);
-      executionError = executionError;
+      
+      // Check if the error is due to page navigation
+      if (executionError.message.includes('Target closed') || 
+          executionError.message.includes('Protocol error') ||
+          executionError.message.includes('frame was detached')) {
+        console.error('[ProcessYamlTask] Page navigation error detected, attempting recovery...');
+        // Attempt to recover by creating a new page
+        try {
+          if (page && !page.isClosed()) {
+            await page.close().catch(() => {});
+          }
+          page = await browser.newPage();
+          await page.setViewport({
+            width: 1024,
+            height: 768,
+            deviceScaleFactor: 1
+          });
+          // You might want to navigate back to a specific URL or retry the operation
+        } catch (recoveryError) {
+          console.error('[ProcessYamlTask] Recovery attempt failed:', recoveryError);
+          // Continue with the original error
+        }
+      }
+      
+      throw executionError; // Re-throw the error after handling
       
       // Log the error
       logYaml('Error during YAML execution', { 
