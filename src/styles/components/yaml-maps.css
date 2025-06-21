@@ -30,7 +30,7 @@
 .yaml-maps-actions {
   display: flex;
   gap: 10px;
-  margin: 15px 20px;
+  margin: 0;
 }
 
 .yaml-maps-search {

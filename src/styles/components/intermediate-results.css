@@ -20,7 +20,7 @@
 /* Main Container */
 #intermediate-results-container {
   position: fixed;
-  bottom: 8rem;
+  bottom: 2rem;
   left: 0;
   width: 100%;
   max-height: 65vh;

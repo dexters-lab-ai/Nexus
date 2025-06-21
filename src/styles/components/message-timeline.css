@@ -55,7 +55,7 @@
   box-sizing: border-box;
   color: rgba(255, 255, 255, 0.9);
   border-radius: 13px;
-  height: calc(100vh - var(--header-height) - var(--command-center-height) - var(--task-bar-height, 50px) - 40px) !important;
+  height: var(--timeline-max-height) !important;
   max-height: none;
   margin-bottom: 0.5rem;
   overflow-y: auto;

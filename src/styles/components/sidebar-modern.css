@@ -368,7 +368,7 @@
 .sdk-tooltip {
   display: block;
   position: absolute;
-  bottom: calc(100% + 5px); /* Reduced gap */
+  bottom: calc(100% + 30px); /* Reduced gap */
   left: 50%;
   transform: translateX(-50%);
   width: 320px;

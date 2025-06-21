@@ -566,7 +566,7 @@
   gap: 0.5rem;
   padding: 0.1rem;
   box-sizing: border-box;
-  max-height: 500px;
+  max-height: fit-content;
 }
 .sidebar-nav {
   display: flex;
@@ -863,7 +863,7 @@
   width: 100%;
 }
 .sidebar-footer .sidebar-nav {
-  display: flex;
+  display: none;
   flex-direction: column;
   gap: 0.5rem;
 }
