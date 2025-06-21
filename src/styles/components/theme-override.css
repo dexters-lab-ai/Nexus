@@ -588,6 +588,13 @@ body[class] [data-theme="light"] .unified-input-textarea:focus {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2) !important;
 }
 
+/* ================= YAML INFO ================= */
+
+html[data-theme="light"] body .yaml-info-content,
+body[class] [data-theme="light"] .yaml-info-content {
+  color: var(--primary-dark) !important;
+}
+
 /* ================= TASKBAR OVERRIDES ================= */
 
 html[data-theme="light"] body .taskbar,
