@@ -1277,11 +1277,15 @@ export default function Sidebar(props = {}) {
           goToSlide(currentSlide + 1);
         }, 5000);
         
+        // Track active tab
+        const isYamlTab = yamlSection.id === 'yaml-maps-section';
+        console.log(`[Sidebar] Loading maps for ${isYamlTab ? 'YAML' : 'Live'} tab`);
+        
         // Fetch YAML maps using the api.yamlMaps utility
         console.log('[Sidebar] Fetching YAML maps...');
         api.yamlMaps.getAll()
-          .then(yamlMaps => {
-            console.log('[Sidebar] YAML maps loaded:', yamlMaps);
+          .then(async (response) => {
+            console.log('[Sidebar] YAML maps loaded:', response);
             const loadingEl = yamlSection.querySelector('.yaml-maps-loading');
             const emptyEl = yamlSection.querySelector('.yaml-maps-empty');
             const listEl = yamlSection.querySelector('.yaml-maps-list');
@@ -1290,14 +1294,114 @@ export default function Sidebar(props = {}) {
             // Hide loading indicator
             if (loadingEl) loadingEl.style.display = 'none';
             
+            // Extract and filter yamlMaps based on tab
+            let yamlMaps = response && response.yamlMaps ? response.yamlMaps : [];
+            
+            // Initialize variables
+            let isAuthenticated = false;
+            let userId = null;
+            let userData = null;
+            
+            // Create an async IIFE to handle the async operation
+            await (async () => {
+              try {
+                console.log('[Sidebar] Verifying session with API...');
+                // Use the API client which handles the correct endpoint and credentials
+                const sessionData = await api.auth.validateSession();
+                
+                // Handle the response format from validate-session endpoint
+                isAuthenticated = sessionData.valid === true;
+                userData = sessionData.user || null;
+                userId = userData?._id || sessionData.userId || null;
+                
+                console.log('[Sidebar] Session verified:', { 
+                  isAuthenticated, 
+                  userId,
+                  hasUserData: !!userData,
+                  sessionData // Log full response for debugging
+                });
+                
+                // Update the auth store with the latest session data
+                if (isAuthenticated && stores?.auth?.setState) {
+                  stores.auth.setState({
+                    isAuthenticated: true,
+                    user: userData || { _id: userId },
+                    initialized: true
+                  });
+                }
+                
+              } catch (error) {
+                console.error('[Sidebar] Error checking session:', error);
+                // Fall back to store state if API check failed
+                console.log('[Sidebar] Falling back to store auth state');
+                const authState = stores?.auth?.getState?.() || {};
+                isAuthenticated = authState.isAuthenticated === true;
+                userData = authState.user || null;
+                userId = userData?._id || userData?.id || null;
+              }
+              
+              // Final check - if we still don't have a user ID but have user data
+              if (!userId && userData) {
+                userId = userData._id || userData.id || null;
+              }
+            })();
+            
+            console.group('[Sidebar] Auth State');
+            console.log('Is authenticated:', isAuthenticated);
+            console.log('User ID:', userId);
+            console.log('User data:', userData);
+            console.log('Auth store state:', stores?.auth?.getState?.());
+            console.groupEnd();
+
+            // Filter maps based on tab
+            if (isYamlTab) {
+              // For YAML tab, only show user's own maps
+              if (isAuthenticated && userId) {
+                console.log(`[Sidebar] Filtering YAML tab for user ID:`, userId);
+                yamlMaps = yamlMaps.filter(map => {
+                  // Handle both string and object ID comparisons
+                  const mapUserId = map.userId?._id || map.userId || '';
+                  const isMatch = 
+                    mapUserId === userId || 
+                    mapUserId?.toString() === userId?.toString() ||
+                    mapUserId?.toString() === userId;
+                  
+                  if (isMatch) {
+                    console.log(`[Sidebar] Including map:`, {
+                      mapId: map._id,
+                      mapUserId,
+                      userId,
+                      mapName: map.name
+                    });
+                  }
+                  
+                  return isMatch;
+                });
+                console.log(`[Sidebar] Filtered to ${yamlMaps.length} user maps`);
+              } else {
+                console.log('[Sidebar] User not authenticated or no user ID, showing no maps in YAML tab', {
+                  isAuthenticated,
+                  userId,
+                  hasAuthStore: !!stores?.auth
+                });
+                yamlMaps = [];
+              }
+            } else {
+              // For Live tab, show all public maps
+              yamlMaps = yamlMaps.filter(map => map.isPublic);
+              console.log(`[Sidebar] Showing ${yamlMaps.length} public maps in Live tab`);
+            }
+            
             // Handle empty state or show maps
             if (yamlMaps && yamlMaps.length > 0) {
+                console.log(`[Sidebar] Rendering ${yamlMaps.length} YAML maps`);
                 if (emptyEl) emptyEl.style.display = 'none';
                 if (listEl) {
                   listEl.style.display = 'block';
+                  listEl.innerHTML = ''; // Clear existing content
                   
                   // Render the list of maps
-                  data.yamlMaps.forEach(map => {
+                  yamlMaps.forEach(map => {
                     const item = document.createElement('div');
                     item.className = 'yaml-map-item';
                     item.dataset.id = map._id;
@@ -1341,42 +1445,56 @@ export default function Sidebar(props = {}) {
                       contentPart.addEventListener('click', async (e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        console.log('[Sidebar] YAML map item clicked, map ID:', map._id);
-                        
-                        // Debug: Log available globals
-                        console.log('[Sidebar] Available globals:', {
-                          hasYamlMapEditor: typeof YamlMapEditor !== 'undefined',
-                          hasViewYamlMap: typeof window.viewYamlMap === 'function',
-                          hasLocalViewYamlMap: typeof viewYamlMap === 'function'
-                        });
+                        console.log(`[Sidebar] YAML map item clicked, map ID: ${map._id}, tab: ${isYamlTab ? 'YAML' : 'Live'}`);
                         
                         try {
-                          // Try to open the YAML editor directly first
-                          if (window.YamlMapEditor && typeof window.YamlMapEditor.open === 'function') {
-                            console.log('[Sidebar] Opening with YamlMapEditor.open');
-                            window.YamlMapEditor.open(map._id);
-                            return;
+                          if (isYamlTab) {
+                            // In YAML tab, open the editor
+                            if (window.YamlMapEditor && typeof window.YamlMapEditor.open === 'function') {
+                              console.log('[Sidebar] Opening editor with YamlMapEditor.open');
+                              window.YamlMapEditor.open(map._id);
+                            } else if (typeof window.viewYamlMap === 'function') {
+                              console.log('[Sidebar] Opening editor with window.viewYamlMap');
+                              window.viewYamlMap(map._id);
+                            } else if (typeof viewYamlMap === 'function') {
+                              console.log('[Sidebar] Opening editor with local viewYamlMap');
+                              viewYamlMap(map._id);
+                            } else {
+                              throw new Error('No editor function found');
+                            }
+                          } else {
+                            // In Live tab, open the viewer
+                            try {
+                              // Try to use the yaml-map-integration's showYamlMapViewer first
+                              if (window.showYamlMapViewer) {
+                                console.log('[Sidebar] Opening viewer with showYamlMapViewer');
+                                window.showYamlMapViewer(map._id);
+                              } 
+                              // Fall back to YamlMapViewer.open if available
+                              else if (window.YamlMapViewer && typeof window.YamlMapViewer.open === 'function') {
+                                console.log('[Sidebar] Opening viewer with YamlMapViewer.open');
+                                window.YamlMapViewer.open(map._id);
+                              } 
+                              // Fall back to viewYamlMap if available
+                              else if (window.viewYamlMap) {
+                                console.log('[Sidebar] Opening viewer with window.viewYamlMap');
+                                window.viewYamlMap(map._id, { readOnly: true });
+                              } 
+                              // Last resort: use the editor in read-only mode if possible
+                              else if (window.YamlMapEditor && typeof window.YamlMapEditor.open === 'function') {
+                                console.log('[Sidebar] Opening viewer with YamlMapEditor in read-only mode');
+                                window.YamlMapEditor.open(map._id, { readOnly: true });
+                              } else {
+                                throw new Error('No viewer function found');
+                              }
+                            } catch (error) {
+                              console.error('[Sidebar] Error opening viewer:', error);
+                              showNotification('Error: Could not open YAML viewer', 'error');
+                            }
                           }
-                          
-                          // Fall back to window.viewYamlMap if available
-                          if (typeof window.viewYamlMap === 'function') {
-                            console.log('[Sidebar] Opening with window.viewYamlMap');
-                            window.viewYamlMap(map._id);
-                            return;
-                          }
-                          
-                          // Last resort: try to find the function in the component scope
-                          if (typeof viewYamlMap === 'function') {
-                            console.log('[Sidebar] Opening with local viewYamlMap');
-                            viewYamlMap(map._id);
-                            return;
-                          }
-                          
-                          console.error('[Sidebar] No valid method found to open YAML map');
-                          showNotification('Error: Could not open YAML editor', 'error');
                         } catch (error) {
                           console.error('[Sidebar] Error opening YAML map:', error);
-                          showNotification('Error opening YAML map: ' + (error.message || 'Unknown error'), 'error');
+                          showNotification(`Error: Could not open ${isYamlTab ? 'editor' : 'viewer'}: ${error.message}`, 'error');
                         }
                       });
                     }
@@ -1506,9 +1624,9 @@ export default function Sidebar(props = {}) {
             })
             .catch(error => {
               console.error('[Sidebar] Error loading YAML maps:', error);
-              const loadingEl = yamlSection.querySelector('.yaml-maps-loading');
-              const emptyEl = yamlSection.querySelector('.yaml-maps-empty');
-              const errorEl = yamlSection.querySelector('.yaml-maps-error');
+              const loadingEl = yamlSection?.querySelector('.yaml-maps-loading');
+              const emptyEl = yamlSection?.querySelector('.yaml-maps-empty');
+              const errorEl = yamlSection?.querySelector('.yaml-maps-error');
               
               // Hide loading and empty states
               if (loadingEl) loadingEl.style.display = 'none';

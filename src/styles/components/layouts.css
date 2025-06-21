@@ -14,7 +14,8 @@
   --footer-height: 40px;
   --command-center-height: 200px;
   --command-center-expanded-height: 300px;
-  --timeline-max-height: calc(100vh - var(--header-height) - var(--command-center-height));
+  --timeline-max-height: calc(100vh - var(--header-height) - var(--command-center-height) - var(--task-bar-height));
+  --task-bar-height: 50px;
   --animation-duration: 0.3s;
   --border-radius: 8px;
   --sidebar-full-width: 300px;
