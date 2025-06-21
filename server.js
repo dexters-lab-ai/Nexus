@@ -2400,55 +2400,10 @@ async function getOrCreateBrowserSession(taskId, userId) {
       executablePath: launchOptions.executablePath
     });
 
-    // Add Stealth plugin to avoid detection
-    puppeteerExtra.use(StealthPlugin());
-    
-    // Add timeout to browser launch
-    const browserLaunchTimeout = 30000; // 30 seconds
-    
-    // Launch browser with timeout
-    let browser;
-    try {
-      const launchPromise = puppeteerExtra.launch({
-        ...launchOptions,
-        timeout: browserLaunchTimeout,
-        // Ensure we're using the correct executable path
-        executablePath: launchOptions.executablePath || undefined,
-        // Force new browser instance
-        ignoreDefaultArgs: ['--disable-extensions'],
-        // Additional stability args
-        args: [
-          ...(launchOptions.args || []),
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-gpu',
-          '--disable-software-rasterizer',
-          '--disable-features=IsolateOrigins,site-per-process',
-          '--disable-web-security',
-          '--disable-site-isolation-trials'
-        ].filter(Boolean),
-        // Disable default viewport to prevent extra memory usage
-        defaultViewport: null
-      });
-      
-      // Add timeout to browser launch
-      browser = await Promise.race([
-        launchPromise,
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Browser launch timed out')), browserLaunchTimeout)
-        )
-      ]);
-      
-      logger.info(`[BrowserSession] Successfully launched browser for task ${taskId}`);
-    } catch (error) {
-      logger.error(`[BrowserSession] Failed to launch browser for task ${taskId}:`, error);
+    const browser = await puppeteerExtra.launch(launchOptions).catch(error => {
+      logger.error(`[BrowserSession] Failed to launch browser:`, error);
       throw new Error(`Failed to start browser: ${error.message}`);
-    }
+    });
     
     // Create a new session object with proper cleanup
     const session = {

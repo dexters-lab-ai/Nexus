@@ -6,7 +6,6 @@
 import YamlMapViewer from './YamlMapViewer.js';
 import YamlMapsImport from './YamlMaps.js';
 import { eventBus } from '../utils/events.js';
-import api from '../utils/api.js';
 
 // Set up YamlMaps with proper fallbacks
 let YamlMaps = YamlMapsImport;
@@ -416,22 +415,32 @@ function closeYamlViewer() {
 /**
  * Fetch YAML map data and display it
  */
-async function fetchMapData(mapId) {
+function fetchMapData(mapId) {
   console.log('DEBUG: Fetching YAML map data for ID:', mapId);
   const contentEl = document.getElementById('yaml-map-content');
   
-  try {
-    // Use the API client to fetch the YAML map
-    const data = await api.yamlMaps.getById(mapId);
+  // Make an API request to fetch the map
+  fetch(`/api/yaml-maps/${mapId}`, {
+    credentials: 'include'
+  })
+  .then(response => response.json())
+  .then(data => {
     console.log('DEBUG: YAML map data received:', data);
-    
-    if (data) {
-      // The API client already handles the response structure, so we can use the data directly
-      displayYamlMap(data, contentEl);
+    if (data.success && data.yamlMap) {
+      // Render the map data
+      displayYamlMap(data.yamlMap, contentEl);
     } else {
-      throw new Error('No data returned from API');
+      // Show error
+      contentEl.innerHTML = `
+        <div style="text-align: center; color: #ff5555; margin-top: 30px;">
+          <i class="fas fa-exclamation-circle" style="font-size: 48px; margin-bottom: 20px;"></i>
+          <h3>Error Loading YAML Map</h3>
+          <p>${data.message || 'Could not load the requested YAML map.'}</p>
+        </div>
+      `;
     }
-  } catch (error) {
+  })
+  .catch(error => {
     console.error('ERROR: Failed to fetch YAML map:', error);
     // Show error
     if (contentEl) {
@@ -439,11 +448,11 @@ async function fetchMapData(mapId) {
         <div style="text-align: center; color: #ff5555; margin-top: 30px;">
           <i class="fas fa-exclamation-circle" style="font-size: 48px; margin-bottom: 20px;"></i>
           <h3>Error Loading YAML Map</h3>
-          <p>${error.message || 'An error occurred while trying to load the YAML map.'}</p>
+          <p>An error occurred while trying to load the YAML map.</p>
         </div>
       `;
     }
-  }
+  });
 }
 
 /**
