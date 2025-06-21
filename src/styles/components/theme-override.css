@@ -595,6 +595,11 @@ body[class] [data-theme="light"] .yaml-info-content {
   color: var(--primary-dark) !important;
 }
 
+html[data-theme="light"] body .yaml-map-tag,
+body[class] [data-theme="light"] .yaml-map-tag {
+  background: var(--cyberpunk-purple) !important;
+}
+
 /* ================= TASKBAR OVERRIDES ================= */
 
 html[data-theme="light"] body .taskbar,

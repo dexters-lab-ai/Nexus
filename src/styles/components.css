@@ -853,6 +853,11 @@ input:checked + .toggle-slider:before {
   max-width: 450px;
 }
 
+.notification-info i {
+  margin-inline: 0.5em;
+  margin-top: 0.2em;
+}
+
 /* Position-specific animations */
 .position-bottom-left .notification {
   transform: translateY(100%) scale(0.8) rotate(-3deg);

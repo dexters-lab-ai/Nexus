@@ -7077,9 +7077,7 @@ async function* streamNliThoughts(userId, prompt) {
   or cryptocurrency information.
 
 Only use tools when:
-- The user asks you to perform a web task (use process_task)
-- The user asks you to search for information (use internet_search)
-- The user asks about cryptocurrency data (use token_info)`;
+- The user asks you to perform a web task (use process_task)`;
   
   // Define the standard set of tools always available to the chat model
   const standardTools = [
@@ -7097,40 +7095,6 @@ Only use tools when:
             }
           },
           required: ["command"]
-        }
-      }
-    },
-    {
-      type: "function",
-      function: {
-        name: "internet_search",
-        description: "Search the internet for information",
-        parameters: {
-          type: "object",
-          properties: {
-            query: {
-              type: "string",
-              description: "The search query"
-            }
-          },
-          required: ["query"]
-        }
-      }
-    },
-    {
-      type: "function",
-      function: {
-        name: "token_info",
-        description: "Get information about a cryptocurrency token",
-        parameters: {
-          type: "object",
-          properties: {
-            symbol: {
-              type: "string",
-              description: "The token symbol, e.g. BTC, ETH"
-            }
-          },
-          required: ["symbol"]
         }
       }
     }
@@ -7284,6 +7248,7 @@ Only use tools when:
                   response: `I've started a browser task to: "${args.command}" (Task ID: ${taskId})\n\nI'll notify you when it's complete.`
                 };
               }
+              /*
               else if (toolCall.name === 'internet_search') {
                 // Implement a simple web search
                 yield {
@@ -7300,6 +7265,7 @@ Only use tools when:
                   response: `Getting price information for ${args.symbol}...\n\nThis functionality is under development.`
                 };
               }
+              */
               
               // Clear the tool call after execution
               global.toolCallsInProgress.delete(toolCallId);

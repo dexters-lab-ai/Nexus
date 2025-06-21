@@ -1033,7 +1033,7 @@ class YamlMapEditor {
       }
       .yaml-editor-sidebar {
         width: 35%;
-        padding: 20px;
+        padding: 0;
         border-right: 1px solid rgba(255, 255, 255, 0.1);
         overflow-y: auto;
       }
