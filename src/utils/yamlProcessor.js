@@ -49,6 +49,41 @@ import { generateReport } from './reportGenerator.js';
 import OpenAI from 'openai';
 import os from 'os';
 
+/**
+ * Check if an error is a quota/rate limit error
+ * @param {Error|Object} error - The error to check
+ * @returns {boolean} - True if this is a quota/rate limit error
+ */
+function isQuotaError(error) {
+  if (!error) return false;
+  
+  // Check for HTTP status code 429 (Too Many Requests)
+  if (error.status === 429) return true;
+  
+  // Check for common quota/rate limit error codes and messages
+  const quotaIndicators = [
+    'quota',
+    'rate limit',
+    'rate_limit',
+    'too many requests',
+    'insufficient_quota',
+    'billing',
+    'credit',
+    'limit reached',
+    '429',
+    'usage limit',
+    'usage_limit',
+    'quota exceeded'
+  ];
+  
+  const errorString = (error.message || '').toLowerCase() + 
+                    (error.code ? ' ' + error.code.toString().toLowerCase() : '');
+  
+  return quotaIndicators.some(indicator => 
+    errorString.includes(indicator.toLowerCase())
+  );
+}
+
 // Configure Puppeteer with stealth plugin
 puppeteer.use(StealthPlugin());
 
@@ -1451,74 +1486,117 @@ AI summary generation failed: ${aiError.message}\n`;
       }
     };
   } catch (error) {
-    logYaml(`Error executing YAML map`, { error: error.toString(), stack: error.stack });
+    // Check if this is a quota/rate limit error
+    const isQuotaLimit = isQuotaError(error);
+    const errorMessage = isQuotaLimit
+      ? `API Quota Exceeded: ${error.message || 'You have exceeded your API quota. Please check your subscription plan.'}`
+      : `Error executing YAML map: ${error.message}`;
+
+    // Log the error with appropriate context
+    logYaml(`Error executing YAML map: ${errorMessage}`, { 
+      error: error.toString(), 
+      stack: error.stack,
+      isQuotaError: isQuotaLimit,
+      errorCode: error.code,
+      timestamp: new Date().toISOString()
+    });
+
+    // Update task status in database with error details
+    await updateTaskInDatabase(taskId, {
+      status: 'error',
+      statusMessage: errorMessage,
+      error: error.message,
+      progress: 0,
+      // Add additional metadata for quota errors
+      ...(isQuotaLimit && {
+        errorType: 'quota_exceeded',
+        errorDetails: {
+          code: error.code || 'QUOTA_EXCEEDED',
+          message: errorMessage,
+          timestamp: new Date().toISOString()
+        }
+      })
+    });
+
+    // Prepare error response
+    const errorResponse = {
+      success: false,
+      error: error.message,
+      task_id: taskId,
+      status: 'error',
+      currentUrl: yamlMapUrl || 'N/A',
+      stepIndex: stepIndex,
+      stack: error.stack,
+      isQuotaError: isQuotaLimit,
+      timestamp: new Date().toISOString()
+    };
+
+    // Send WebSocket updates if available
     if (sendWebSocketUpdate) {
+      // Update step progress with error
       sendWebSocketUpdate(userId, {
         event: 'stepProgress',
         taskId,
         stepIndex,
         progress: 0,
-        message: `Error: ${error.message}`,
+        message: errorMessage,
         log: yamlLog.slice(-50), // Limit logs
         error: true
       });
-    }
-    await updateTaskInDatabase(taskId, {
-      status: 'error',
-      statusMessage: `Error executing YAML map: ${error.message}`,
-      error: error.message,
-      progress: 0
-    });
-    if (sendWebSocketUpdate) {
+
+      // Update step status if steps exist
       if (steps && steps.length > 0) {
         steps[0].status = 'error';
         steps[0].progress = 0;
       }
+
+      // Determine the appropriate error event type
+      const eventType = isQuotaLimit ? 'quotaExceeded' : 'taskError';
+      
+      // Send error-specific WebSocket event
       sendWebSocketUpdate(userId, {
-        event: 'stepProgress',
+        event: eventType,
         taskId,
-        stepIndex: 0,
-        progress: 0,
-        message: `Error: ${error.message}`,
-        log: yamlLog.slice(-50), // Limit logs
-        error: true,
-        item: {
-          type: 'error',
-          title: 'YAML Map Execution Error',
-          content: error.message || 'Unknown error occurred',
-          timestamp: new Date().toISOString()
-        }
-      });
-      sendWebSocketUpdate(userId, {
-        event: 'taskError',
-        taskId,
+        message: errorMessage,
         error: error.message,
-        log: yamlLog.slice(-50), // Limit logs
         timestamp: new Date().toISOString(),
-        stack: error.stack,
-        item: {
-          type: 'error',
-          title: 'YAML Map Execution Failed',
-          content: error.message || 'Unknown error occurred',
-          timestamp: new Date().toISOString()
-        }
+        // Include additional context for quota errors
+        ...(isQuotaLimit && {
+          errorType: 'quota_exceeded',
+          errorCode: error.code || 'QUOTA_EXCEEDED',
+          retryable: false,
+          helpUrl: '/settings/billing',
+          action: 'upgrade_plan'
+        })
       });
+      
+      // For quota errors, send a more visible notification
+      if (isQuotaLimit) {
+        sendWebSocketUpdate(userId, {
+          event: 'notification',
+          type: 'error',
+          title: 'API Quota Exceeded',
+          message: 'You have exceeded your API quota. Please check your subscription plan.',
+          action: {
+            label: 'Upgrade Plan',
+            url: '/settings/billing'
+          },
+          timestamp: new Date().toISOString()
+        });
+      }
     }
+
+    // Add action log to response with truncated messages
     const trimmedLog = yamlLog.slice(-50).map(entry => {
-      const shortMsg = entry.message.length > 150
+      const shortMsg = entry.message && entry.message.length > 150
         ? entry.message.substring(0, 150) + '...'
-        : entry.message;
+        : entry.message || 'No message';
       return { ...entry, message: shortMsg };
     });
+    
     return {
-      success: false,
-      error: error.message,
-      task_id: taskId,
-      status: 'error',
-      actionLog: trimmedLog,
-      currentUrl: yamlMapUrl || 'N/A',
-      stepIndex: stepIndex,
-      stack: error.stack
+      ...errorResponse,
+      actionLog: trimmedLog
     };
   }
 }

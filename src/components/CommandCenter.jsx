@@ -613,6 +613,23 @@ export function CommandCenter(props = {}) {
     if (message.type === 'pong' || message.type === 'ping') {
       return;
     }
+    
+    // Handle quota exceeded notifications
+    if (message.event === 'quotaExceeded' || message.errorType === 'quota_exceeded') {
+      console.log('[DEBUG] Quota exceeded:', message);
+      eventBus.emit('notification', {
+        title: 'API Quota Exceeded',
+        message: message.message || 'You have exceeded your API quota. Please check your subscription plan.',
+        type: 'error',
+        duration: 8000,
+        action: {
+          text: 'Upgrade Plan',
+          callback: () => eventBus.emit('settings-modal-requested', { section: 'billing' })
+        }
+      });
+      eventHandled = true;
+      return;
+    }
       
     // Process task steps from WebSocket events
       if (message.event === 'functionCallPartial') {

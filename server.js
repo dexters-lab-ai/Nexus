@@ -4815,14 +4815,14 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
             logAction("Acquired browser semaphore");
 
             // Get debug-configured launch options
-            const launchOptions = await getDebugLaunchOptions();
+            const launchOptions = await getPuppeteerLaunchOptions();
             
             logAction(`Launching browser with options: ${JSON.stringify(launchOptions, null, 2)}`);
             browser = await puppeteerExtra.launch(launchOptions);
             logAction("Browser launched successfully");
             page = await browser.newPage();
             logAction("New page created");
-            await page.setDefaultNavigationTimeout(300000); // 5 minutes
+            await page.setDefaultNavigationTimeout(600000); // 10 minutes
 
             // Set up listeners.
             page.on('console', msg => {
@@ -4874,14 +4874,14 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       logAction("Acquired browser semaphore");
       
       // Get debug-configured launch options
-      const launchOptions = await getDebugLaunchOptions();
+      const launchOptions = await getPuppeteerLaunchOptions();
       
       logAction(`Launching browser with options: ${JSON.stringify(launchOptions, null, 2)}`);
       browser = await puppeteerExtra.launch(launchOptions);
       logAction("Browser launched successfully");
       page = await browser.newPage();
       logAction("New page created");
-      await page.setDefaultNavigationTimeout(300000); // 5 minutes
+      await page.setDefaultNavigationTimeout(600000); // 10 minutes
 
       // Set up listeners.
       page.on('console', msg => {
@@ -5131,14 +5131,14 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
         logQuery("Browser session not valid, creating a new one.");
         
         // Get debug-configured launch options
-        const launchOptions = await getDebugLaunchOptions();
+        const launchOptions = await getPuppeteerLaunchOptions();
         
         logQuery(`Launching browser with options: ${JSON.stringify(launchOptions, null, 2)}`);
         browser = await puppeteerExtra.launch(launchOptions);
         logQuery("Browser launched successfully");
         page = await browser.newPage();
         logQuery("New page created");
-        await page.setDefaultNavigationTimeout(60000); // 60 seconds
+        await page.setDefaultNavigationTimeout(600000); // 10 minutes
         agent = new PuppeteerAgent(page);
         release = null;
         activeBrowsers.set(taskKey, { browser, agent, page, release, closed: false, hasReleased: false });
@@ -5152,14 +5152,14 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       logQuery("Acquired browser semaphore");
       
       // Get debug-configured launch options
-      const launchOptions = await getDebugLaunchOptions();
+      const launchOptions = await getPuppeteerLaunchOptions();
       
       logQuery(`Launching browser with options: ${JSON.stringify(launchOptions, null, 2)}`);
       browser = await puppeteerExtra.launch(launchOptions);
       logQuery("Browser launched successfully");
       page = await browser.newPage();
       logQuery("New page created");
-      await page.setDefaultNavigationTimeout(60000); // 60 seconds
+      await page.setDefaultNavigationTimeout(600000); // 10 minutes
       // Set up event listeners.
       page.on('console', msg => {
         debugLog(`Console: ${msg.text().substring(0, 150)}`);
