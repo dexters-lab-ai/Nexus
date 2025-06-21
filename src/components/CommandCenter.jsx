@@ -2627,6 +2627,46 @@ export function CommandCenter(props = {}) {
       try {
         const data = JSON.parse(raw);
         console.debug('[DEBUG] Parsed SSE event:', data);
+        
+        // Handle error events (including quota exceeded)
+        if (data.event === 'error' || data.type === 'error') {
+          const errorMessage = data.text || data.message || 'An unknown error occurred';
+          console.error('[SSE] Error event received:', errorMessage);
+          
+          // Check if this is a quota exceeded error
+          const isQuotaError = errorMessage.toLowerCase().includes('quota') || 
+                            errorMessage.toLowerCase().includes('limit') ||
+                            errorMessage.toLowerCase().includes('exceeded');
+          
+          if (isQuotaError) {
+            eventBus.emit('notification', {
+              title: 'API Quota Exceeded',
+              message: errorMessage,
+              type: 'error',
+              duration: 10000, // 10 seconds
+              action: {
+                text: 'Upgrade Plan',
+                callback: () => eventBus.emit('settings-modal-requested', { section: 'billing' })
+              }
+            });
+          } else {
+            // For other errors, show a generic error notification
+            eventBus.emit('notification', {
+              title: 'Error',
+              message: errorMessage,
+              type: 'error',
+              duration: 8000
+            });
+          }
+          
+          // Close the connection on error
+          if (es && es.readyState !== 2) {
+            es.close();
+          }
+          return;
+        }
+        
+        // Handle other event types
         switch (data.event) {
           case 'taskStart':
             console.debug('[DEBUG] taskStart:', data.payload);
@@ -2735,7 +2775,7 @@ export function CommandCenter(props = {}) {
             ) });
             break;
           default:
-            console.debug('[DEBUG] SSE event:', data.event, data.text || '');
+            console.debug('[DEBUG] SSE event:', data.event, data.text || data.message || '');
             // Handle other message types
             if (data.event) {
               eventBus.emit(data.event, data);
