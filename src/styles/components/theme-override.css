@@ -42,6 +42,13 @@ body[class] [data-theme="light"] #react-root {
   background-color: whitesmoke !important;
 }
 
+/* Navigation Menu */
+html[data-theme="light"] body .navigation-bar,
+body[class] [data-theme="light"] .navigation-bar {
+  background-color: var(--cyberpunk-bg) !important;
+  border-left: 1px solid rgba(59, 130, 246, 0.1) !important;
+}
+
 /* Ultra high-specificity light theme selectors */
 html[data-theme="light"] body .message-timeline-container,
 body[class] [data-theme="light"] .message-timeline-container {
