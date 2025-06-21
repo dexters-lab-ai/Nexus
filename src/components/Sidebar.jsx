@@ -1278,17 +1278,20 @@ export default function Sidebar(props = {}) {
         }, 5000);
         
         // Fetch YAML maps using the api.yamlMaps utility
+        console.log('[Sidebar] Fetching YAML maps...');
         api.yamlMaps.getAll()
-          .then(response => ({ success: true, yamlMaps: response }))
-          .then(data => {
-            if (data.success) {
-              const loadingEl = yamlSection.querySelector('.yaml-maps-loading');
-              const emptyEl = yamlSection.querySelector('.yaml-maps-empty');
-              const listEl = yamlSection.querySelector('.yaml-maps-list');
-              
-              if (loadingEl) loadingEl.style.display = 'none';
-              
-              if (data.yamlMaps && data.yamlMaps.length > 0) {
+          .then(yamlMaps => {
+            console.log('[Sidebar] YAML maps loaded:', yamlMaps);
+            const loadingEl = yamlSection.querySelector('.yaml-maps-loading');
+            const emptyEl = yamlSection.querySelector('.yaml-maps-empty');
+            const listEl = yamlSection.querySelector('.yaml-maps-list');
+            const errorEl = yamlSection.querySelector('.yaml-maps-error');
+            
+            // Hide loading indicator
+            if (loadingEl) loadingEl.style.display = 'none';
+            
+            // Handle empty state or show maps
+            if (yamlMaps && yamlMaps.length > 0) {
                 if (emptyEl) emptyEl.style.display = 'none';
                 if (listEl) {
                   listEl.style.display = 'block';
@@ -1495,23 +1498,31 @@ export default function Sidebar(props = {}) {
                   });
                 }
               } else {
+                // No maps found, show empty state
                 if (emptyEl) emptyEl.style.display = 'flex';
                 if (listEl) listEl.style.display = 'none';
+                if (errorEl) errorEl.style.display = 'none';
               }
-            } else {
-              throw new Error(data.error || 'Failed to load YAML maps');
-            }
-          })
-          .catch(error => {
-            console.error('Error loading YAML maps:', error);
-            const loadingEl = yamlSection.querySelector('.yaml-maps-loading');
-            const errorEl = yamlSection.querySelector('.yaml-maps-error');
-            const errorMsg = yamlSection.querySelector('.error-message');
-            
-            if (loadingEl) loadingEl.style.display = 'none';
-            if (errorEl) errorEl.style.display = 'flex';
-            if (errorMsg) errorMsg.textContent = error.message;
-          });
+            })
+            .catch(error => {
+              console.error('[Sidebar] Error loading YAML maps:', error);
+              const loadingEl = yamlSection.querySelector('.yaml-maps-loading');
+              const emptyEl = yamlSection.querySelector('.yaml-maps-empty');
+              const errorEl = yamlSection.querySelector('.yaml-maps-error');
+              
+              // Hide loading and empty states
+              if (loadingEl) loadingEl.style.display = 'none';
+              if (emptyEl) emptyEl.style.display = 'none';
+              
+              // Show error message
+              if (errorEl) {
+                errorEl.style.display = 'flex';
+                errorEl.innerHTML = `
+                  <i class="fas fa-exclamation-triangle"></i>
+                  <span>Error loading maps: ${error.message || 'Please try again later'}</span>
+                `;
+              }
+            });
           
         console.log('YAML Maps section initialized successfully');
       } catch (error) {
