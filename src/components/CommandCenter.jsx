@@ -1044,9 +1044,27 @@ export function CommandCenter(props = {}) {
       }
       
       if (message.event === 'thoughtComplete') {
-        console.debug('[DEBUG] WS thoughtComplete:', message.task_id);
+        console.debug('[DEBUG] WS thoughtComplete:', message);
         const tid = message.task_id || message.taskId;
-        const thoughtContent = message.text || message.thought || message.content || message.thoughtContent || message.message;
+        const thoughtContent = message.text || message.thought || message.content || message.thoughtContent || message.message || 
+                             (message.error ? message.error.message : '');
+        
+        // Handle error state in thought bubble
+        if (message.isError || message.error) {
+          const errorData = message.error || {};
+          const errorClass = errorData.type === 'quota_exceeded' ? 'quota-error' : 'error';
+          const errorMessage = errorData.message || 'An error occurred';
+          
+          // Update the thought bubble with error styling
+          const thoughtBubble = document.querySelector(`.thought-bubble[data-task-id="${tid}"]`);
+          if (thoughtBubble) {
+            thoughtBubble.classList.add(errorClass);
+            const errorElement = document.createElement('div');
+            errorElement.className = 'error-message';
+            errorElement.textContent = errorMessage;
+            thoughtBubble.appendChild(errorElement);
+          }
+        }
         
         // Check if we have an active thought stream for this task
         const hasActiveStream = window.activeThoughtStreams && window.activeThoughtStreams[tid];
@@ -2639,6 +2657,7 @@ export function CommandCenter(props = {}) {
                             errorMessage.toLowerCase().includes('exceeded');
           
           if (isQuotaError) {
+            // Emit notification
             eventBus.emit('notification', {
               title: 'API Quota Exceeded',
               message: errorMessage,
@@ -2649,6 +2668,20 @@ export function CommandCenter(props = {}) {
                 callback: () => eventBus.emit('settings-modal-requested', { section: 'billing' })
               }
             });
+            
+            // Emit thoughtComplete to properly close the thought bubble with error
+            const taskId = data.taskId || (data.payload && data.payload.taskId);
+            if (taskId) {
+              eventBus.emit('thoughtComplete', {
+                taskId: taskId,
+                content: errorMessage,
+                isError: true,
+                error: {
+                  type: 'quota_exceeded',
+                  message: errorMessage
+                }
+              });
+            }
           } else {
             // For other errors, show a generic error notification
             eventBus.emit('notification', {
