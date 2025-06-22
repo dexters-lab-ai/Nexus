@@ -140,7 +140,8 @@
 }
 
 .tab-content {
-  padding: 0px !important;
+  padding: 0px 1rem !important;
+  box-sizing: border-box !important;
   display: none;
 }
 

@@ -526,7 +526,7 @@
 
 
 .tab-content {
-  padding: 0 !important;  
+  padding: 0 1rem !important;  
   box-sizing: border-box;
   display: none;
 }

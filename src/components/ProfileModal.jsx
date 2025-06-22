@@ -4,9 +4,9 @@
  */
 
 import { eventBus } from '../utils/events.js';
-// Import settings API
-import * as settingsApi from '../api/settings.js';
+import { getUserSettings } from '../api/settings.js';
 import { getSettingsModal } from './Settings.jsx';
+import { stores } from '../store';
 
 // Create a singleton instance
 let profileModalInstance = null;
@@ -382,51 +382,136 @@ class ProfileModal {
   }
   
   async loadProfile() {
+    console.log('Loading profile data...');
     try {
       // Load user profile data
       const profile = await this.fetchProfileData();
-      if (profile) {
-        this.updateProfileUI(profile);
-      }
+      console.log('Profile data loaded:', profile);
       
-      // Load settings summary
-      await this.loadSettingsSummary();
+      if (profile) {
+        // Update the UI with the profile data
+        this.updateProfileUI(profile);
+        
+        // Load settings summary
+        await this.loadSettingsSummary();
+      } else {
+        console.warn('No profile data available');
+      }
     } catch (error) {
       console.error('Error loading profile data', error);
+      this.showNotification('Failed to load profile data', 'error');
+    } finally {
+      console.log('Finished loading profile');
     }
   }
   
+  /**
+   * Get API base URL (same as in NavigationBar)
+   */
+  getApiBaseUrl() {
+    if (import.meta.env.VITE_API_URL) {
+      return import.meta.env.VITE_API_URL;
+    } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return `http://${window.location.hostname}:3420`;
+    }
+    return window.location.origin;
+  }
+
   async fetchProfileData() {
-    // Mock data for now - would be replaced with real API call
-    return {
-      name: 'Test User',
-      email: 'user@example.com',
-      role: 'Admin',
-      joinedDate: '2023-01-15',
-      stats: {
-        tasksCount: 24,
-        activeDays: 45,
-        completedActions: 156
+    try {
+      const apiBase = this.getApiBaseUrl();
+      console.log('Fetching user data from:', `${apiBase}/api/user/me`);
+      
+      const response = await fetch(`${apiBase}/api/user/me`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-    };
+
+      const responseData = await response.json();
+      console.log('User data from /api/user/me:', responseData);
+      
+      if (!responseData?.success || !responseData.user) {
+        console.warn('No valid user data received from /api/user/me');
+        return null;
+      }
+      
+      const userData = responseData.user;
+      
+      // Format the profile data for the UI
+      const profileData = {
+        name: userData.name || userData.username || 'User',
+        email: userData.email || '',
+        role: userData.role?.name || userData.role || 'User',
+        joinedDate: userData.createdAt || new Date().toISOString(),
+        stats: {
+          tasksCount: userData.stats?.tasksCount || 0,
+          activeDays: userData.stats?.activeDays || 0,
+          completedActions: userData.stats?.completedActions || 0
+        }
+      };
+      
+      console.log('Formatted profile data:', profileData);
+      return profileData;
+    } catch (error) {
+      console.error('Error in fetchProfileData:', error);
+      throw error;
+    }
   }
   
   updateProfileUI(profile) {
+    if (!profile) {
+      console.warn('No profile data provided to update UI');
+      return;
+    }
+    
+    console.log('Updating profile UI with data:', profile);
+    
     // Update profile form fields
-    const nameInput = document.getElementById('profile-name');
-    const emailInput = document.getElementById('profile-email');
-    const roleInput = document.getElementById('profile-role');
-    const joinedInput = document.getElementById('profile-joined');
+    const nameInput = this.overlay?.querySelector('#profile-name');
+    const emailInput = this.overlay?.querySelector('#profile-email');
+    const roleInput = this.overlay?.querySelector('#profile-role');
+    const joinedInput = this.overlay?.querySelector('#profile-joined');
     
-    if (nameInput) nameInput.value = profile.name;
-    if (emailInput) emailInput.value = profile.email;
-    if (roleInput) roleInput.value = profile.role;
+    console.log('Found inputs:', { nameInput, emailInput, roleInput, joinedInput });
     
-    // Format joined date
-    if (joinedInput && profile.joinedDate) {
-      const date = new Date(profile.joinedDate);
-      const options = { year: 'numeric', month: 'long', day: 'numeric' };
-      joinedInput.value = date.toLocaleDateString('en-US', options);
+    // Update name field
+    if (nameInput) {
+      nameInput.value = profile.name || 'User';
+    }
+    
+    // Update email field
+    if (emailInput) {
+      emailInput.value = profile.email || '';
+    }
+    
+    // Update role field
+    if (roleInput) {
+      roleInput.value = typeof profile.role === 'string' ? 
+        profile.role : 
+        (profile.role?.name || 'User');
+    }
+    
+    // Format and update joined date
+    if (joinedInput) {
+      try {
+        const joinDate = profile.joinedDate ? new Date(profile.joinedDate) : new Date();
+        joinedInput.value = joinDate.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        });
+      } catch (error) {
+        console.error('Error formatting join date:', error);
+        joinedInput.value = 'N/A';
+      }
     }
     
     // Update stats
@@ -611,17 +696,24 @@ class ProfileModal {
   }
   
   show() {
-    if (!this.isVisible) {
-      this.overlay.style.display = 'flex';
-      setTimeout(() => this.overlay.classList.add('visible'), 10);
-      this.isVisible = true;
-      
-      // Load profile data when showing
-      this.loadProfile();
-      
-      // Emit event
-      eventBus.emit('profile-modal-shown');
-    }
+    if (this.isVisible) return;
+    
+    // Make sure overlay is visible
+    this.overlay.style.display = 'flex';
+    setTimeout(() => this.overlay.classList.add('visible'), 10);
+    this.isVisible = true;
+    
+    // Prevent body scroll when modal is open
+    document.body.style.overflow = 'hidden';
+    
+    // Load fresh profile data when showing
+    this.loadProfile().catch(error => {
+      console.error('Error in loadProfile:', error);
+      this.showNotification('Failed to load profile', 'error');
+    });
+    
+    // Emit event
+    eventBus.emit('profile-modal-shown');
   }
   
   hide() {

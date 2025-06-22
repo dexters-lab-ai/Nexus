@@ -241,12 +241,12 @@ class GuideOverlay {
         
         <div class="guide-subsection">
           <h4>Your First Task</h4>
-          <p>Let's walk through creating your first task in Nexus:</p>
+          <p>Let's walk through creating your first task in O.P.E.R.A.T.O.R:</p>
           <ol>
             <li><strong>Navigate to the Command Center</strong> at the bottom of the screen</li>
-            <li><strong>Enter a clear, specific request</strong>, such as "Research the latest developments in renewable energy"</li>
+            <li><strong>Enter a clear, specific request</strong>, such as "Go to Ebay and find me the best lawnmower robot based on reviews"</li>
             <li><strong>Submit your task</strong> by pressing Enter or clicking the Send button</li>
-            <li><strong>Watch as Nexus processes</strong> your request, showing real-time progress</li>
+            <li><strong>Watch as O.P.E.R.A.T.O.R processes</strong> your request, showing real-time progress</li>
             <li><strong>Review the results</strong> in the Message Timeline</li>
             <li><strong>Save or reference</strong> the output for future use</li>
           </ol>
@@ -255,13 +255,13 @@ class GuideOverlay {
       
       <div class="guide-section">
         <h3>Interacting with the AI</h3>
-        <p>Nexus uses advanced language models to understand and process your requests. Here are some tips for effective communication:</p>
+        <p>O.P.E.R.A.T.O.R uses advanced language models to understand and process your requests. Here are some tips for effective communication:</p>
         
         <div class="guide-tips-grid">
           <div class="guide-tip-card">
             <i class="fas fa-bullseye"></i>
             <h4>Be Specific</h4>
-            <p>Clearly state what you need and provide relevant details for better results.</p>
+            <p>Clearly instruct it to go do something, provide relevant details like site name for better results.</p>
           </div>
           <div class="guide-tip-card">
             <i class="fas fa-list-ol"></i>
@@ -293,7 +293,7 @@ class GuideOverlay {
     tab.innerHTML = `
       <div class="guide-section">
         <h3>Task Management</h3>
-        <p>Nexus provides powerful tools for managing, tracking, and analyzing your tasks.</p>
+        <p>O.P.E.R.A.T.O.R provides powerful tools for managing, tracking, and analyzing your tasks.</p>
         
         <div class="guide-subsection">
           <h4>Task Lifecycle</h4>
@@ -359,7 +359,7 @@ class GuideOverlay {
             <li><strong>Resource Usage</strong> - Information about the AI models and resources used</li>
             <li><strong>Performance Metrics</strong> - Time taken, efficiency insights, and other metrics</li>
           </ul>
-          <p>These reports help you understand how Nexus approaches different tasks and can inform your future requests.</p>
+          <p>These reports help you understand how O.P.E.R.A.T.O.R approaches different tasks and can inform your future requests.</p>
         </div>
       </div>
     `;
@@ -375,7 +375,7 @@ class GuideOverlay {
     tab.innerHTML = `
       <div class="guide-section">
         <h3>Language Model Engines</h3>
-        <p>Nexus leverages four cutting-edge multimodal language models optimized for browser control and visual understanding tasks.</p>
+        <p>O.P.E.R.A.T.O.R leverages four cutting-edge multimodal language models optimized for browser control and visual understanding tasks.</p>
         
         <div class="guide-subsection">
           <h4>Recommended Models</h4>
@@ -456,7 +456,7 @@ class GuideOverlay {
         
         <div class="guide-subsection">
           <h4>Setting Up Your API Keys</h4>
-          <p>To use these models with Nexus, you'll need to obtain and configure the appropriate API keys:</p>
+          <p>To use these models with O.P.E.R.A.T.O.R, you'll need to obtain and configure the appropriate API keys:</p>
           <ol>
             <li>Open the <strong>Settings</strong> from the navigation bar</li>
             <li>Navigate to the <strong>API Keys</strong> tab</li>
@@ -584,14 +584,14 @@ tasks:
         
         <div class="guide-subsection">
           <h4>API Integration</h4>
-          <p>Configure API keys in Settings to enable Nexus to interact with external services:</p>
+          <p>Configure API keys in Settings to enable O.P.E.R.A.T.O.R to interact with external services:</p>
           <ul>
             <li><strong>OpenAI API</strong> - For GPT-4o Visual Step Based automation</li>
             <li><strong>ByteDance API</strong> - For UI-TARS GUI explorative automation</li>
             <li><strong>Google API</strong> - For Visual Grounded action planning automation</li>
             <li><strong>Qwen API</strong> - For Visual Grounded action planning automation</li>
           </ul>
-          <p>With these integrations, Nexus can perform research, access external data, and automate web-based tasks.</p>
+          <p>With these integrations, O.P.E.R.A.T.O.R can perform research, access external data, and automate web-based tasks.</p>
         </div>
         
         <div class="guide-subsection">
@@ -608,7 +608,7 @@ tasks:
         
         <div class="guide-subsection">
           <h4>Execution Modes</h4>
-          <p>Nexus offers two different execution modes for task processing:</p>
+          <p>O.P.E.R.A.T.O.R offers two different execution modes for task processing:</p>
           
           <div class="execution-modes-comparison">
             <div class="execution-mode">
@@ -650,7 +650,7 @@ tasks:
       
       <div class="guide-section">
         <h3>Export and Sharing</h3>
-        <p>Share your Nexus results and task outputs in various formats:</p>
+        <p>Share your O.P.E.R.A.T.O.R results and task outputs in various formats:</p>
         
         <div class="export-options-grid">
           <div class="export-option">
@@ -834,7 +834,7 @@ tasks:
         videoContainer.innerHTML = `
           <iframe width="100%" height="315" 
             src="https://www.youtube.com/embed/placeholder" 
-            title="Nexus Demo Video" 
+            title="O.P.E.R.A.T.O.R Demo Video" 
             frameborder="0" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
             allowfullscreen>
