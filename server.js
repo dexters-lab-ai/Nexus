@@ -1598,18 +1598,18 @@ app.use('/api/messages', requireAuth, messagesRouter);
 // 2. API ROUTES (must come before static files)
 // ======================================
 
-// NLI API endpoint - Handles both chat and task classification
 app.get('/api/nli', requireAuth, async (req, res) => {
   // Get user ID from session first thing
   const userId = req.session.user;
   const prompt = req.query.prompt;
   const requestedEngine = req.query.engine || req.session.browserEngine;
-  
+
+  // Validate prompt
   if (typeof prompt !== 'string' || !prompt.trim()) {
     res.status(400).json({ success: false, error: 'Prompt query parameter is required.' });
     return;
   }
-  
+
   // If engine is specified, validate it
   if (requestedEngine) {
     const validEngines = ['gpt-4o', 'qwen-2.5-vl-72b', 'gemini-2.5-pro', 'ui-tars'];
@@ -1619,14 +1619,12 @@ app.get('/api/nli', requireAuth, async (req, res) => {
         error: 'Invalid engine specified'
       });
     }
-    
     // Store the selected browser engine in the session for future browser automation tasks
     req.session.browserEngine = requestedEngine;
     console.log(`[NLI] Updated browser engine to: ${requestedEngine} (this only affects automation tasks, not chat)`);
-    
+
     // Check if the user has access to this engine
     const keyInfo = await checkEngineApiKey(userId, requestedEngine);
-    
     if (!keyInfo.hasKey) {
       return res.status(400).json({
         success: false,
@@ -1634,15 +1632,14 @@ app.get('/api/nli', requireAuth, async (req, res) => {
         keyInfo
       });
     }
-    
+
     // If using default key, notify the user
     if (keyInfo.usingDefault) {
       notifyApiKeyStatus(userId, keyInfo);
     }
   }
-  
-  // IMPORTANT: Clean up old tempEngine from session if it exists
-  // This ensures complete separation between chat and browser automation
+
+  // Clean up old tempEngine from session if it exists
   if (req.session.tempEngine) {
     console.log(`[NLI] Removing deprecated tempEngine=${req.session.tempEngine} from session`);
     // If we have tempEngine but no browserEngine, migrate it
@@ -1654,20 +1651,20 @@ app.get('/api/nli', requireAuth, async (req, res) => {
     delete req.session.tempEngine;
     req.session.save();
   }
-  
-  // classify prompt
+
+  // Classify prompt
   let classification;
   try {
     classification = await openaiClassifyPrompt(prompt, userId);
   } catch (err) {
-    console.error('Classification error', err);
+    console.error('Classification error:', err);
     classification = 'chat';
   }
 
   // Fetch user document (needed for multiple code paths)
   const userDoc = await User.findById(userId).lean();
   const userEmail = userDoc?.email;
-  
+
   if (classification === 'task') {
     // Set headers for SSE (Server-Sent Events)
     res.set({
@@ -1676,18 +1673,18 @@ app.get('/api/nli', requireAuth, async (req, res) => {
       Connection: 'keep-alive'
     });
     res.flushHeaders();
-    
+
     // Persist user command in chat history
     let chatHistory = await ChatHistory.findOne({ userId }) || new ChatHistory({ userId, messages: [] });
     chatHistory.messages.push({ role: 'user', content: prompt, timestamp: new Date() });
     await chatHistory.save();
-    
+
     // Create task
     const taskId = new mongoose.Types.ObjectId();
-    const runId  = uuidv4();
+    const runId = uuidv4();
     const runDir = path.join(NEXUS_RUN_DIR, runId);
     fs.mkdirSync(runDir, { recursive: true });
-    
+
     // Map engine to provider for execution mode determination
     const engineToProvider = {
       'gpt-4o': 'openai',
@@ -1695,18 +1692,14 @@ app.get('/api/nli', requireAuth, async (req, res) => {
       'gemini-2.5-pro': 'google',
       'ui-tars': 'uitars'
     };
-    
+
     // Get user's execution mode preference 
     const executionModePreference = userDoc.settings?.executionMode || 'step-planning';
-    
-    // Determine current engine and provider
     const engine = req.session.browserEngine || 'gpt-4o'; // Default to gpt-4o if not specified
     const provider = engineToProvider[engine] || 'openai';
-    
-    // Determine actual execution mode based on rules
     const executionMode = determineExecutionMode(provider, prompt, executionModePreference);
     console.log(`[Task] Using execution mode: ${executionMode} for provider: ${provider} (engine: ${engine})`);
-    
+
     // Save task to database
     await new Task({ 
       _id: taskId, 
@@ -1719,7 +1712,7 @@ app.get('/api/nli', requireAuth, async (req, res) => {
       executionMode,
       engine
     }).save();
-    
+
     // Update user's active tasks
     await User.updateOne({ _id: userId }, { 
       $push: { 
@@ -1733,7 +1726,7 @@ app.get('/api/nli', requireAuth, async (req, res) => {
         } 
       } 
     });
-    
+
     // Send task start event
     res.write('data: ' + JSON.stringify({ 
       event: 'taskStart', 
@@ -1743,7 +1736,7 @@ app.get('/api/nli', requireAuth, async (req, res) => {
         startTime: new Date() 
       } 
     }) + '\n\n');
-    
+
     // Start task processing
     processTask(userId, userEmail, taskId.toString(), runId, runDir, prompt, null, null)
       .catch(err => {
@@ -1754,7 +1747,7 @@ app.get('/api/nli', requireAuth, async (req, res) => {
           error: 'Error processing task' 
         }) + '\n\n');
       });
-      
+
     // Poll for task updates
     const interval = setInterval(async () => {
       try {
@@ -1768,14 +1761,12 @@ app.get('/api/nli', requireAuth, async (req, res) => {
           }) + '\n\n');
           return res.end();
         }
-        
+
         const done = ['completed', 'error'].includes(task.status);
         const evtName = done ? 'taskComplete' : 'stepProgress';
-        
-        // For completed tasks, ensure all report links are included in the payload
+
         let resultWithLinks = task.result || {};
         if (done) {
-          // Guarantee all report URLs are present by providing fallbacks
           resultWithLinks = {
             ...resultWithLinks,
             landingReportUrl: resultWithLinks.landingReportUrl || resultWithLinks.runReport || null,
@@ -1785,15 +1776,13 @@ app.get('/api/nli', requireAuth, async (req, res) => {
                       resultWithLinks.landingReportUrl || resultWithLinks.runReport || 
                       (resultWithLinks.screenshot ? resultWithLinks.screenshot : null)
           };
-          
           console.log(`[TaskCompletion] Enhanced data for task ${taskId}:`, {
             landingReportUrl: resultWithLinks.landingReportUrl,
             nexusReportUrl: resultWithLinks.nexusReportUrl,
             reportUrl: resultWithLinks.reportUrl
           });
         }
-        
-        // Send update
+
         res.write('data: ' + JSON.stringify({
           event: evtName,
           payload: {
@@ -1804,11 +1793,9 @@ app.get('/api/nli', requireAuth, async (req, res) => {
             timestamp: new Date()
           }
         }) + '\n\n');
-        
-        // If task is done, clean up and close the connection
+
         if (done) {
           clearInterval(interval);
-          // Give some time for the last message to be sent
           setTimeout(() => res.end(), 100);
         }
       } catch (err) {
@@ -1825,40 +1812,107 @@ app.get('/api/nli', requireAuth, async (req, res) => {
   } else {
     // Handle chat response
     try {
-      // Set headers for streaming
       res.set({
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         Connection: 'keep-alive'
       });
       res.flushHeaders();
-      
-      // Stream the response
-      for await (const event of streamNliThoughts(userId, prompt)) {
-        res.write(`data: ${JSON.stringify(event)}\n\n`);
-        // @ts-ignore
-        if (typeof res.flush === 'function') {
-          // @ts-ignore
-          res.flush();
+
+      try {
+        for await (const event of streamNliThoughts(userId, prompt)) {
+          if (!res.writable) {
+            console.log('[NLI] Response stream ended, stopping iteration');
+            break;
+          }
+          const message = `data: ${JSON.stringify(event)}\n\n`;
+          res.write(message);
+          if (typeof res.flush === 'function') {
+            res.flush();
+          }
         }
-      }
-      
-      res.end();
-    } catch (error) {
-      console.error('Error in NLI streaming:', error);
-      if (!res.headersSent) {
-        res.status(500).json({ success: false, error: 'Error generating response' });
-      } else {
-        res.write('data: ' + JSON.stringify({
+
+        if (res.writable) {
+          console.log('[NLI] Stream completed successfully');
+          res.write('data: ' + JSON.stringify({
+            event: 'complete',
+            content: 'Stream completed successfully'
+          }) + '\n\n');
+          res.end();
+        }
+      } catch (streamError) {
+        console.error('[NLI] Error in streaming:', streamError);
+
+        const isQuotaError = (err) => {
+          if (!err) return false;
+          const errorStr = (err.message || '').toLowerCase() + 
+                          (err.code ? ' ' + String(err.code).toLowerCase() : '') +
+                          (err.error?.code ? ' ' + String(err.error.code).toLowerCase() : '');
+          const quotaIndicators = [
+            'quota', 'rate limit', 'rate_limit', 'too many requests',
+            'insufficient_quota', 'billing', 'credit', 'limit reached',
+            '429', 'usage limit', 'usage_limit', 'quota exceeded',
+            'insufficient_quota', 'billing_not_active', 'quota_exceeded',
+            'exceeded quota', 'quota limit', 'quota_limit', 'quota reached'
+          ];
+          return quotaIndicators.some(indicator => errorStr.includes(indicator.toLowerCase()));
+        };
+
+        const isAuthError = (err) => [401, 403].includes(err?.status) || 
+          ['auth', 'api key', 'api_key', 'invalid', 'unauthorized', 'invalid api key'].some(term => 
+            String(err?.message || '').toLowerCase().includes(term)
+          ) || ['invalid_api_key', 'invalid_request_error', 'invalid_api_key'].includes(err?.code);
+
+        let errorEvent = {
           event: 'error',
           content: 'An error occurred while generating the response.'
+        };
+
+        if (isQuotaError(streamError)) {
+          console.error('[NLI] Quota error detected');
+          errorEvent = {
+            event: 'quotaExceeded',
+            content: 'API quota exceeded. Please check your account status or try again later.'
+          };
+        } else if (isAuthError(streamError)) {
+          console.error('[NLI] Auth error detected');
+          errorEvent = {
+            event: 'authError',
+            content: 'Authentication error. Please verify your API key in Settings > API Keys.'
+          };
+        }
+
+        if (res.writable && !res.writableEnded) {
+          console.log('[NLI] Sending error event to client:', errorEvent);
+          res.write('data: ' + JSON.stringify(errorEvent) + '\n\n');
+          res.write('data: ' + JSON.stringify({
+            event: 'thoughtComplete',
+            text: errorEvent.content,
+            isError: true,
+            errorType: errorEvent.event
+          }) + '\n\n');
+          if (typeof res.flush === 'function') {
+            res.flush();
+          }
+          res.end();
+        } else {
+          console.log('[NLI] Response stream not writable, could not send error');
+        }
+      }
+    } catch (error) {
+      console.error('Error in NLI route:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, error: 'Error generating response' });
+      } else if (res.writable) {
+        res.write('data: ' + JSON.stringify({
+          event: 'error',
+          content: 'An unexpected error occurred.'
         }) + '\n\n');
         res.end();
       }
     }
   }
 });
-
 
 app.post('/api/nli', requireAuth, async (req, res) => {
   // Accept both { prompt } and legacy { inputText }
@@ -1927,38 +1981,161 @@ app.post('/api/nli', requireAuth, async (req, res) => {
     });
     res.flushHeaders();
     res.write('data: ' + JSON.stringify({ event: 'taskStart', payload: { taskId: taskId.toString(), command: prompt, startTime: new Date() } }) + '\n\n');
-    // poll for updates
-    const interval = setInterval(async () => {
+    // Set up cleanup and timeout handlers
+    let interval;
+    const cleanup = () => {
+      if (interval) clearInterval(interval);
+      if (timeout) clearTimeout(timeout);
+      if (!res.writableEnded) {
+        try {
+          res.end();
+        } catch (e) {
+          console.error('Error ending response:', e);
+        }
+      }
+    };
+
+    // Set a 5-minute timeout for the entire operation
+    const timeout = setTimeout(() => {
+      console.error(`Task ${taskId} timed out after 5 minutes`);
+      if (res.writable) {
+        res.write('data: ' + JSON.stringify({
+          event: 'error',
+          taskId: taskId.toString(),
+          error: 'Operation timed out after 5 minutes'
+        }) + '\n\n');
+      }
+      cleanup();
+    }, 5 * 60 * 1000);
+
+    // Handle client disconnect
+    req.on('close', cleanup);
+    req.on('error', cleanup);
+
+    // Poll for task updates
+    interval = setInterval(async () => {
       try {
         const task = await Task.findById(taskId).lean();
         if (!task) {
-          clearInterval(interval);
-          res.write('data: ' + JSON.stringify({ event: 'taskError', taskId: taskId.toString(), error: 'Task not found' }) + '\n\n');
-          return res.end();
+          console.error(`Task ${taskId} not found`);
+          res.write('data: ' + JSON.stringify({
+            event: 'taskError',
+            taskId: taskId.toString(),
+            error: 'Task not found'
+          }) + '\n\n');
+          return cleanup();
         }
-        const done = ['completed','error'].includes(task.status);
+
+        const done = ['completed', 'error'].includes(task.status);
         const evtName = done ? 'taskComplete' : 'stepProgress';
-        const payload = { taskId: taskId.toString(), progress: task.progress, result: task.result, error: task.error };
-        res.write('data: ' + JSON.stringify({ event: evtName, ...payload }) + '\n\n');
+        const payload = {
+          taskId: taskId.toString(),
+          progress: task.progress,
+          result: task.result,
+          error: task.error,
+          status: task.status
+        };
+
+        if (res.writable) {
+          res.write('data: ' + JSON.stringify({
+            event: evtName,
+            ...payload
+          }) + '\n\n');
+          // @ts-ignore
+          if (res.flush) res.flush();
+        }
+
         if (done) {
-          clearInterval(interval);
-          return res.end();
+          clearTimeout(timeout);
+          cleanup();
         }
       } catch (err) {
         console.error('Task polling error:', err);
+        if (res.writable) {
+          res.write('data: ' + JSON.stringify({
+            event: 'error',
+            taskId: taskId.toString(),
+            error: 'Error checking task status: ' + (err.message || 'Unknown error')
+          }) + '\n\n');
+        }
+        cleanup();
       }
     }, 2000);
-    req.on('close', () => clearInterval(interval));
   } else {
-    // chat streaming
-    res.set({
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive'
+    // Set up chat streaming with proper cleanup
+    const controller = new AbortController();
+    const { signal } = controller;
+
+    // Set a 5-minute timeout for the entire operation
+    const timeout = setTimeout(() => {
+      console.error(`Chat stream for user ${userId} timed out after 5 minutes`);
+      controller.abort('Operation timed out after 5 minutes');
+    }, 5 * 60 * 1000);
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      if (!res.writableEnded) {
+        try {
+          res.end();
+        } catch (e) {
+          console.error('Error ending response:', e);
+        }
+      }
+    };
+
+    // Handle client disconnect
+    req.on('close', () => {
+      console.log(`Client disconnected during chat stream for user ${userId}`);
+      controller.abort('Client disconnected');
+      cleanup();
     });
-    res.flushHeaders();
-    for await (const evt of streamNliThoughts(userId, prompt)) {
-      res.write('data: ' + JSON.stringify(evt) + '\n\n');
+
+    req.on('error', (err) => {
+      console.error('Request error during chat stream:', err);
+      controller.abort('Request error: ' + err.message);
+      cleanup();
+    });
+
+    try {
+      // Set headers for SSE
+      res.set({
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      });
+      res.flushHeaders();
+
+      // Stream the response
+      for await (const evt of streamNliThoughts(userId, prompt, { signal })) {
+        if (!res.writable) break;
+        
+        const message = 'data: ' + JSON.stringify(evt) + '\n\n';
+        res.write(message);
+        // @ts-ignore
+        if (res.flush) res.flush();
+      }
+
+      // Send completion event if stream ends normally
+      if (res.writable) {
+        res.write('data: ' + JSON.stringify({
+          event: 'complete',
+          content: 'Stream completed successfully'
+        }) + '\n\n');
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log(`Chat stream aborted for user ${userId}:`, error.message);
+      } else {
+        console.error('Error in chat stream:', error);
+        if (res.writable) {
+          res.write('data: ' + JSON.stringify({
+            event: 'error',
+            content: 'Error generating response: ' + (error.message || 'Unknown error')
+          }) + '\n\n');
+        }
+      }
+    } finally {
+      cleanup();
     }
     res.end();
   }
@@ -5357,66 +5534,133 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // ===========================
-// MAIN CHAT LOGIC & route entry
 // ===========================
 
 // Token usage tracking is implemented further down in the file
 
 /**
- * Quick Classifier that calls your LLM to see if the user wants “chat” or “task”.
- * 
+ * Classifies user prompts as either 'task' or 'chat' using an LLM
+ * @param {string} prompt - The user's input prompt
+ * @param {string} userId - The ID of the user making the request
+ * @returns {Promise<string|Object>} - Returns 'task' or 'chat' on success, or an error object
  */
 async function openaiClassifyPrompt(prompt, userId) {
-  // Declare client outside try block so it's available in the catch block
+  /**
+   * Checks if an error is a quota/rate limit error
+   * @param {Error|Object} err - The error to check
+   * @returns {boolean} - True if this is a quota/rate limit error
+   */
+  const isQuotaError = (err) => {
+    if (!err) return false;
+    
+    const errorMessage = String(err.message || '').toLowerCase();
+    const errorCode = String(err.code || '').toLowerCase();
+    const errorStatus = String(err.status || '').toLowerCase();
+    const errorType = String(err.type || '').toLowerCase();
+    const errorBody = (err.response?.data || '').toString().toLowerCase();
+    
+    const errorStr = [
+      errorMessage,
+      errorCode,
+      errorStatus,
+      errorType,
+      errorBody,
+      JSON.stringify(err, Object.getOwnPropertyNames(err))
+    ].join(' ');
+    
+    const quotaIndicators = [
+      'quota', 'rate limit', 'rate_limit', 'too many requests',
+      'insufficient_quota', 'billing', 'credit', 'limit reached',
+      '429', 'usage limit', 'usage_limit', 'quota exceeded',
+      'insufficient_quota', 'billing_not_active', 'quota_exceeded',
+      'exceeded quota', 'quota limit', 'quota_limit', 'quota reached',
+      'rate limit reached', 'account has exceeded', 'exceeded the quota',
+      'quota has been exceeded', 'quota has been reached', 'quota is exceeded'
+    ];
+    
+    return quotaIndicators.some(indicator => 
+      errorStr.includes(indicator.toLowerCase())
+    ) || errorStatus === '429' || errorCode === 'insufficient_quota';
+  };
+
   let client;
   
   try {
-    // IMPORTANT: Always use chat-specific model preference for classification
-    // This ensures we're not affected by browser automation engine selection
-    client = await getUserOpenAiClient(userId, true); // true = for chat purpose
+    // Get the appropriate OpenAI client for chat classification
+    client = await getUserOpenAiClient(userId, true);
     
-    // Always use a small model for classification to save tokens
+    // Use a small, fast model for classification to save tokens
     const resp = await client.chat.completions.create({
       model: 'gpt-4o-mini', 
       messages: [
-        { role: 'system', content: 'You classify user messages as "task" or "chat". If its a browser automation instruction classify as task. Else if its neutral or more complex or comment or question classify as chat. Respond ONLY with "task" or "chat".' },
-        { role: 'user',   content: prompt }
+        { 
+          role: 'system', 
+          content: 'Classify user messages as "task" or "chat". ' +
+                  'If it\'s a browser automation instruction, classify as "task". ' +
+                  'If it\'s a neutral message, question, or comment, classify as "chat". ' +
+                  'Respond ONLY with "task" or "chat".' 
+        },
+        { role: 'user', content: prompt }
       ],
       temperature: 0,
-      max_tokens: 5
+      max_tokens: 5,
+      timeout: 10000 // 10 second timeout
     });
     
     // Estimate token usage (approximate calculation)
-    // System prompt (~20 tokens) + user prompt (~tokens based on length) + response (1-5 tokens)
-    const promptTokens = Math.ceil(prompt.length / 4); // Rough estimate: 4 chars per token
-    const totalTokens = 20 + promptTokens + 5;
+    const promptTokens = Math.ceil(prompt.length / 4); // ~4 chars per token
+    const totalTokens = 20 + promptTokens + 5; // System prompt + user prompt + response
     
     // Track token usage
     await trackTokenUsage(userId, totalTokens, "gpt-4o-mini");
     
-    const c = resp.choices?.[0]?.message?.content?.toLowerCase() || '';
-    return c.includes('task') ? 'task' : 'chat';
+    // Parse the response
+    const responseText = resp.choices?.[0]?.message?.content?.toLowerCase() || '';
+    return responseText.includes('task') ? 'task' : 'chat';
+    
   } catch (err) {
-    // Handle authentication errors specially
-    if (err.status === 401 || err.message?.includes('auth')) {
-      const keyType = client?.defaultQuery?.keyType || 'unknown';
-      console.error(`Authentication error with ${keyType} API key during classification: ${err.message}`);
-      return { error: 'auth', message: `Authentication error with your ${keyType} API key. Please check your settings.` };
-    }
-    // Handle rate limit errors specifically
-    else if (err.status === 429 || err.code === 'insufficient_quota' || err.message?.includes('exceeded your current quota')) {
+    console.error('Error in openaiClassifyPrompt:', err);
+    
+    // Handle quota/rate limit errors
+    if (isQuotaError(err)) {
       const provider = client?.defaultQuery?.provider || 'OpenAI';
-      const errorMessage = `Rate limit exceeded with ${provider} API: ${err.message}`;
-      console.error('Error classifying prompt:', err);
+      const keyType = client?.defaultQuery?.keyType || 'API key';
+      console.error(`Quota exceeded for ${provider} (${keyType}):`, err.message);
       return { 
-        error: 'rate_limit', 
-        message: `🚫 API Quota Exceeded: You've exceeded your ${provider} API quota. Please check your billing details or switch models.` 
+        error: 'quota_exceeded',
+        message: `API quota exceeded for ${provider} (${keyType}). Please check your billing or try a different model.`,
+        details: err.message
       };
-    } else {
-      console.error('Error classifying prompt:', err);
-      return { error: 'general', message: `Error: ${err.message}` };
     }
-    // If we return with no return statement, default to chat
+    
+    // Handle authentication errors
+    if (err.status === 401 || err.message?.includes('auth') || err.code === 'invalid_api_key') {
+      const keyType = client?.defaultQuery?.keyType || 'API key';
+      console.error(`Authentication error with ${keyType}:`, err.message);
+      return { 
+        error: 'authentication_error',
+        message: `Authentication failed with ${keyType}. Please check your API key in settings.`,
+        details: err.message
+      };
+    }
+    
+    // Handle other API errors
+    if (err.status >= 400) {
+      const provider = client?.defaultQuery?.provider || 'API';
+      console.error(`${provider} API error (${err.status}):`, err.message);
+      return { 
+        error: 'api_error',
+        message: `${provider} API error (${err.status}): ${err.message || 'Unknown error'}`,
+        details: err.message
+      };
+    }
+    
+    // Default error handling
+    return { 
+      error: 'classification_error',
+      message: 'Failed to classify prompt',
+      details: err.message || 'Unknown error'
+    };
   }
 }
 
@@ -7279,50 +7523,34 @@ Only use tools when:
     }
     
     // Make sure fullReply is initialized as a string at minimum
-    if (!fullReply) fullReply = '';
+    if (typeof fullReply !== 'string') fullReply = '';
     
-    // Ensure the response is not empty before sending thoughtComplete with the original text
-    if (fullReply.trim().length > 0) {
-      console.log(`[Chat] Generated response of length: ${fullReply.length}`);
-      // Return the complete response
-      yield { event: 'thoughtComplete', text: fullReply };
-      
-      // Save the assistant's response for future context
+    // Always ensure we have a response, even if empty
+    const responseText = fullReply.trim().length > 0 
+      ? fullReply 
+      : 'I apologize, but I encountered an issue generating a response. Please try again.';
+    
+    console.log(`[Chat] Sending response of length: ${responseText.length}`);
+    
+    // Always send thoughtComplete to ensure the client knows the stream is done
+    yield { 
+      event: 'thoughtComplete', 
+      text: responseText 
+    };
+    
+    // Save the response to message history if not empty
+    if (responseText.trim().length > 0) {
       try {
         await new Message({
           userId,
           role: 'assistant',
           type: 'chat',
-          content: fullReply,
+          content: responseText,
           timestamp: new Date()
         }).save();
         console.log(`[Chat] Saved assistant response to message history`);
       } catch (saveError) {
         console.error(`[Chat] Error saving assistant response:`, saveError);
-      }
-    } else {
-      console.log(`[Chat] Generated empty response, sending fallback message`);
-      // Even with empty content, send thoughtComplete to unblock the UI
-      // Use a fallback message instead of the empty string
-      const fallbackMessage = 'I apologize, but I encountered an issue generating a response. Please try again.';
-      
-      yield { 
-        event: 'thoughtComplete', 
-        text: fallbackMessage 
-      };
-      
-      // Save the fallback message to avoid empty content errors
-      try {
-        await new Message({
-          userId,
-          role: 'assistant',
-          type: 'chat',
-          content: fallbackMessage,
-          timestamp: new Date()
-        }).save();
-        console.log(`[Chat] Saved fallback response to message history`);
-      } catch (saveError) {
-        console.error(`[Chat] Error saving fallback response:`, saveError);
       }
     }
     
@@ -7332,39 +7560,90 @@ Only use tools when:
       console.log('[Chat] Cleared any pending tool calls');
     }
   } catch (error) {
-    // Handle authentication errors specially
-    if (error.status === 401 || error.message?.includes('auth')) {
-      const provider = openaiClient.defaultQuery?.provider || 'unknown';
-      const errorMessage = `Authentication error with ${provider} API key: ${error.message}`;
+    // Check for quota/rate limit errors
+    const isQuotaError = (err) => {
+      if (!err) return false;
+      
+      // Check for HTTP status code 429 (Too Many Requests)
+      if (err.status === 429) return true;
+      
+      // Check error code or message for quota indicators
+      const errorStr = (err.message || '').toLowerCase() + 
+                     (err.code ? ' ' + err.code.toString().toLowerCase() : '') +
+                     (err.error?.code ? ' ' + err.error.code.toString().toLowerCase() : '');
+      
+      const quotaIndicators = [
+        'quota', 'rate limit', 'rate_limit', 'too many requests',
+        'insufficient_quota', 'billing', 'credit', 'limit reached',
+        '429', 'usage limit', 'usage_limit', 'quota exceeded',
+        'insufficient_quota', 'billing_not_active', 'quota_exceeded'
+      ];
+      
+      return quotaIndicators.some(indicator => errorStr.includes(indicator.toLowerCase()));
+    };
+
+    // Handle quota/rate limit errors
+    if (isQuotaError(error)) {
+      const provider = openaiClient?.defaultQuery?.provider || 'OpenAI';
+      const errorDetails = error.error?.message || error.message || 'API quota exceeded';
+      const errorMessage = `[Quota Error] ${provider} API: ${errorDetails}`;
       console.error(errorMessage);
       
-      // Return a user-friendly error message
-      yield { 
-        event: 'error', 
-        text: `Sorry, there was an authentication problem with your ${provider} API key. ` +
-              `Please check your API key in Settings > API Keys and ensure it's valid.`
-      };
-    } 
-    // Handle rate limit errors specifically
-    else if (error.status === 429 || error.code === 'insufficient_quota' || error.message?.includes('exceeded your current quota')) {
-      const provider = openaiClient.defaultQuery?.provider || 'OpenAI';
-      const errorMessage = `Rate limit exceeded with ${provider} API: ${error.message}`;
-      console.error(errorMessage);
-      
-      // Return a specific rate limit error message to the timeline
-      yield { 
-        event: 'error', 
-        text: `🚫 API Quota Exceeded: You've exceeded your ${provider} API quota. ` +
-              `Please check your subscription plan and billing details or try switching to a different model in Settings.`
-      };
-    } else {
-      // Handle other errors
-      console.error('Error in chat stream:', error);
-      yield { 
-        event: 'error', 
-        text: `Sorry, there was an error: ${error.message}. Please try again.`
-      };
+      try {
+        // Send error event first
+        yield {
+          event: 'error',
+          text: `🚫 API Quota Exceeded: ${errorDetails}. ` +
+                'Please check your account status or try again later.'
+        };
+        
+        // Then send thoughtComplete to ensure client knows the stream is done
+        yield {
+          event: 'thoughtComplete',
+          text: 'I apologize, but I cannot process your request due to API quota limits.'
+        };
+        
+        // Save the error to message history
+        await new Message({
+          userId,
+          role: 'assistant',
+          type: 'chat',
+          content: 'I apologize, but I cannot process your request due to API quota limits. Please check your API key settings.',
+          timestamp: new Date()
+        }).save();
+        
+        console.log('[Chat] Stream completed after quota error');
+      } catch (logError) {
+        console.error('Error handling quota error:', logError);
+      }
+      return;
     }
+    
+    // Handle authentication errors
+    const isAuthError = (err) => [401, 403].includes(err?.status) || 
+      ['auth', 'api key', 'api_key', 'invalid', 'unauthorized'].some(term => 
+        String(err?.message || '').toLowerCase().includes(term)
+      ) || ['invalid_api_key', 'invalid_request_error'].includes(err?.code);
+
+    if (isAuthError(error)) {
+      const provider = openaiClient.defaultQuery?.provider || 'API provider';
+      const details = error.response?.data?.error?.message || error.message;
+      console.error(`[Auth Error] ${provider}:`, details);
+      
+      yield {
+        event: 'error',
+        text: `🔑 Authentication Error: ${details || 'Invalid API key'}. ` +
+              'Please verify your API key in Settings > API Keys.'
+      };
+      return;
+    }
+    
+    // Handle all other errors
+    console.error('Error in chat stream:', error);
+    yield {
+      event: 'error',
+      text: `❌ Error: ${error.message || 'An unknown error occurred'}. Please try again.`
+    };
   }
   
   // No more code needed here since we're handling everything in the try/catch block
