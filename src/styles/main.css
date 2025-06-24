@@ -22,6 +22,9 @@
 /* Theme override styles - MUST be last to ensure highest precedence */
 @import './components/theme-override.css';
 
+/* Welcome Overlay */
+@import './components/welcome-overlay.css';
+
 /* Global styles only */
 body {
   font-family: 'Google Sans', Roboto, sans-serif;

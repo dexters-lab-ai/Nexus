@@ -35,7 +35,7 @@
 
 .cyberpunk-launch-btn:active {
   /* Pressed state */
-  background: linear-gradient(90deg, rgba(0,255,255,0.32) 0%, rgba(0,157,255,0.42) 100%), var(--cyberpunk-bg, #19283aee);
+  background: linear-gradient(90deg, rgba(4, 3, 43, 0.32) 0%, rgba(32, 1, 69, 0.42) 100%), var(--cyberpunk-bg, #19283aee);
   box-shadow: 0 0 32px 5px var(--cyberpunk-neon, #0ff4f6), 0 2px 32px 0 #000b;
   transform: translateX(-50%) scale(1.045);
 }

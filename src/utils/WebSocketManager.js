@@ -799,15 +799,31 @@ class WebSocketManager {
       throw new Error('Cannot generate WebSocket URL: userId is not set');
     }
     
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
+    // Use wss:// in production, ws:// in development
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const protocol = (window.location.protocol === 'https:' || !isLocalhost) ? 'wss:' : 'ws:';
+    
+    // For local development, use the same host as the page
+    // In production, ensure we're using the correct domain
+    let host = window.location.host;
+    
+    // If we're in production, make sure we're using the correct domain
+    if (!isLocalhost && window.location.hostname.endsWith('.ondigitalocean.app')) {
+      host = window.location.hostname.replace('operator-io236', 'api-operator-io236');
+    }
+    
+    // WebSocket endpoint path - adjust this to match your server's WebSocket endpoint
     const path = '/ws';
+    
+    // Add query parameters
     const params = new URLSearchParams({
-      userId: this.userId,
+      userId: this.userId || `guest_${Date.now()}`,
       isAuthenticated: String(this.isAuthenticated),
-      v: '1.0' // Version for cache busting
+      v: '1.0', // Version for cache busting
+      timestamp: Date.now() // Add timestamp to prevent caching
     });
 
+    // Construct the WebSocket URL
     const url = `${protocol}//${host}${path}?${params.toString()}`;
     this.log('Generated WebSocket URL:', url);
     return url;

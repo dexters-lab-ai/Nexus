@@ -384,22 +384,20 @@ function finalizeInitialization() {
   // Also dispatch as DOM event for components that listen directly
   document.dispatchEvent(new Event('application-ready'));
   
-  // Check for first-time users
-  const isFirstTime = localStorage.getItem('operator_first_visit') == 'false';
-  if (!isFirstTime) {
-    // Show welcome tips
-    setTimeout(() => {
-      if (appComponents && appComponents.notifications) {
-        appComponents.notifications.addNotification({
-          title: 'Welcome to OPERATOR',
-          message: 'Take a moment to explore the new interface. Click the settings icon to customize your experience.',
-          type: 'info',
-          duration: 10000
-        });
-      }
-      
-      localStorage.setItem('operator_first_visit', 'false');
-    }, 2000);
+  // Show welcome overlay (temporarily always showing for testing)
+  // In production, use: const shouldShow = localStorage.getItem('operator_welcome_shown') !== 'true';
+  const shouldShow = true;
+  
+  if (shouldShow) {
+    // Import and show welcome overlay
+    import('./components/WelcomeOverlay.jsx').then(({ showWelcomeOverlay }) => {
+      // Add a small delay to ensure everything is loaded
+      setTimeout(() => {
+        showWelcomeOverlay();
+        // In production, uncomment this to mark as shown:
+        // localStorage.setItem('operator_welcome_shown', 'true');
+      }, 1000);
+    });
   }
 }
 

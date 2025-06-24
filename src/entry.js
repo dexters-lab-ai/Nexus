@@ -113,11 +113,58 @@ eventBus.once('initialize-application', async () => {
     const isAuthenticated = !userId.startsWith('guest_');
     try {
       const WebSocketManager = (await import('./utils/WebSocketManager.js')).default;
-      await WebSocketManager.initialize({
-        userId,
-        isAuthenticated
-      });
-      console.log('WebSocket initialized with user:', { userId, isAuthenticated });
+      
+      // Set up WebSocket connection with retry logic
+      const maxRetries = 3;
+      let retryCount = 0;
+      let lastError = null;
+      
+      const connectWebSocket = async () => {
+        try {
+          await WebSocketManager.initialize({
+            userId,
+            isAuthenticated
+          });
+          
+          console.log('WebSocket initialized with user:', { userId, isAuthenticated });
+          
+          // Set up WebSocket event listeners
+          WebSocketManager.subscribe((message) => {
+            if (message.type === 'connection_state') {
+              console.log('WebSocket connection state:', message.state);
+              
+              if (message.state === 'disconnected' && retryCount < maxRetries) {
+                // Auto-reconnect with exponential backoff
+                const delay = Math.min(1000 * Math.pow(2, retryCount), 10000); // Max 10s delay
+                console.log(`Attempting to reconnect in ${delay}ms... (${retryCount + 1}/${maxRetries})`);
+                retryCount++;
+                setTimeout(connectWebSocket, delay);
+              }
+            }
+          });
+          
+        } catch (error) {
+          lastError = error;
+          console.error('WebSocket connection error:', error);
+          
+          if (retryCount < maxRetries) {
+            const delay = Math.min(1000 * Math.pow(2, retryCount), 10000);
+            console.log(`Retrying WebSocket connection in ${delay}ms... (${retryCount + 1}/${maxRetries})`);
+            retryCount++;
+            setTimeout(connectWebSocket, delay);
+          } else {
+            console.error('Max WebSocket connection retries reached. Giving up.');
+            // Notify the user if needed
+            if (window.toast) {
+              window.toast.error('Connection to server lost. Please refresh the page to reconnect.');
+            }
+          }
+        }
+      };
+      
+      // Start the initial connection
+      await connectWebSocket();
+      
     } catch (error) {
       console.error('Failed to initialize WebSocket:', error);
       // Continue with app initialization even if WebSocket fails
