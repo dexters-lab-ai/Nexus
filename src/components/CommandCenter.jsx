@@ -2613,7 +2613,7 @@ export function CommandCenter(props = {}) {
     const apiBase = getApiBaseUrl();
     // Build the SSE URL with timestamp to prevent caching
     const timestamp = Date.now();
-    const sseUrl = `${apiBase}/api/nli?prompt=${encodeURIComponent(finalContent)}&_t=${timestamp}`;
+    let sseUrl = `${apiBase}/api/nli?prompt=${encodeURIComponent(finalContent)}&_t=${timestamp}`;
     if (yamlMapId) {
       sseUrl += `&yamlMapId=${encodeURIComponent(yamlMapId)}`;
     }
@@ -2822,6 +2822,27 @@ export function CommandCenter(props = {}) {
             handleTaskError(data);
             es.close();
             break;
+            
+          case 'thoughtComplete':
+            console.debug('[DEBUG] thoughtComplete received, finalizing thought bubble');
+            // Update the message to mark it as complete
+            messagesStore.setState(state => ({
+              timeline: state.timeline.map(msg => 
+                msg.id === thoughtId 
+                  ? { 
+                      ...msg, 
+                      isTyping: false,
+                      isComplete: true,
+                      timestamp: data.timestamp || new Date().toISOString()
+                    }
+                  : msg
+              )
+            }));
+            // Close the connection
+            if (es && es.readyState === 1) { // 1 = OPEN
+              es.close();
+            }
+            break;
           case 'thoughtUpdate':
             console.debug('[DEBUG] Appending thoughtUpdate chunk');
             {
@@ -2851,17 +2872,6 @@ export function CommandCenter(props = {}) {
               let i = 0; const ti = setInterval(() => { pre.textContent += text.charAt(i++); bubble.scrollTop = bubble.scrollHeight; if (i >= text.length) clearInterval(ti); }, 20);
             }
             return;
-          case 'thoughtComplete':
-            console.debug('[DEBUG] SSE thoughtComplete received');
-            es.close();
-            // Finalize bubble: mark as chat complete
-            const { timeline: curr } = messagesStore.getState();
-            messagesStore.setState({ timeline: curr.map(msg =>
-              msg.id === thoughtId
-                ? { ...msg, type: 'chat', timestamp: new Date().toISOString() }
-                : msg
-            ) });
-            break;
           default:
             console.debug('[DEBUG] SSE event:', data.event, data.text || data.message || '');
             // Handle other message types
