@@ -64,8 +64,17 @@ export const corsMiddleware = (req, res, next) => {
   // Check if origin is allowed
   const allowed = isOriginAllowed(origin, host);
   
-  // Set CORS headers
+    // Set CORS headers
   if (allowed) {
+    // For SSE, we need to set specific headers
+    if (req.headers.accept === 'text/event-stream') {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no'); // Disable buffering for nginx
+    }
+    
+    // Standard CORS headers
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', corsConfig.methods.join(', '));
     res.setHeader('Access-Control-Allow-Headers', corsConfig.allowedHeaders.join(', '));

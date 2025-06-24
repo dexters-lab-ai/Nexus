@@ -2611,7 +2611,9 @@ export function CommandCenter(props = {}) {
     };
     
     const apiBase = getApiBaseUrl();
-    let sseUrl = `${apiBase}/api/nli?prompt=${encodeURIComponent(finalContent)}`;
+    // Build the SSE URL with timestamp to prevent caching
+    const timestamp = Date.now();
+    const sseUrl = `${apiBase}/api/nli?prompt=${encodeURIComponent(finalContent)}&_t=${timestamp}`;
     if (yamlMapId) {
       sseUrl += `&yamlMapId=${encodeURIComponent(yamlMapId)}`;
     }
@@ -2633,69 +2635,122 @@ export function CommandCenter(props = {}) {
       resetYamlAttachment();
     }
 
-    // Stream thought updates via SSE
+    // Stream thought updates via SSE with credentials
     const es = new EventSource(sseUrl, { 
       withCredentials: true 
     });
+    
+    // Set up event handlers
     es.onopen = () => console.debug('[DEBUG] SSE connection opened');
-    es.onerror = err => console.error('[DEBUG] SSE error', err);
+    es.onerror = (error) => {
+      console.error('[DEBUG] SSE error:', error);
+      // Close the connection on error
+      es.close();
+      
+      // Update UI to show error
+      const errorMsg = 'Connection error. Please try again.';
+      messagesStore.setState(state => ({
+        timeline: state.timeline.map(msg => 
+          msg.id === thoughtId 
+            ? { ...msg, content: errorMsg, isError: true, timestamp: new Date().toISOString() }
+            : msg
+        )
+      }));
+    };
+    
+    // Handle incoming messages
     es.onmessage = e => {
       const raw = e.data;
       console.debug('[DEBUG] SSE raw event data:', raw);
       try {
-        const data = JSON.parse(raw);
+        const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
         console.debug('[DEBUG] Parsed SSE event:', data);
         
-        // Handle error events (including quota exceeded)
-        if (data.event === 'error' || data.type === 'error') {
-          const errorMessage = data.text || data.message || 'An unknown error occurred';
+        // Handle different event types
+        if (data.event === 'quotaExceeded' || 
+            (data.event === 'error' && data.errorType === 'quotaExceeded') ||
+            (data.text && data.text.toLowerCase().includes('quota'))) {
+          
+          const errorMessage = data.text || data.content || 'You have exceeded your API quota. Please check your account status or upgrade your plan.';
+          console.error('[SSE] Quota exceeded event received:', errorMessage);
+          
+          // Update the thought bubble with the error
+          messagesStore.setState(state => ({
+            timeline: state.timeline.map(msg => 
+              msg.id === thoughtId 
+                ? { 
+                    ...msg, 
+                    content: errorMessage, 
+                    isError: true, 
+                    errorType: 'quotaExceeded',
+                    timestamp: data.timestamp || new Date().toISOString()
+                  }
+                : msg
+            )
+          }));
+          
+          // Show notification
+          eventBus.emit('notification', {
+            title: 'API Quota Exceeded',
+            message: errorMessage,
+            type: 'error',
+            duration: 10000,
+            action: {
+              text: 'Upgrade Plan',
+              callback: () => eventBus.emit('settings-modal-requested', { section: 'billing' })
+            }
+          });
+          
+          // Close the connection
+          es.close();
+          return;
+        }
+        
+        // Handle other error events
+        if (data.event === 'error' || data.type === 'error' || data.isError) {
+          const errorMessage = data.text || data.content || data.message || 'An error occurred';
           console.error('[SSE] Error event received:', errorMessage);
           
-          // Check if this is a quota exceeded error
-          const isQuotaError = errorMessage.toLowerCase().includes('quota') || 
-                            errorMessage.toLowerCase().includes('limit') ||
-                            errorMessage.toLowerCase().includes('exceeded');
-          
-          if (isQuotaError) {
-            // Emit notification
-            eventBus.emit('notification', {
-              title: 'API Quota Exceeded',
-              message: errorMessage,
-              type: 'error',
-              duration: 10000, // 10 seconds
-              action: {
-                text: 'Upgrade Plan',
-                callback: () => eventBus.emit('settings-modal-requested', { section: 'billing' })
-              }
-            });
-            
-            // Emit thoughtComplete to properly close the thought bubble with error
-            const taskId = data.taskId || (data.payload && data.payload.taskId);
-            if (taskId) {
-              eventBus.emit('thoughtComplete', {
-                taskId: taskId,
-                content: errorMessage,
-                isError: true,
-                error: {
-                  type: 'quota_exceeded',
-                  message: errorMessage
-                }
-              });
-            }
-          } else {
-            // For other errors, show a generic error notification
-            eventBus.emit('notification', {
-              title: 'Error',
-              message: errorMessage,
-              type: 'error',
-              duration: 8000
-            });
-          }
+          // Update the thought bubble with the error
+          messagesStore.setState(state => ({
+            timeline: state.timeline.map(msg => 
+              msg.id === thoughtId 
+                ? { 
+                    ...msg, 
+                    content: errorMessage, 
+                    isError: true, 
+                    errorType: data.errorType || 'error',
+                    timestamp: data.timestamp || new Date().toISOString()
+                  }
+                : msg
+            )
+          }));
           
           // Close the connection on error
-          if (es && es.readyState !== 2) {
-            es.close();
-          }
+          es.close();
+          return;
+        }
+        
+        // Handle successful messages
+        if (data.event === 'message' || data.event === 'chunk' || data.event === 'token') {
+          // Handle normal message chunks
+          messagesStore.setState(state => ({
+            timeline: state.timeline.map(msg => 
+              msg.id === thoughtId 
+                ? { 
+                    ...msg, 
+                    content: msg.content + (data.text || data.content || ''),
+                    timestamp: data.timestamp || new Date().toISOString()
+                  }
+                : msg
+            )
+          }));
+        }
+        
+        // Handle completion
+        if (data.event === 'complete' || data.event === 'done') {
+          console.debug('[SSE] Stream completed');
+          es.close();
           return;
         }
         
