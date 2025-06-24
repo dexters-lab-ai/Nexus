@@ -2008,7 +2008,7 @@ app.get('/api/nli', requireAuth, async (req, res) => {
           errorEvent = {
             event: 'quotaExceeded',
             content: errorMsg,
-            text: `🚫 API Quota Exceeded: ${errorMsg} For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.`,
+            text: `🚫 API Quota Exceeded: ${errorMsg} r, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.`,
             isError: true,
             errorType: 'quotaExceeded',
             timestamp: new Date().toISOString()
@@ -7715,12 +7715,12 @@ Only use tools when:
         yield {
           event: 'quotaExceeded',
           text: `🚫 API Quota Exceeded: ${errorDetails}. ` +
-                'Please check your account status or try again later.'
+                'Please check or add a valid API key in settings.'
         };
         
         yield {
           event: 'thoughtComplete',
-          text: 'I apologize, but I cannot process your request due to API quota limits.',
+          text: 'I apologize, system fallback API key hit a limit. Please Add your own valid API key in settings to continue using the agent.',
           isError: true,
           errorType: 'quotaExceeded'
         };
@@ -7729,7 +7729,7 @@ Only use tools when:
           userId,
           role: 'assistant',
           type: 'chat',
-          content: 'I apologize, but I cannot process your request due to API quota limits. Please check your API key settings.',
+          content: 'I apologize, system fallback API key hit a limit. Please Add your own valid API key in settings to continue using the agent.',
           timestamp: new Date()
         }).save();
         
