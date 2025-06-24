@@ -620,9 +620,7 @@ export default class NeuralFlow {
     const isStepNode = text.match(/step\s+\d+/i) || 
                         text.match(/executing step/i) || 
                         text.toLowerCase().includes('executing');
-    let parentStepId = -1;
     
-    // Check if this is a sub-step by looking for parent indicators
     // Extract step number if this is a main step
     let stepNumber = null;
     const stepMatch = text.match(/step\s+(\d+)/i);
@@ -634,20 +632,38 @@ export default class NeuralFlow {
     const isCompletionNode = text.toLowerCase().includes('complete') || 
                              text.toLowerCase().includes('finished') || 
                              text.toLowerCase().includes('completed');
-                             
-    // Check if this is related to an existing step
-    this.nodes.forEach((existingNode, idx) => {
-      if (existingNode.stepNumber && text.includes(`step ${existingNode.stepNumber}`)) {
-        parentStepId = idx;
+    
+    // Determine parent step
+    let parentStepId = -1;
+    
+    // If this is a step node, try to find its parent step
+    if (isStepNode && stepNumber > 1) {
+      // Look for the previous main step
+      for (let i = this.nodes.length - 1; i >= 0; i--) {
+        const existingNode = this.nodes[i];
+        if (!existingNode.isSubStep && existingNode.stepNumber === stepNumber - 1) {
+          parentStepId = i;
+          break;
+        }
       }
-    });
+      
+      // If we didn't find a parent by step number, connect to the last main node
+      if (parentStepId === -1 && this.nodes.length > 0) {
+        for (let i = this.nodes.length - 1; i >= 0; i--) {
+          if (!this.nodes[i].isSubStep) {
+            parentStepId = i;
+            break;
+          }
+        }
+      }
+    }
     
     // Mark the special node types
     if (isPlanNode) this.planNodeCreated = true;
     
     // Calculate initial position with top padding
     const initialY = this.nodes.length > 0 ? 
-      Math.max(...this.nodes.map(n => n.y + 100)) : this.topPadding; // Use top padding for first node
+      Math.max(...this.nodes.map(n => n.y + 100)) : this.topPadding;
     
     // Create the node with appropriate properties
     const node = {
@@ -663,13 +679,13 @@ export default class NeuralFlow {
       y: initialY,
       tx: 0, // target x (will be set in updateNodePositions)
       ty: 0, // target y (will be set in updateNodePositions)
-      radius: isPlanNode ? 14 : 8, // Plan node is larger but all nodes are now smaller
-      dendrites: [], // Brain cell dendrites (randomly generated)
-      dendriteCount: isPlanNode ? 9 : (Math.floor(Math.random() * 4) + 4), // More for plan node
+      radius: isPlanNode ? 14 : 8,
+      dendrites: [],
+      dendriteCount: isPlanNode ? 9 : (Math.floor(Math.random() * 4) + 4),
       alpha: 0, // for fade-in
       hovered: false,
-      pulsePhase: Math.random() * Math.PI * 2, // randomize pulse
-      energyParticles: [], 
+      pulsePhase: Math.random() * Math.PI * 2,
+      energyParticles: [],
       timeCreated: Date.now(),
       addedAt: Date.now()
     };
@@ -677,7 +693,6 @@ export default class NeuralFlow {
     // Generate brain cell-like dendrites
     for (let i = 0; i < node.dendriteCount; i++) {
       const angle = (i / node.dendriteCount) * Math.PI * 2;
-      // Make strands 1.8x longer than before
       const length = node.radius * (1.2 + Math.random() * 1.0);
       const curve = 0.3 + Math.random() * 0.5;
       
@@ -692,27 +707,30 @@ export default class NeuralFlow {
     const nodeIdx = this.nodes.length;
     this.nodes.push(node);
     
-    // Create branch connection if this is a sub-step
+    // Create branch connections
     if (parentStepId >= 0) {
+      // This is a sub-step or step with a parent
       this.branches.push({
         fromIdx: parentStepId,
         toIdx: nodeIdx,
-        type: 'sub-step'
+        type: isStepNode ? 'main-flow' : 'sub-step'
       });
     } 
-    // Otherwise, connect to previous node if not a plan node
+    // Connect to previous node if not a plan node and not already connected
     else if (nodeIdx > 0 && !isPlanNode) {
-      // Find the most recent non-sub-step to connect to, or connect to plan node
+      // Find the most recent non-sub-step to connect to
       let connectToIdx = nodeIdx - 1;
-      while (connectToIdx > 0 && this.nodes[connectToIdx].isSubStep) {
+      while (connectToIdx >= 0 && this.nodes[connectToIdx].isSubStep) {
         connectToIdx--;
       }
       
-      this.branches.push({
-        fromIdx: connectToIdx,
-        toIdx: nodeIdx,
-        type: 'main-flow'
-      });
+      if (connectToIdx >= 0) {
+        this.branches.push({
+          fromIdx: connectToIdx,
+          toIdx: nodeIdx,
+          type: 'main-flow'
+        });
+      }
     }
     
     // Update the "isFinal" flag to be true only for the last node
