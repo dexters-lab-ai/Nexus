@@ -16,6 +16,12 @@
   animation: fadeIn 0.3s forwards;
 }
 
+@media (max-width: 768px) {
+  .welcome-overlay {
+    padding: 0.1rem;
+  }
+}
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }

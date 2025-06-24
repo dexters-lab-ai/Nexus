@@ -39,6 +39,30 @@
   z-index: 999;
 }
 
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 70px !important;
+    right: 0px !important;
+    height: calc(100vh - 70px) !important;
+    transform: translateX(100%) !important;
+    box-shadow: none !important;
+    z-index: 1005 !important;
+  }
+  
+  .sidebar.expanded {
+    transform: translateX(0px) !important;
+  }
+  
+  .sidebar.collapsed {
+    transform: translateX(calc(100% - var(--sidebar-collapsed-width))) !important;
+  }
+  .sidebar:not(.collapsed) {
+    transform: translateX(0) !important;
+  }
+}
+
 /* Animation for sidebar expansion/collapse */
 @keyframes slideIn {
   from { transform: translateX(20px); opacity: 0; }
