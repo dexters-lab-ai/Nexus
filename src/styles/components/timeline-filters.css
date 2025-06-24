@@ -129,6 +129,12 @@
   transition: all 0.2s ease;
 }
 
+@media (max-width: 768px) {
+  .message-refresh-btn {
+    margin-right: 4.5rem;
+  }
+}
+
 .message-refresh-btn:hover {
   background: rgba(35, 40, 65, 0.8);
   border-color: rgba(100, 120, 255, 0.3);

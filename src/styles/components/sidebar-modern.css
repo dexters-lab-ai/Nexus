@@ -683,6 +683,7 @@
     right: 0px;
     height: calc(100vh - 70px);
     transform: translateX(100%);
+    box-shadow: none;
     z-index: 1005;
   }
   
