@@ -45,7 +45,7 @@
     position: fixed;
     top: 70px !important;
     right: 0px !important;
-    height: calc(100vh - 70px) !important;
+    height: calc(100vh - var(--header-height) - var(--footer-height) - var(--command-center-height)) !important;
     transform: translateX(100%) !important;
     box-shadow: none !important;
     z-index: 1005 !important;
@@ -705,7 +705,7 @@
     position: fixed;
     top: 70px;
     right: 0px;
-    height: calc(100vh - 70px);
+    height: calc(100vh - var(--header-height) - var(--footer-height)) !important;
     transform: translateX(100%);
     box-shadow: none;
     z-index: 1005;
