@@ -262,11 +262,12 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
 # Ensure the Chrome binary is executable
 RUN chmod +x ${CHROME_BIN} || true
 
-# Install production dependencies
+# Install npm packages
 COPY package*.json ./
-# Clean npm cache and install production deps
-RUN npm cache clean --force && \
-    npm install --omit=dev --legacy-peer-deps && \
+# Install production dependencies with legacy peer deps
+RUN npm config set legacy-peer-deps true && \
+    npm install --omit=dev && \
+    npm install @midscene/android@latest --save --save-prefix='' && \
     npm cache clean --force
 
 # Copy built app from builder
