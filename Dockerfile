@@ -3,7 +3,7 @@ FROM node:20.13.1-bullseye-slim AS builder
 
 WORKDIR /usr/src/app
 
-# Install system dependencies including Chrome and Android tools
+# Install system dependencies including Chrome
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
@@ -34,33 +34,8 @@ RUN apt-get update && apt-get install -y \
     libxfixes3 \
     libxrandr2 \
     xdg-utils \
-    # Android tools
-    udev \
-    ttf-freefont \
-    # For network tools
-    iproute2 \
-    net-tools \
-    # For debugging
-    procps \
-    htop \
-    vim \
     --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/* \
-    # Create Android SDK directory
-    && mkdir -p /opt/android-sdk/platform-tools \
-    && mkdir -p /etc/udev/rules.d \
-    # Add udev rules for Android devices
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", MODE="0666", GROUP="plugdev"' > /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0bb4", MODE="0666", GROUP="plugdev"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="22b8", MODE="0666", GROUP="plugdev"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0fce", MODE="0666", GROUP="plugdev"' >> /etc/udev/rules.d/51-android.rules \
-    && chmod a+r /etc/udev/rules.d/51-android.rules \
-    # Create plugdev group and add node user
-    && groupadd -r plugdev || true \
-    && usermod -aG plugdev node || true \
-    # Set permissions for node user
-    && chown -R node:node /home/node \
-    && chmod -R 755 /home/node
+    && rm -rf /var/lib/apt/lists/*
 
 # Set Puppeteer environment variables
 ENV CHROME_BIN=/usr/bin/chromium-browser
@@ -76,7 +51,6 @@ RUN rm -rf node_modules package-lock.json pnpm-lock.yaml
 RUN echo "Installing dependencies..." && \
     npm install --legacy-peer-deps && \
     npm install @rollup/rollup-linux-x64-gnu rollup-plugin-visualizer@5.9.2 --save-dev && \
-    # Install @midscene/android specifically
     npm install @midscene/android@latest --save-dev && \
     echo "Dependency installation complete"
 
@@ -84,23 +58,13 @@ RUN echo "Installing dependencies..." && \
 RUN mkdir -p nexus_run && \
     mkdir -p public/assets && \
     mkdir -p public/models && \
-    mkdir -p public/textures && \
-    mkdir -p scripts
+    mkdir -p public/textures
 
-# Copy package files first for better layer caching
-COPY package*.json ./
+# Copy environment files (after creating directories to avoid permission issues)
 COPY .env* ./
 
-# Install build dependencies
-RUN npm install --legacy-peer-deps
-
-# Copy the rest of the application
+# Copy app source
 COPY . .
-
-# Ensure copy-api.js exists
-RUN if [ ! -f "scripts/copy-api.js" ]; then \
-      echo "console.log('copy-api.js placeholder')" > scripts/copy-api.js; \
-    fi
 
 # Set environment to use the correct Rollup binary
 ENV ROLLUP_INLINE_RUN=1
@@ -274,26 +238,19 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
 # Ensure the Chrome binary is executable
 RUN chmod +x ${CHROME_BIN} || true
 
-# Install npm packages
+# Install production dependencies
 COPY package*.json ./
-# Install all dependencies including devDependencies for @midscene/android
-RUN npm config set legacy-peer-deps true && \
-    npm install && \
+# Clean npm cache and install production deps
+RUN npm cache clean --force && \
+    npm install --omit=dev --legacy-peer-deps && \
     npm cache clean --force
 
-# Copy all necessary files before build
-COPY --from=builder /usr/src/app/scripts ./scripts
-COPY --from=builder /usr/src/app/public ./public
-COPY --from=builder /usr/src/app/src ./src
-COPY --from=builder /usr/src/app/package*.json .
-COPY --from=builder /usr/src/app/vite.config.js .
+# Copy built app from builder
+COPY --from=builder /usr/src/app/dist ./dist
 COPY --from=builder /usr/src/app/server.js .
 
-# Build the application
-RUN npm run build
-
-# Clean up devDependencies after build to reduce image size
-RUN npm prune --production
+# Copy public directory and its contents
+COPY --from=builder /usr/src/app/public ./public
 
 # Copy bruno_demo_temp assets and set permissions
 COPY --from=builder /usr/src/app/bruno_demo_temp ./bruno_demo_temp
