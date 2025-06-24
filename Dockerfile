@@ -76,6 +76,8 @@ RUN rm -rf node_modules package-lock.json pnpm-lock.yaml
 RUN echo "Installing dependencies..." && \
     npm install --legacy-peer-deps && \
     npm install @rollup/rollup-linux-x64-gnu rollup-plugin-visualizer@5.9.2 --save-dev && \
+    # Install @midscene/android specifically
+    npm install @midscene/android@latest --save-dev && \
     echo "Dependency installation complete"
 
 # Create necessary directories
@@ -89,6 +91,12 @@ COPY .env* ./
 
 # Copy app source
 COPY . .
+
+# Create a placeholder for copy-api.js if it doesn't exist
+RUN if [ ! -f "scripts/copy-api.js" ]; then \
+      mkdir -p scripts && \
+      echo "// Placeholder for copy-api.js" > scripts/copy-api.js; \
+    fi
 
 # Set environment to use the correct Rollup binary
 ENV ROLLUP_INLINE_RUN=1
