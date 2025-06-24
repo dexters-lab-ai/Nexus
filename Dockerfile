@@ -84,18 +84,22 @@ RUN echo "Installing dependencies..." && \
 RUN mkdir -p nexus_run && \
     mkdir -p public/assets && \
     mkdir -p public/models && \
-    mkdir -p public/textures
+    mkdir -p public/textures && \
+    mkdir -p scripts
 
-# Copy environment files (after creating directories to avoid permission issues)
+# Copy package files first for better layer caching
+COPY package*.json ./
 COPY .env* ./
 
-# Copy app source
+# Install build dependencies
+RUN npm install --legacy-peer-deps
+
+# Copy the rest of the application
 COPY . .
 
-# Create a placeholder for copy-api.js if it doesn't exist
+# Ensure copy-api.js exists
 RUN if [ ! -f "scripts/copy-api.js" ]; then \
-      mkdir -p scripts && \
-      echo "// Placeholder for copy-api.js" > scripts/copy-api.js; \
+      echo "console.log('copy-api.js placeholder')" > scripts/copy-api.js; \
     fi
 
 # Set environment to use the correct Rollup binary
