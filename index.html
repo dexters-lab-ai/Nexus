@@ -16,7 +16,9 @@
   </script>
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <meta http-equiv="X-Content-Type-Options" content="nosniff">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="format-detection" content="telephone=no, date=no, email=no, address=no">
@@ -282,6 +284,53 @@
   </script>
   
 </head>
+<script>
+    // Detect mobile devices
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    
+    // Override console methods for mobile
+    if (isMobile) {
+      // Save original console methods
+      const originalConsole = {
+        log: console.log,
+        warn: console.warn,
+        error: console.error,
+        info: console.info,
+        debug: console.debug
+      };
+    
+      // Override with no-op functions
+      const noop = () => {};
+      console.log = noop;
+      console.warn = noop;
+      console.error = noop; // You might want to keep errors in production
+      console.info = noop;
+      console.debug = noop;
+    
+      // Optional: Keep error logging in development
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        console.error = originalConsole.error;
+      }
+    
+      // Optional: Allow re-enabling logging for debugging
+      window.__enableLogging = (enable = true) => {
+        if (enable) {
+          console.log = originalConsole.log;
+          console.warn = originalConsole.warn;
+          console.error = originalConsole.error;
+          console.info = originalConsole.info;
+          console.debug = originalConsole.debug;
+        } else {
+          console.log = noop;
+          console.warn = noop;
+          console.error = noop;
+          console.info = noop;
+          console.debug = noop;
+        }
+      };
+    }
+</script>
+    
 <body class="loading">
   <!-- Loading state management -->
   <div class="loading-state" id="app-loader">
