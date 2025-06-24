@@ -271,6 +271,12 @@
   letter-spacing: 0.01em;
 }
 
+@media (max-width: 768px) {
+  .msg-content {
+    zoom: 0.85;
+  }
+}
+
 .url-link.open-link {
   color: var(--warning);
 }

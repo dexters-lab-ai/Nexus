@@ -721,9 +721,14 @@
   }
   
   .nav-logo img.logo-svg {
-    width: 27px !important;
-    height: 27px !important;
-    margin-left: -15px !important; /* Compensate for the hidden text */
+    width: 33px !important;
+    height: 33px !important;
+    margin-left: -5px !important; /* Compensate for the hidden text */
+    padding: 0px !important;
+    box-sizing: border-box !important;
+    border-radius: 50% !important;
+    border: 1px solid var(--primary-color) !important;
+    zoom: 1.5 !important;
   }
   
 }

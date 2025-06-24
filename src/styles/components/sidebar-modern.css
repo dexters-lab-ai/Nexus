@@ -679,19 +679,22 @@
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
-    top: 0;
-    right: 0;
-    height: 100vh;
+    top: 70px;
+    right: 0px;
+    height: calc(100vh - 70px);
     transform: translateX(100%);
-    z-index: 1000;
+    z-index: 1005;
   }
   
   .sidebar.expanded {
-    transform: translateX(0);
+    transform: translateX(0px);
   }
   
   .sidebar.collapsed {
     transform: translateX(calc(100% - var(--sidebar-collapsed-width)));
+  }
+  .sidebar:not(.collapsed) {
+    transform: translateX(0) !important;
   }
 }
 

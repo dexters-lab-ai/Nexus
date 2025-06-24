@@ -213,6 +213,12 @@
   flex-direction: column;
 }
 
+@media (max-width: 768px) {
+  .command-center {
+    zoom: 0.85 !important;
+  }
+}
+
 .command-center-header {
   display: flex;
   align-items: center;

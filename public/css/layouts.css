@@ -14,7 +14,7 @@
   --task-bar-height: 50px;
   --command-center-height: 200px;
   --command-center-expanded-height: 300px;
-  --timeline-max-height: calc(100vh - var(--header-height) - var(--command-center-height) - var(--footer-height) - var(--task-bar-height));
+  --timeline-max-height: calc(100vh - var(--header-height) - var(--command-center-height) - var(--task-bar-height));
   --animation-duration: 0.3s;
   --border-radius: 8px;
 }
@@ -227,6 +227,12 @@
   border-radius: var(--border-radius);
   box-shadow: var(--card-shadow);
   transition: all var(--animation-duration) ease-in-out;
+}
+
+@media (max-width: 768px) {
+  .command-center {
+    zoom: 0.85 !important;
+  }
 }
 
 .command-center-header {
