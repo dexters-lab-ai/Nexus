@@ -269,12 +269,19 @@ RUN npm config set legacy-peer-deps true && \
     npm install && \
     npm cache clean --force
 
-# Copy built app from builder
-COPY --from=builder /usr/src/app/dist ./dist
+# Copy all necessary files before build
+COPY --from=builder /usr/src/app/scripts ./scripts
+COPY --from=builder /usr/src/app/public ./public
+COPY --from=builder /usr/src/app/src ./src
+COPY --from=builder /usr/src/app/package*.json .
+COPY --from=builder /usr/src/app/vite.config.js .
 COPY --from=builder /usr/src/app/server.js .
 
-# Copy public directory and its contents
-COPY --from=builder /usr/src/app/public ./public
+# Build the application
+RUN npm run build
+
+# Clean up devDependencies after build to reduce image size
+RUN npm prune --production
 
 # Copy bruno_demo_temp assets and set permissions
 COPY --from=builder /usr/src/app/bruno_demo_temp ./bruno_demo_temp
