@@ -264,10 +264,9 @@ RUN chmod +x ${CHROME_BIN} || true
 
 # Install npm packages
 COPY package*.json ./
-# Install production dependencies with legacy peer deps
+# Install all dependencies including devDependencies for @midscene/android
 RUN npm config set legacy-peer-deps true && \
-    npm install --omit=dev && \
-    npm install @midscene/android@latest --save --save-prefix='' && \
+    npm install && \
     npm cache clean --force
 
 # Copy built app from builder
