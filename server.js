@@ -9,6 +9,9 @@ import { fileURLToPath } from 'url';
 // ======================================
 import fs from 'fs';
 import { randomBytes } from 'crypto';
+const pcControl = require('./src/utils/pcControl');
+const androidControl = require('./src/utils/androidControl');
+const androidConfig = require('./src/config/androidControlConfig');
 import express from 'express';
 import { createServer } from 'http';
 import session from 'express-session';
@@ -2215,11 +2218,18 @@ app.post('/api/nli', requireAuth, async (req, res) => {
   });
 
   let classification;
-  try {
-    classification = await openaiClassifyPrompt(prompt, userId);
-  } catch (err) {
-    console.error('Classification error', err);
+  // Bypass NLI classification for device control commands
+  const trimmedPrompt = prompt.trim().toLowerCase();
+  if (trimmedPrompt.startsWith('pc ') || trimmedPrompt.startsWith('android ')) {
+    console.log(`[NLI] Bypassing classification for device control command: ${trimmedPrompt}`);
     classification = 'task';
+  } else {
+    try {
+      classification = await openaiClassifyPrompt(prompt, userId);
+    } catch (err) {
+      console.error('Classification error', err);
+      classification = 'task';
+    }
   }
 
   if (classification === 'task') {
@@ -3068,7 +3078,6 @@ const browserSessionHeartbeat = setInterval(async () => {
 }, 5 * 60 * 1000); // Check every 5 minutes
 
 
-// ======================================
 // 12. CLEANUP AND SHUTDOWN HANDLERS
 // ======================================
 
@@ -3079,69 +3088,105 @@ async function cleanupResources() {
   try {
     logger.info('Starting cleanup of resources...');
     
-    // Close WebSocket server if it exists
-    if (global.wss || wss) {
-      const wsServer = global.wss || wss;
-      logger.info('Closing WebSocket server...');
-      
+    // 1. Clean up Android control resources
+    logger.info('Cleaning up Android control resources...');
+    try {
+      if (androidControl && typeof androidControl.cleanup === 'function') {
+        await androidControl.cleanup().catch(err => {
+          logger.error('Error during Android control cleanup:', err);
+        });
+        logger.info('Android control resources cleaned up');
+      }
+    } catch (err) {
+      logger.error('Error during Android control cleanup:', err);
+    }
+    
+    // 2. Clean up PC control resources
+    logger.info('Cleaning up PC control resources...');
+    try {
+      if (pcControl && typeof pcControl.cleanup === 'function') {
+        await pcControl.cleanup().catch(err => {
+          logger.error('Error during PC control cleanup:', err);
+        });
+        logger.info('PC control resources cleaned up');
+      }
+    } catch (err) {
+      logger.error('Error during PC control cleanup:', err);
+    }
+    
+    // 3. Clean up browser sessions
+    logger.info('Cleaning up browser sessions...');
+    const browserCleanupPromises = [];
+    for (const [taskId, session] of activeBrowsers) {
+      logger.info(`Closing browser for task ${taskId}...`);
       try {
-        // Close all active WebSocket connections
-        if (wsServer.clients) {
-          wsServer.clients.forEach(client => {
-            try {
-              if (client.readyState === WebSocket.OPEN) {
-                client.terminate();
-              }
-            } catch (err) {
-              logger.error('Error terminating WebSocket client:', err);
-            }
-          });
+        // Ensure we have a valid browser instance
+        if (session && session.browser) {
+          browserCleanupPromises.push(
+            session.browser.close().catch(err => {
+              logger.error(`Error closing browser for task ${taskId}:`, err);
+            })
+          );
         }
         
-        // Close the WebSocket server
-        await new Promise((resolve) => {
-          if (wsServer.close) {
-            wsServer.close(() => {
-              logger.info('WebSocket server closed');
-              resolve();
-            });
-          } else {
-            resolve();
-          }
-        });
-      } catch (error) {
-        logger.error('Error during WebSocket server cleanup:', error);
+        // Release session if it has a release method
+        if (session && typeof session.release === 'function') {
+          browserCleanupPromises.push(
+            Promise.resolve().then(() => session.release()).catch(err => {
+              logger.error(`Error releasing session for task ${taskId}:`, err);
+            })
+          );
+        }
+      } catch (err) {
+        logger.error(`Error during browser cleanup for task ${taskId}:`, err);
       }
     }
     
-    // Close MongoDB connection if connected
-    if (mongoose.connection && mongoose.connection.readyState === 1) {
-      logger.info('Closing MongoDB connection...');
+    // Wait for all browser cleanups to complete
+    await Promise.allSettled(browserCleanupPromises);
+    activeBrowsers.clear();
+    logger.info('Browser cleanup complete');
+    
+    // 4. Clean up temporary files
+    logger.info('Cleaning up temporary files...');
+    try {
+      const tempDirs = [
+        path.join(__dirname, 'temp'),
+        path.join(__dirname, 'screenshots'),
+        path.join(__dirname, 'downloads')
+      ];
+      
+      for (const dir of tempDirs) {
+        try {
+          if (fs.existsSync(dir)) {
+            await fs.promises.rm(dir, { recursive: true, force: true });
+            logger.info(`Cleaned up directory: ${dir}`);
+          }
+        } catch (err) {
+          logger.error(`Error cleaning up directory ${dir}:`, err);
+        }
+      }
+    } catch (err) {
+      logger.error('Error during temp file cleanup:', err);
+    }
+    
+    // 5. Close database connections
+    logger.info('Closing database connections...');
+    try {
       await mongoose.connection.close();
       logger.info('MongoDB connection closed');
+    } catch (err) {
+      logger.error('Error closing MongoDB connection:', err);
     }
     
-    // Clear any intervals
-    if (browserSessionHeartbeat) {
-      logger.info('Clearing browser session heartbeat...');
-      clearInterval(browserSessionHeartbeat);
-    }
+    // 6. Clean up any other resources
+    logger.info('Performing final cleanup...');
     
-    // Clean up any active browser sessions
-    if (activeBrowsers && activeBrowsers.size > 0) {
-      logger.info(`Cleaning up ${activeBrowsers.size} active browser sessions...`);
-      const cleanupPromises = Array.from(activeBrowsers.values()).map(async (session) => {
-        try {
-          if (session && !session.closed && typeof session.release === 'function') {
-            await session.release();
-          }
-        } catch (error) {
-          logger.error('Error cleaning up browser session:', error);
-        }
-      });
-      
-      await Promise.all(cleanupPromises);
-      activeBrowsers.clear();
+    // Clear any intervals or timeouts
+    const maxIntervalId = setInterval(() => {}, 0);
+    for (let i = 0; i < maxIntervalId; i++) {
+      clearInterval(i);
+      clearTimeout(i);
     }
     
     logger.info('Cleanup completed successfully');
@@ -3463,6 +3508,42 @@ function handleLargeContent(obj) {
 
 // Track tasks that have already been completed to prevent double-completion
 const completedTasks = new Set();
+
+// Rate limiting for PC control commands
+const pcControlRateLimit = {
+  // Track last execution time per user and command type
+  lastExecuted: new Map(),
+  // Rate limit configuration (in milliseconds)
+  limits: {
+    default: 5000, // 5 seconds between commands of the same type
+    system: 30000, // 30 seconds for system commands (more restrictive)
+  },
+  
+  // Check if a command can be executed
+  canExecute: function(userId, commandType) {
+    const now = Date.now();
+    const key = `${userId}:${commandType}`;
+    const lastTime = this.lastExecuted.get(key) || 0;
+    const cooldown = this.limits[commandType] || this.limits.default;
+    
+    if (now - lastTime < cooldown) {
+      return false;
+    }
+    
+    this.lastExecuted.set(key, now);
+    return true;
+  },
+  
+  // Get time until next allowed execution
+  getTimeUntilNext: function(userId, commandType) {
+    const now = Date.now();
+    const key = `${userId}:${commandType}`;
+    const lastTime = this.lastExecuted.get(key) || 0;
+    const cooldown = this.limits[commandType] || this.limits.default;
+    
+    return Math.max(0, (lastTime + cooldown - now) / 1000);
+  }
+};
 
 /**
  * Update task in database and notify clients with optimized storage.
@@ -5963,6 +6044,12 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
   }).save();
   console.log(`[ProcessTask] Starting ${taskId}: "${prompt}"`);
   
+  // Check for Android control commands (e.g., 'android open twitter', 'android like tweets')
+  const androidCommandMatch = prompt.match(/^android\s+(.+)$/i);
+  
+  // Check for PC control commands (e.g., 'pc search files', 'pc open camera', 'pc media play')
+  const pcCommandMatch = !androidCommandMatch && prompt.match(/^pc\s+(search|open|media|system)\s+(.+)$/i);
+  
   // Check if the prompt contains a YAML map reference or if it was attached via the UI
   let yamlMapId = extractYamlMapIdFromPrompt(prompt);
   
@@ -5977,6 +6064,239 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
     }
   }
   
+  // Handle PC control commands
+  if (pcCommandMatch) {
+    const [_, action, params] = pcCommandMatch;
+    console.log(`[ProcessTask] Detected PC control command: ${action} ${params}`);
+    
+    // Input validation
+    if (!action || !params) {
+      throw new Error('Invalid PC control command format. Expected format: pc <action> <params>');
+    }
+    
+    // Check if the action is allowed
+    const allowedActions = ['search', 'open', 'media', 'system'];
+    const normalizedAction = action.toLowerCase();
+    if (!allowedActions.includes(normalizedAction)) {
+      throw new Error(`Invalid PC control action. Allowed actions: ${allowedActions.join(', ')}`);
+    }
+    
+    // Apply rate limiting
+    const commandType = normalizedAction === 'system' ? 'system' : 'default';
+    if (!pcControlRateLimit.canExecute(userId, commandType)) {
+      const timeLeft = pcControlRateLimit.getTimeUntilNext(userId, commandType);
+      throw new Error(`Rate limit exceeded. Please wait ${timeLeft.toFixed(1)} seconds before executing another ${commandType} command.`);
+    }
+    
+    // Log the command execution attempt
+    console.log(`[PC Control] User ${userId} executing command: ${normalizedAction} ${params}`);
+    
+    try {
+      let result;
+      const normalizedAction = action.toLowerCase();
+      
+      // Log the start of command processing
+      console.log(`[PC Control] [${taskId}] Starting ${normalizedAction} command with params: ${params}`);
+      
+      // Handle different PC control actions
+      switch (normalizedAction) {
+        case 'search':
+          result = await pcControl.searchFiles(params);
+          break;
+          
+        case 'open':
+          if (params.toLowerCase().includes('camera')) {
+            result = await pcControl.openCamera();
+          } else {
+            result = { success: false, error: `Unsupported open command: ${params}` };
+          }
+          break;
+          
+        case 'media':
+          const mediaAction = params.toLowerCase().trim();
+          if (['play', 'pause', 'next', 'previous', 'volumeup', 'volumedown', 'mute', 'unmute'].includes(mediaAction)) {
+            result = await pcControl.mediaControl(mediaAction);
+          } else {
+            result = { success: false, error: `Unsupported media action: ${mediaAction}` };
+          }
+          break;
+          
+        case 'system':
+          const systemAction = params.toLowerCase().trim();
+          if (['lock', 'sleep', 'restart', 'shutdown', 'logoff'].includes(systemAction)) {
+            result = await pcControl.systemCommand(systemAction);
+          } else {
+            result = { success: false, error: `Unsupported system command: ${systemAction}` };
+          }
+          break;
+          
+        default:
+          result = { success: false, error: `Unknown PC control action: ${action}` };
+      }
+      
+      // Format the result for the task completion
+      const success = result.success !== false; // Handle both undefined and true as success
+      const message = result.message || (success ? 'PC control command executed successfully' : result.error || 'Unknown error');
+      
+      // Log the result
+      console.log(`[PC Control] [${taskId}] Command ${normalizedAction} completed with ${success ? 'success' : 'error'}:`, 
+        success ? message : result.error || 'Unknown error'
+      );
+      
+      try {
+        // Save the task completion
+        await saveTaskCompletionMessages(
+          userId,
+          taskId,
+          prompt,
+          JSON.stringify({
+            ...result,
+            timestamp: new Date().toISOString(),
+            command: normalizedAction,
+            params
+          }, null, 2),
+          message,
+          { 
+            pcControl: true, 
+            action: normalizedAction, 
+            params, 
+            success,
+            timestamp: new Date().toISOString()
+          }
+        );
+        
+        // Clean up any resources
+        await pcControl.cleanup();
+        
+        // Log successful cleanup
+        console.log(`[PC Control] [${taskId}] Resources cleaned up successfully`);
+        
+        return {
+          success,
+          message,
+          result: {
+            ...result,
+            command: normalizedAction,
+            params,
+            timestamp: new Date().toISOString()
+          },
+          taskId
+        };
+        
+      } catch (saveError) {
+        console.error(`[PC Control] [${taskId}] Error saving task completion:`, saveError);
+        // Re-throw with additional context
+        throw new Error(`Failed to save task completion: ${saveError.message}`);
+      }
+      
+    } catch (error) {
+      console.error(`[ProcessTask] Error executing PC control command:`, error);
+      
+      // Save error to task
+      await saveTaskCompletionMessages(
+        userId,
+        taskId,
+        prompt,
+        error.stack || error.message || 'Unknown error',
+        `Failed to execute PC control command: ${error.message}`,
+        { 
+          pcControl: true, 
+          error: true, 
+          action: pcCommandMatch[1], 
+          params: pcCommandMatch[2] 
+        }
+      );
+      
+      // Clean up any resources
+      await pcControl.cleanup().catch(cleanupError => {
+        console.error('[ProcessTask] Error during PC control cleanup:', cleanupError);
+      });
+      
+      throw error;
+    }
+  }
+  
+  // Handle Android control commands
+  if (androidCommandMatch) {
+    const [_, command] = androidCommandMatch;
+    console.log(`[ProcessTask] Detected Android command: ${command}`);
+    
+    // Input validation
+    if (!command) {
+      throw new Error('Invalid Android command format. Expected format: android <command>');
+    }
+    
+    try {
+      // Connect to Android device if not already connected
+      if (!androidControl.device) {
+        console.log('[AndroidControl] Connecting to Android device...');
+        await androidControl.connect(androidConfig.defaultDeviceUdid);
+      }
+      
+      // Execute the command
+      const result = await androidControl.executeAction(command, {
+        timeout: androidConfig.defaultCommandTimeout,
+        sessionId: taskId
+      });
+      
+      // Format the response
+      const response = {
+        success: true,
+        message: 'Android command executed successfully',
+        result,
+        taskId
+      };
+      
+      // Log the result
+      console.log(`[AndroidControl] [${taskId}] Command completed:`, response);
+      
+      // Save the task completion
+      await saveTaskCompletionMessages(
+        userId,
+        taskId,
+        prompt,
+        JSON.stringify(response, null, 2),
+        response.message,
+        { 
+          androidControl: true, 
+          command,
+          success: true,
+          timestamp: new Date().toISOString()
+        }
+      );
+      
+      return response;
+      
+    } catch (error) {
+      console.error(`[AndroidControl] [${taskId}] Error executing command:`, error);
+      
+      // Save error to task
+      await saveTaskCompletionMessages(
+        userId,
+        taskId,
+        prompt,
+        error.stack || error.message || 'Unknown error',
+        `Failed to execute Android command: ${error.message}`,
+        { 
+          androidControl: true, 
+          error: true, 
+          command: androidCommandMatch[1],
+          timestamp: new Date().toISOString()
+        }
+      );
+      
+      // Clean up resources
+      try {
+        await androidControl.cleanup();
+      } catch (cleanupError) {
+        console.error('[AndroidControl] Error during cleanup:', cleanupError);
+      }
+      
+      throw error;
+    }
+  }
+  
+  // Handle YAML map tasks
   if (yamlMapId) {
     console.log(`[ProcessTask] Detected YAML map reference: ${yamlMapId}`);
     await Task.updateOne({ _id: taskId }, { $set: { yamlMapId, status: 'executing' } });

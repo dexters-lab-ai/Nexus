@@ -3,7 +3,7 @@ FROM node:20.13.1-bullseye-slim AS builder
 
 WORKDIR /usr/src/app
 
-# Install system dependencies including Chrome
+# Install system dependencies including Chrome and Android tools
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
@@ -34,8 +34,33 @@ RUN apt-get update && apt-get install -y \
     libxfixes3 \
     libxrandr2 \
     xdg-utils \
+    # Android tools
+    udev \
+    ttf-freefont \
+    # For network tools
+    iproute2 \
+    net-tools \
+    # For debugging
+    procps \
+    htop \
+    vim \
     --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    # Create Android SDK directory
+    && mkdir -p /opt/android-sdk/platform-tools \
+    && mkdir -p /etc/udev/rules.d \
+    # Add udev rules for Android devices
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", MODE="0666", GROUP="plugdev"' > /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0bb4", MODE="0666", GROUP="plugdev"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="22b8", MODE="0666", GROUP="plugdev"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0fce", MODE="0666", GROUP="plugdev"' >> /etc/udev/rules.d/51-android.rules \
+    && chmod a+r /etc/udev/rules.d/51-android.rules \
+    # Create plugdev group and add node user
+    && groupadd -r plugdev || true \
+    && usermod -aG plugdev node || true \
+    # Set permissions for node user
+    && chown -R node:node /home/node \
+    && chmod -R 755 /home/node
 
 # Set Puppeteer environment variables
 ENV CHROME_BIN=/usr/bin/chromium-browser
