@@ -946,7 +946,7 @@
     position: fixed;
     top: 70px !important;
     right: 0px !important;
-    height: calc(100vh - var(--header-height) - var(--footer-height) - var(--command-center-height)) !important;
+    height: calc(100vh - var(--header-height) - var(--footer-height)) !important;
     transform: translateX(100%) !important;
     box-shadow: none !important;
     z-index: 1005 !important;
