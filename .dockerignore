@@ -1,33 +1,31 @@
 # Node.js
-node_modules/
 npm-debug.log
 yarn-debug.log
 yarn-error.log
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
 
 # Environment variables
 .env
-.env.*
+.env.local
+.env.development
+.env.test
+!.env.production
 !.env.example
 
 # Version control
-.git/
-.gitignore
-.gitattributes
+.git
 .gitmodules
-.github/
+.gitignore
+.github
+.gitattributes
 
 # Editor directories and files
-.vscode/
-.idea/
+.vscode
+.idea
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
-*.swp
-*.swo
+*.sw?
 
 # OS generated files
 .DS_Store
@@ -38,13 +36,10 @@ pnpm-lock.yaml
 ehthumbs.db
 Thumbs.db
 
-# Build and distribution
+# Build directories
 /dist
 /build
 /coverage
-.next
-.nuxt
-.vuepress/dist
 
 # Logs
 logs
@@ -53,60 +48,34 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Android specific
-.idea/
-.gradle/
-local.properties
-*.iml
-*.hprof
-.cxx/
+# Misc
+*.pem
+*.p12
+*.key
+*.crt
+*.cer
+*.p7b
+*.p7s
+*.p7c
+*.p7m
+*.p8
+*.p10
+*.pfx
+*.csr
+*.srl
 
-# Debug logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# Documentation
+*.md
+*.markdown
 
 # Local development
 .temp
 .tmp
 .cache
 
-# Misc
-*.pem
-*.p12
-*.key
-*.cer
-*.crt
-*.cert
-
-# Documentation
-*.md
-*.markdown
+# Debug
+.nyc_output
 
 # Testing
 /cypress/videos
 /cypress/screenshots
-
-# Debug
-.nyc_output
-
-# Ignore all files in the root except specific ones
-/*
-!package.json
-!package-lock.json
-!yarn.lock
-!pnpm-lock.yaml
-!tsconfig.json
-!vite.config.*
-!next.config.*
-!nuxt.config.*
-!*.md
-!LICENSE
-!.gitignore
-!.dockerignore
-!.env.example
-
-# Allow specific directories
-/src/**
-/public/**
-/scripts/**
