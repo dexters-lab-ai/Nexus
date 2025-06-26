@@ -8,10 +8,14 @@ import { uiStore, messagesStore, tasksStore } from '../store/index.js';
 import { cancelTask, createTask } from '../api/tasks.js';
 import Button from './base/Button.jsx';
 import Dropdown from './base/Dropdown.jsx';
+import React from 'react';
+import ReactDOM from 'react-dom/client';
 import api from '../utils/api.js';
 import NeuralFlow from '../utils/NeuralFlow.js';
 // Import environment config
 import config from '../config/env.js';
+// Import AndroidConnection component
+import AndroidConnection from './AndroidConnection.jsx';
 
 // Tab types
 export const TAB_TYPES = {
@@ -19,7 +23,8 @@ export const TAB_TYPES = {
   ACTIVE_TASKS: 'active-tasks',
   MANUAL: 'manual',
   REPETITIVE: 'repetitive',
-  SCHEDULED: 'scheduled'
+  SCHEDULED: 'scheduled',
+  DEVICES: 'devices'
 };
 
 // Buffer for assembling complete function call arguments per task
@@ -423,7 +428,8 @@ export function CommandCenter(props = {}) {
     { id: TAB_TYPES.NLI, label: 'Chat', icon: 'fa-comments' },
     { id: TAB_TYPES.MANUAL, label: 'Plugins', icon: 'fa-tasks' },
     { id: TAB_TYPES.REPETITIVE, label: 'Repetitive', icon: 'fa-sync' },
-    { id: TAB_TYPES.SCHEDULED, label: 'Scheduled', icon: 'fa-calendar' }
+    { id: TAB_TYPES.SCHEDULED, label: 'Scheduled', icon: 'fa-calendar' },
+    { id: TAB_TYPES.DEVICES, label: 'Devices', icon: 'fa-mobile-alt' }
   ];
 
   // Current active tab
@@ -2048,11 +2054,25 @@ export function CommandCenter(props = {}) {
   // Section switcher helper
   function showActiveSection(tab) {
     taskSections.querySelectorAll('.task-section').forEach(sec => sec.classList.remove('active'));
+    const messageTimeline = document.getElementById('message-timeline');
+    
     if (tab === TAB_TYPES.NLI) {
       document.getElementById('unified-input-section').classList.add('active');
+      if (messageTimeline) {
+        messageTimeline.style.height = ''; // Reset to default
+      }
+    } else if (tab === TAB_TYPES.DEVICES) {
+      document.getElementById('devices-section').classList.add('active');
+      if (messageTimeline) {
+        messageTimeline.style.setProperty('height', '400px', 'important');
+        messageTimeline.style.setProperty('overflow-y', 'auto', 'important');
+      }
     } else {
       const sec = document.getElementById(`${tab}-section`);
       if (sec) sec.classList.add('active');
+      if (messageTimeline) {
+        messageTimeline.style.height = ''; // Reset to default
+      }
     }
   }
 
@@ -2887,6 +2907,23 @@ export function CommandCenter(props = {}) {
   
   nliSection.appendChild(nliForm);
   taskSections.appendChild(nliSection);
+
+  // Devices Section
+  const devicesSection = document.createElement('div');
+  devicesSection.className = 'task-section';
+  devicesSection.id = 'devices-section';
+  if (activeTab === TAB_TYPES.DEVICES) devicesSection.classList.add('active');
+  
+  // Create a container for the AndroidConnection component
+  const androidConnectionContainer = document.createElement('div');
+  androidConnectionContainer.className = 'devices-container';
+  devicesSection.appendChild(androidConnectionContainer);
+  
+  // Render the React component using createRoot
+  const root = ReactDOM.createRoot(androidConnectionContainer);
+  root.render(React.createElement(AndroidConnection, {}));
+  
+  taskSections.appendChild(devicesSection);
   
   // 2. Active Tasks Section
   // Removed

@@ -403,7 +403,7 @@ export function MessageTimeline(props = {}) {
     try {
       let formattedHtml = '<div class="task-result-container">';
       
-      console.log('Raw content before formatting:', content.substring(0, 200) + '...');
+      //console.log('Raw content before formatting:', content.substring(0, 200) + '...');
       
       const taskMatch = content.match(/Task:\s*"([^"]+)"/i);
       if (taskMatch && taskMatch[1]) {
@@ -585,7 +585,7 @@ export function MessageTimeline(props = {}) {
       systemMessageContents.add(message.content.trim());
     }
     
-    console.log('Creating message item for:', message);
+    //console.log('Creating message item for:', message);
     
     const enhancedMessage = processMessageData(message);
     const { role, type, content, timestamp, id, streaming, taskDescription, isTaskResult, reportUrls } = enhancedMessage;
@@ -639,7 +639,7 @@ export function MessageTimeline(props = {}) {
     contentEl.className = 'msg-content';
     
     if (type === MESSAGE_TYPES.COMMAND && role === MESSAGE_ROLES.ASSISTANT) {
-      console.log('Creating command message:', message.id);
+      //console.log('Creating command message:', message.id);
       const isTaskMessage = content && (
         content.includes('Task:') ||
         content.includes('Report:') ||

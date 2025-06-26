@@ -1,0 +1,187 @@
+/* AndroidConnection.css */
+
+/* Connection status container */
+.connection-status {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  background-color: #fafafa;
+  border: 1px solid #f0f0f0;
+  transition: all 0.3s ease;
+}
+
+/* Connected state */
+.connection-status.connected {
+  background-color: #f6ffed;
+  border-color: #b7eb8f;
+}
+
+/* Error state */
+.connection-status.error {
+  background-color: #fff2f0;
+  border-color: #ffccc7;
+}
+
+/* Warning state */
+.connection-status.warning {
+  background-color: #fffbe6;
+  border-color: #ffe58f;
+}
+
+/* Status icon */
+.connection-status .anticon {
+  margin-right: 8px;
+  font-size: 16px;
+}
+
+.connection-status.connected .anticon {
+  color: #52c41a;
+}
+
+.connection-status.error .anticon {
+  color: #ff4d4f;
+}
+
+.connection-status.warning .anticon {
+  color: #faad14;
+}
+
+/* Status text */
+.connection-status .status-text {
+  flex: 1;
+  margin: 0 8px;
+}
+
+/* Action buttons */
+.connection-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* Device list */
+.device-list {
+  margin: 16px 0;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+}
+
+.device-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.device-item:last-child {
+  border-bottom: none;
+}
+
+.device-item:hover {
+  background-color: #fafafa;
+}
+
+.device-item.active {
+  background-color: #e6f7ff;
+  border-left: 3px solid #1890ff;
+}
+
+.device-info {
+  flex: 1;
+}
+
+.device-name {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.device-details {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+  display: flex;
+  gap: 16px;
+}
+
+/* Installation progress */
+.install-progress {
+  margin: 16px 0;
+}
+
+.progress-steps {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-top: 16px;
+  padding-right: 8px;
+}
+
+.progress-step {
+  display: flex;
+  margin-bottom: 12px;
+  padding: 8px;
+  border-radius: 4px;
+  background-color: #fafafa;
+}
+
+.progress-step.success {
+  background-color: #f6ffed;
+}
+
+.progress-step.error {
+  background-color: #fff2f0;
+}
+
+.progress-step.warning {
+  background-color: #fffbe6;
+}
+
+.progress-step .anticon {
+  margin-right: 8px;
+  margin-top: 2px;
+}
+
+.progress-step.success .anticon {
+  color: #52c41a;
+}
+
+.progress-step.error .anticon {
+  color: #ff4d4f;
+}
+
+.progress-step.warning .anticon {
+  color: #faad14;
+}
+
+.progress-message {
+  flex: 1;
+}
+
+.progress-timestamp {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+  margin-top: 4px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .connection-status {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .connection-actions {
+    width: 100%;
+    margin-top: 8px;
+  }
+  
+  .connection-actions .ant-btn {
+    flex: 1;
+    text-align: center;
+  }
+}

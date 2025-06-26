@@ -12,6 +12,50 @@ class AndroidControl {
   }
 
   /**
+   * Get connected Android devices
+   * @returns {Promise<Array>} List of connected devices
+   */
+  async getConnectedDevices() {
+    try {
+      const devices = await getConnectedDevices();
+      return devices.map(device => ({
+        id: device.udid,
+        name: `Android Device (${device.udid})`,
+        state: device.state,
+        port: device.port,
+        model: device.model || 'Unknown',
+        manufacturer: device.manufacturer || 'Unknown'
+      }));
+    } catch (error) {
+      console.error(`${this.logPrefix} Error getting connected devices:`, error);
+      throw new Error(`Failed to get connected devices: ${error.message}`);
+    }
+  }
+
+  /**
+   * Check if ADB is available and working
+   * @returns {Promise<Object>} Status object with installation and device info
+   */
+  async checkAdbStatus() {
+    try {
+      const devices = await this.getConnectedDevices();
+      return {
+        installed: true,
+        version: 'ADB (via @midscene/android)',
+        devices,
+        error: null
+      };
+    } catch (error) {
+      return {
+        installed: false,
+        version: null,
+        devices: [],
+        error: error.message || 'ADB not available'
+      };
+    }
+  }
+
+  /**
    * Get environment-specific configuration
    * @private
    */

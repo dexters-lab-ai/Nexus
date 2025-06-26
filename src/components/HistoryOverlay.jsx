@@ -241,7 +241,7 @@ function createHistoryOverlay() {
       
       // Call the API with the correct parameters
       const response = await getAllHistory(params);
-      console.log('History API response:', response);
+      //console.log('History API response:', response);
       
       // Handle different response formats
       let items = [];
@@ -274,11 +274,8 @@ function createHistoryOverlay() {
       totalItems = paginationInfo.totalItems || items.length;
       updatePaginationControls();
       
-      console.log(`Loaded ${items.length} history items`);
-      
       // Normalize items to ensure they have the expected fields
       const normalizedItems = items.map(item => {
-        console.log('Processing history item:', item);
         // Extract result data - could be directly in result or in meta
         const result = item.result || {};
         const meta = item.meta || result.meta || {};
@@ -306,12 +303,13 @@ function createHistoryOverlay() {
                         result.reportUrl ||
                         (result.raw && result.raw.reportUrl) ||
                         '';
-                        
+        /*                
         console.log(`History item ${item.id || item._id || ''} report URLs:`, {
           nexusReportUrl,
           landingReportUrl,
           reportUrl
         });
+        */
         
         // Extract the summary - could be in multiple locations
         const summary = meta.summary || 
@@ -333,6 +331,7 @@ function createHistoryOverlay() {
                        '';
         
         // Debug screenshot data
+        /*
         console.log(`History item ${item.id || item._id || ''} screenshot detection:`, {
           foundScreenshot: !!screenshot,
           screenshotValue: screenshot,
@@ -345,6 +344,7 @@ function createHistoryOverlay() {
           resultScreenshotUrl: result.screenshotUrl,
           resultScreenshotPath: result.screenshotPath
         });
+        */
         
         // Ensure screenshot URL is properly formed
         if (screenshot && !screenshot.startsWith('http') && !screenshot.startsWith('data:') && !screenshot.startsWith('/')) {
@@ -858,7 +858,7 @@ function createHistoryOverlay() {
       try {
         // Fetch complete details from the API
         const details = await getHistoryById(id);
-        console.log('Fetched history details:', details);
+        //console.log('Fetched history details:', details);
         historyData = details;
         apiDataFetched = true;
       } catch (error) {

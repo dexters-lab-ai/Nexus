@@ -9,9 +9,9 @@ import { fileURLToPath } from 'url';
 // ======================================
 import fs from 'fs';
 import { randomBytes } from 'crypto';
-const pcControl = require('./src/utils/pcControl');
-const androidControl = require('./src/utils/androidControl');
-const androidConfig = require('./src/config/androidControlConfig');
+import pcControl from './src/utils/pcControl.js';
+import androidControl from './src/utils/androidControl.js';
+import androidConfig from './src/config/androidControlConfig.js';
 import express from 'express';
 import { createServer } from 'http';
 import session from 'express-session';
@@ -32,8 +32,31 @@ import { AbortError } from 'p-retry';
 import jwt from 'jsonwebtoken';
 import cookie from 'cookie';
 
-// Create Express app
+// Create Express app and HTTP server
 const app = express();
+const server = createServer(app);
+
+// Track connected Android devices
+const androidClients = new Map();
+
+// Helper function to send message to Android device
+function sendToAndroidDevice(userId, deviceId, message) {
+  const clientId = `${userId}:${deviceId}`;
+  const ws = androidClients.get(clientId);
+  
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
+      ws.send(messageStr);
+      return true;
+    } catch (error) {
+      console.error(`Error sending message to ${clientId}:`, error);
+      return false;
+    }
+  }
+  
+  return false;
+}
 
 // ======================================
 // 0.1 HEALTH CHECK ENDPOINT
@@ -264,11 +287,222 @@ function setupWebSocketServer(server) {
     }
   });
   
-  // WebSocket connection handler - individual connection management is handled in the upgrade handler
-  wss.on('connection', (ws) => {
+  // WebSocket connection handler
+  wss.on('connection', (ws, req) => {
+    // Check if this is an Android device connection
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    if (url.pathname === '/ws/android') {
+      const deviceId = url.searchParams.get('deviceId');
+      const userId = req.session?.userId || 'anonymous';
+      
+      if (!deviceId) {
+        ws.close(1008, 'Device ID is required');
+        return;
+      }
+
+      const clientId = `${userId}:${deviceId}`;
+      console.log(`Android WebSocket connected: ${clientId}`);
+      
+      // Store the WebSocket connection
+      androidClients.set(clientId, ws);
+      
+      // Handle messages from Android device
+      ws.on('message', (message) => {
+        try {
+          const data = JSON.parse(message);
+          console.log(`Message from ${clientId}:`, data);
+          
+          // Handle different message types
+          switch (data.type) {
+            case 'ping':
+              ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+              break;
+            case 'log':
+              console.log(`[${deviceId}]`, data.message);
+              break;
+            case 'error':
+              console.error(`[${deviceId}] Error:`, data.message);
+              break;
+          }
+        } catch (error) {
+          console.error('Error processing WebSocket message:', error);
+        }
+      });
+      
+      // Handle disconnection
+      ws.on('close', () => {
+        console.log(`Android WebSocket disconnected: ${clientId}`);
+        androidClients.delete(clientId);
+      });
+      
+      // Handle errors
+      ws.on('error', (error) => {
+        console.error(`WebSocket error for ${clientId}:`, error);
+        ws.close();
+        androidClients.delete(clientId);
+      });
+      
+      return; // Skip default connection handling for Android connections
+    }
+    
+    // Handle regular WebSocket connections (existing code)
     // Connection logging is handled in the upgrade handler
-    // All event handlers are set up in the upgrade handler to avoid duplication
+    // All other event handlers are set up in the upgrade handler
   });
+
+  // Track WebSocket clients by user ID
+  const userClients = new Map();
+
+  // Handle WebSocket control messages
+  function handleControlMessage(ws, data) {
+    try {
+      if (!data.type) {
+        throw new Error('Message type is required');
+      }
+
+      console.log('WebSocket control message:', data.type);
+      
+      switch (data.type) {
+        case 'register_client':
+          // Register this as a control client
+          ws.clientType = 'control';
+          ws.clientId = `client_${Date.now()}`;
+          ws.userId = data.userId || 'anonymous';
+          
+          // Store the WebSocket connection
+          if (!userClients.has(ws.userId)) {
+            userClients.set(ws.userId, new Set());
+          }
+          userClients.get(ws.userId).add(ws);
+          
+          // Send acknowledgment
+          ws.send(JSON.stringify({
+            type: 'connection_ack',
+            clientId: ws.clientId,
+            userId: ws.userId,
+            timestamp: Date.now()
+          }));
+          break;
+          
+        case 'device_status_update':
+          // Forward status updates to other clients of the same user
+          if (ws.userId) {
+            broadcastToUser(ws.userId, {
+              type: 'device_status_update',
+              status: data.status,
+              timestamp: Date.now()
+            }, ws.clientId);
+          }
+          break;
+          
+        case 'device_connected':
+        case 'device_disconnected':
+          // Forward connection events to other clients of the same user
+          if (ws.userId) {
+            broadcastToUser(ws.userId, {
+              type: data.type,
+              device: data.device,
+              timestamp: Date.now()
+            }, ws.clientId);
+          }
+          break;
+          
+        default:
+          console.log('Unhandled control message type:', data.type);
+          ws.send(JSON.stringify({
+            type: 'error',
+            message: `Unhandled message type: ${data.type}`,
+            timestamp: Date.now()
+          }));
+      }
+    } catch (error) {
+      console.error('Error handling control message:', error);
+      sendError(ws, error);
+    }
+  }
+  
+  // Send error response to client
+  function sendError(ws, error) {
+    try {
+      ws.send(JSON.stringify({
+        type: 'error',
+        message: error.message || 'An error occurred',
+        timestamp: Date.now()
+      }));
+    } catch (e) {
+      console.error('Failed to send error to client:', e);
+    }
+  }
+  
+  // Broadcast message to all clients of a specific user
+  function broadcastToUser(userId, message, excludeClientId = null) {
+    const clients = userClients.get(userId);
+    if (!clients) return;
+    
+    const messageStr = JSON.stringify(message);
+    let disconnectedClients = [];
+    
+    clients.forEach(client => {
+      try {
+        // Skip excluded client
+        if (excludeClientId && client.clientId === excludeClientId) return;
+        
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(messageStr);
+        } else {
+          disconnectedClients.push(client);
+        }
+      } catch (error) {
+        console.error('Error sending message to client:', error);
+        disconnectedClients.push(client);
+      }
+    });
+    
+    // Clean up disconnected clients
+    if (disconnectedClients.length > 0) {
+      disconnectedClients.forEach(client => {
+        clients.delete(client);
+      });
+      
+      // Remove user entry if no more clients
+      if (clients.size === 0) {
+        userClients.delete(userId);
+      }
+    }
+  }
+  
+  // Clean up disconnected clients
+  function cleanupDisconnectedClients() {
+    let disconnectedCount = 0;
+    
+    userClients.forEach((clients, userId) => {
+      const beforeSize = clients.size;
+      
+      // Remove disconnected clients
+      clients.forEach(client => {
+        if (client.readyState !== WebSocket.OPEN) {
+          clients.delete(client);
+          disconnectedCount++;
+        }
+      });
+      
+      // Remove user entry if no more clients
+      if (clients.size === 0) {
+        userClients.delete(userId);
+      } else if (clients.size < beforeSize) {
+        console.log(`Cleaned up ${beforeSize - clients.size} disconnected clients for user ${userId}`);
+      }
+    });
+    
+    if (disconnectedCount > 0) {
+      console.log(`Cleaned up ${disconnectedCount} total disconnected clients`);
+    }
+    
+    return disconnectedCount;
+  }
+  
+  // Periodically clean up disconnected clients (every 5 minutes)
+  setInterval(cleanupDisconnectedClients, 5 * 60 * 1000);
 
   // Handle HTTP server upgrade for WebSocket connections
   server.on('upgrade', (request, socket, head) => {
@@ -471,11 +705,12 @@ function setupWebSocketServer(server) {
                 console.error(`[WebSocket] Error sending queued message to user ${userId}:`, error);
               }
             });
+            // Clear the queue after sending
             unsentMessages.delete(userId);
           }
           
-          // Handle incoming messages
-          const handleMessage = (message) => {
+          // Define the WebSocket message handler
+          const handleMessage = async (message) => {
             try {
               const now = Date.now();
               ws.lastActivity = now; // Update last activity timestamp
@@ -485,13 +720,20 @@ function setupWebSocketServer(server) {
               try {
                 data = JSON.parse(message);
               } catch (e) {
-                // Not a JSON message, ignore
+                console.error(`[WebSocket] Error parsing message from ${connectionId}:`, e);
                 return;
               }
               
               // Log message with connection details (filter out pings from logs)
               if (data.type !== 'ping' && data.type !== 'pong') {
                 console.log(`[WebSocket] Message from ${connectionId} (${userId}):`, data);
+              }
+              
+              // Handle Android control messages
+              if (data.type && data.type.startsWith('android_')) {
+                // Handle Android control messages
+                handleAndroidControlMessage(ws, data);
+                return;
               }
               
               // Handle application-level ping (client-initiated)
@@ -591,9 +833,20 @@ function setupWebSocketServer(server) {
               }
               
               // Handle other message types here...
+              console.log(`[WebSocket] Unhandled message type: ${data.type}`);
               
             } catch (error) {
               console.error(`[WebSocket] Error processing message from ${connectionId}:`, error);
+              try {
+                ws.send(JSON.stringify({
+                  type: 'error',
+                  error: 'Failed to process message',
+                  details: error.message,
+                  timestamp: Date.now()
+                }));
+              } catch (sendError) {
+                console.error(`[WebSocket] Failed to send error response:`, sendError);
+              }
             }
           };
           
@@ -1525,6 +1778,23 @@ async function startApp() {
 // ====================================
 // 10. ROUTES & MIDDLEWARE
 // ======================================
+
+// API endpoint to check ADB status and connected devices
+app.get('/api/android/status', async (req, res) => {
+  try {
+    const status = await androidControl.checkAdbStatus();
+    res.json(status);
+  } catch (error) {
+    console.error('Error checking ADB status:', error);
+    res.status(500).json({
+      installed: false,
+      version: null,
+      devices: [],
+      error: 'Failed to check ADB status: ' + error.message
+    });
+  }
+});
+
 import authRoutes from './src/routes/auth.js';
 import taskRoutes from './src/routes/tasks.js';
 import billingRoutes from './src/routes/billing.js';
@@ -1583,7 +1853,6 @@ const guard = (req, res, next) => {
 
 // Public API routes (no auth required)
 app.use('/api/auth', authRoutes);
-
 
 // API: Who Am I (userId sync endpoint) - Moved to robust implementation below
 

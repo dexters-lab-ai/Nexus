@@ -635,6 +635,28 @@ export const api = {
     }
   },
 
+  // Android endpoints
+  android: {
+    /**
+     * Get Android device status and ADB information
+     * @returns {Promise<{installed: boolean, version: string, devices: Array, error: string}>} - Android status information
+     */
+    getStatus: () => get('/api/android/status'),
+    
+    /**
+     * Connect to an Android device
+     * @param {string} deviceId - Device ID to connect to
+     * @returns {Promise<{success: boolean, message: string}>} - Connection status
+     */
+    connectDevice: (deviceId) => post('/api/android/connect', { deviceId }),
+    
+    /**
+     * Disconnect from current Android device
+     * @returns {Promise<{success: boolean, message: string}>} - Disconnection status
+     */
+    disconnectDevice: () => post('/api/android/disconnect')
+  },
+  
   // Billing endpoints
   billing: {
     /**
