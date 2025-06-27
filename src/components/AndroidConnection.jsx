@@ -1,49 +1,70 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-  Button, 
+  Button,
   Card, 
   List, 
-  Typography, 
+  Tabs,
   Space, 
   Tag, 
   Alert, 
-  message, 
-  Modal, 
-  Progress, 
   Badge, 
+  Spin, 
+  Modal, 
+  Steps, 
+  Typography, 
   Tooltip, 
-  Divider, 
-  notification,
-  Popconfirm
+  notification 
 } from 'antd';
 import { 
   AndroidFilled, 
-  SyncOutlined, 
-  UsbOutlined, 
   CheckCircleOutlined, 
   CloseCircleOutlined, 
-  ExclamationCircleOutlined, 
-  InfoCircleOutlined, 
+  DownloadOutlined, 
   LoadingOutlined, 
-  QuestionCircleOutlined,
+  QuestionCircleOutlined, 
+  ReloadOutlined, 
+  UsbOutlined,
   LinkOutlined,
-  DisconnectOutlined,
-  DownloadOutlined,
-  ReloadOutlined,
-  CheckOutlined,
-  WarningOutlined
-} from '@ant-design/icons';
-import PropTypes from 'prop-types';
+  ToolOutlined,
+  CodeOutlined
+} from '@ant-design/icons'; 
+import RippleButton from './RippleButton';
 import api from '../utils/api';
 import './AndroidConnection.css';
 
-// Get WebSocket URL based on environment
-const getWebSocketUrl = (deviceId = '') => {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = window.location.host;
-  const deviceParam = deviceId ? `?deviceId=${encodeURIComponent(deviceId)}` : '';
-  return `${protocol}//${host}/ws/android${deviceParam}`;
-};
+// Reusable action button component
+const ActionButton = ({ 
+  type = 'primary', 
+  danger = false, 
+  icon, 
+  onClick, 
+  children, 
+  style = {},
+  maxWidth = 200
+}) => (
+  <RippleButton
+    type={type}
+    danger={danger}
+    onClick={onClick}
+    style={{
+      height: 40,
+      fontSize: 14,
+      fontWeight: 500,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      maxWidth,
+      margin: '0 auto',
+      ...style
+    }}
+  >
+    {icon}
+    {children}
+  </RippleButton>
+);
+
+
 
 // Status constants
 const STATUS = {
@@ -53,1036 +74,731 @@ const STATUS = {
   ERROR: 'error'
 };
 
-// Error boundary component
-class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error, errorInfo) {
-    console.error('AndroidConnection Error:', error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <Alert
-          type="error"
-          message="Something went wrong"
-          description={
-            <div>
-              <p>Failed to load Android connection widget.</p>
-              <Button 
-                type="primary" 
-                onClick={() => this.setState({ hasError: false, error: null })}
-              >
-                Retry
-              </Button>
-            </div>
-          }
-          showIcon
-          style={{ margin: '16px' }}
-        />
-      );
-    }
-    return this.props.children;
-  }
-}
-
-ErrorBoundary.propTypes = {
-  children: PropTypes.node.isRequired
-};
-
-// Get API base URL based on environment
-const getApiBaseUrl = () => {
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
-  } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return `http://${window.location.hostname}:3420`; // Development port
-  }
-  return window.location.origin; // Production
-};
-
-// Helper function to make API requests
-const apiRequest = async (endpoint, options = {}) => {
-  try {
-    const apiBase = getApiBaseUrl();
-    const response = await fetch(`${apiBase}${endpoint}`, {
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        ...options.headers,
-      },
-      ...options,
-    });
-
-    if (!response.ok) {
-      const error = new Error(`HTTP error! status: ${response.status}`);
-      error.status = response.status;
-      throw error;
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('API Request Failed:', error);
-    console.debug('API Base URL:', getApiBaseUrl());
-    throw error;
-  }
-};
-
-const { Title, Text, Paragraph } = Typography;
-
-// Add some inline styles for connection status
-const connectionStatusStyles = {
-  container: {
-    display: 'flex',
-    alignItems: 'center',
-    padding: '12px 16px',
-    borderRadius: '8px',
-    marginBottom: '16px',
-    backgroundColor: '#fafafa',
-    border: '1px solid #f0f0f0'
-  },
-  connected: {
-    backgroundColor: '#f6ffed',
-    borderColor: '#b7eb8f'
-  },
-  error: {
-    backgroundColor: '#fff2f0',
-    borderColor: '#ffccc7'
-  },
-  icon: {
-    marginRight: '8px',
-    fontSize: '16px'
-  },
-  text: {
-    flex: 1
-  },
-  button: {
-    marginLeft: '8px'
-  }
-};
-
-const AndroidConnection = () => {
-  // ADB and device status states
-  const [adbStatus, setAdbStatus] = useState({
-    installed: false,
-    checking: true,
-    version: null
-  });
-
-  const [deviceStatus, setDeviceStatus] = useState({
-    connected: false,
-    connecting: false,
+const AndroidConnection = ({ onClose, active = false }) => {
+  // Consolidated state
+  const [state, setState] = useState({
+    status: STATUS.DISCONNECTED,
+    error: null,
+    loading: false,
+    adbStatus: {
+      installed: false,
+      checking: true,
+      error: null
+    },
     device: null,
-    devices: []
+    devices: [],
+    showInstallModal: false,
+    isInstalling: false,
+    installProgress: []
   });
 
-  const [status, setStatus] = useState(STATUS.DISCONNECTED);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  // Removed setupComplete state as we're using manual installation
-  const [installProgress, setInstallProgress] = useState([]);
-  const [showInstallModal, setShowInstallModal] = useState(false);
-  const [isInstalling, setIsInstalling] = useState(false);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [selectedDevice, setSelectedDevice] = useState(null);
   const ws = useRef(null);
   const reconnectAttempts = useRef(0);
-  const maxReconnectAttempts = 5;
-  const reconnectTimeout = useRef(null);
   const isMounted = useRef(true);
+  const reconnectTimeout = useRef(null);
 
-  // ADB status is now checked through the API client
-  // All ADB status checks should use api.android.getStatus()
-
-  // Handle installation progress updates
-  const handleInstallProgress = useCallback((data) => {
-    setInstallProgress(prev => [...prev, {
-      type: data.status || 'info',
-      message: data.message,
-      timestamp: data.timestamp || Date.now()
-    }]);
-    
-    if (data.status === 'success') {
-      setTimeout(() => {
-        setSetupComplete(true);
-        setShowInstallModal(false);
-        setInstallProgress([]);
-      }, 1500);
-    } else if (data.status === 'error') {
-      setIsInstalling(false);
-    }
-  }, []);
-
-  // Define handler functions before they're used in handleWebSocketMessage
-  const handlePing = useCallback(() => {
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify({
-        type: 'pong',
-        timestamp: Date.now()
-      }));
-    }
-  }, []);
-
-  const handlePingMessage = useCallback((data) => {
-    if (ws.current) {
-      ws.current.lastPong = Date.now();
-      ws.current.isAlive = true;
-    }
-  }, []);
-
-  const updateDeviceStatus = (data) => {
-    setConnectedDevice(data.connected ? data.deviceId : null);
-    setDevices(data.connected ? [{ id: data.deviceId, name: data.deviceName || 'Android Device' }] : []);
-    setSetupComplete(data.setupComplete);
-    setLoading(false);
-  };
-
-  const handleDeviceConnected = (data) => {
-    setConnectedDevice(data.deviceId);
-    setDevices([{ id: data.deviceId, name: data.deviceName || 'Android Device' }]);
-    setStatus(STATUS.CONNECTED);
-    message.success('Android device connected');
-  };
-
-  const handleDeviceDisconnected = (data) => {
-    setConnectedDevice(null);
-    setDevices([]);
-    setStatus(STATUS.DISCONNECTED);
-    message.warning('Android device disconnected');
-  };
-
-  const handleInstallStatus = useCallback((data) => {
-    setSetupComplete(data.completed || false);
-    if (data.error) {
-      message.error(`Installation error: ${data.error}`);
-      setError(data.error);
-    } else if (data.completed) {
-      message.success('Android tools installed successfully!');
-    } else if (data.message) {
-      message.info(data.message);
-    }
-    setLoading(false);
-  }, []);
-
-  // Handle WebSocket messages for device communication
-  const handleWebSocketMessage = useCallback((data) => {
-    if (!data || !data.type) {
-      console.warn('Received message with no type:', data);
-      return;
-    }
-
-    console.log('WebSocket message received:', data.type, data);
-
-    switch (data.type) {
-      case 'connection_ack':
-        console.log('Android control client registered');
-        setStatus(STATUS.CONNECTED);
-        setLoading(false);
-        break;
-        
-      case 'device_status':
-      case 'android_status':
-        // Update device connection status
-        setDeviceStatus(prev => ({
-          ...prev,
-          connected: data.connected || false,
-          device: data.device || null,
-          devices: data.devices || [],
-          connecting: false,
-          error: data.error || null
-        }));
-        
-        // Update connection status
-        setStatus(data.connected ? STATUS.CONNECTED : STATUS.DISCONNECTED);
-        
-        // Show connection status message
-        if (data.connected) {
-          message.success(`Connected to ${data.device?.name || 'Android device'}`);
-        } else if (data.error) {
-          message.error(`Device error: ${data.error}`);
-        }
-        break;
-
-      case 'device_connecting':
-        setDeviceStatus(prev => ({
-          ...prev,
-          connecting: true,
-          error: null
-        }));
-        setStatus(STATUS.CONNECTING);
-        message.info('Connecting to device...');
-        break;
-        
-      case 'device_connected':
-        setDeviceStatus(prev => ({
-          ...prev,
-          connected: true,
-          connecting: false,
-          device: {
-            id: data.deviceId,
-            name: data.deviceName || 'Android Device',
-            ...data.deviceInfo
-          },
-          error: null
-        }));
-        setStatus(STATUS.CONNECTED);
-        message.success('Device connected successfully');
-        break;
-        
-      case 'device_disconnected':
-        setDeviceStatus(prev => ({
-          ...prev,
-          connected: false,
-          connecting: false,
-          device: null,
-          error: data.reason || 'Device disconnected'
-        }));
-        setStatus(STATUS.DISCONNECTED);
-        message.warning('Device disconnected');
-        break;
-        
-      case 'android_error':
-        setError(data.message || 'An error occurred with Android connection');
-        setLoading(false);
-        setDeviceStatus(prev => ({
-          ...prev,
-          connected: false,
-          connecting: false,
-          error: data.message || 'Connection error'
-        }));
-        message.error(data.message || 'An error occurred');
-        break;
-        
-      case 'pong':
-        // Handle ping-pong for connection keep-alive
-        if (ws.current) {
-          ws.current.lastPong = Date.now();
-          ws.current.isAlive = true;
-        }
-        break;
-        
-      case 'ping':
-        // Respond to ping from server
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-          ws.current.send(JSON.stringify({
-            type: 'pong',
-            timestamp: Date.now()
-          }));
-        }
-        break;
-
-      default:
-        console.log('Unhandled message type:', data.type);
-    }
-  }, [
-    handleInstallProgress, 
-    handleInstallStatus,
-    handlePingMessage,
-    handlePing
-  ]);
-
-  // Check ADB status using the API client
-  const checkAdbStatus = useCallback(async () => {
-    try {
-      setAdbStatus(prev => ({ ...prev, checking: true }));
-      
-      // Use the API client to check ADB status
-      const status = await api.android.getStatus();
-      
-      // Update ADB status state
-      setAdbStatus({
-        installed: status.installed,
-        checking: false,
-        version: status.version || null,
-        error: status.error || null
-      });
-      
-      // Update device list if devices are found
-      if (status.devices && status.devices.length > 0) {
-        setDeviceStatus(prev => ({
-          ...prev,
-          devices: status.devices,
-          connected: true,
-          status: 'connected'
-        }));
-        return true;
-      }
-      
-      // No devices found
-      setDeviceStatus(prev => ({
+  // Update state helper
+  const updateState = (updates) => {
+    if (isMounted.current) {
+      setState(prev => ({
         ...prev,
-        connected: false,
-        status: 'disconnected',
-        devices: []
+        ...(typeof updates === 'function' ? updates(prev) : updates)
       }));
+    }
+  };
+
+  // Check ADB status with detailed feedback
+  const checkAdbStatus = useCallback(async () => {
+    console.log('checkAdbStatus called');
+    try {
+      updateState(prev => ({
+        ...prev,
+        loading: true,
+        error: null,
+        adbStatus: { 
+          ...prev.adbStatus,
+          checking: true,
+          error: null 
+        }
+      }));
+
+      const response = await api.android.getStatus();
       
-      // Show installation modal if ADB is not installed
-      if (!status.installed) {
-        setShowInstallModal(true);
+      if (response.installed) {
+        updateState(prev => ({
+          ...prev,
+          loading: false,
+          adbStatus: {
+            installed: true,
+            version: response.version,
+            error: null,
+            checking: false
+          },
+          // Only update status if not already connected
+          ...(prev.status !== STATUS.CONNECTED && {
+            status: STATUS.DISCONNECTED,
+            error: null
+          })
+        }));
+      } else {
+        updateState(prev => ({
+          ...prev,
+          loading: false,
+          adbStatus: {
+            installed: false,
+            version: null,
+            error: response.error || 'ADB is not installed',
+            checking: false
+          },
+          status: STATUS.ERROR,
+          error: 'ADB is not installed. Please install Android Debug Bridge.'
+        }));
       }
-      
-      return status.installed;
+      return response.installed;
     } catch (error) {
       console.error('Error checking ADB status:', error);
-      setAdbStatus({
-        installed: false,
-        checking: false,
-        version: null,
-        error: error.message || 'Failed to check ADB status'
-      });
-      setShowInstallModal(true);
+      updateState(prev => ({
+        ...prev,
+        loading: false,
+        adbStatus: {
+          installed: false,
+          version: null,
+          error: error.message,
+          checking: false
+        },
+        status: STATUS.ERROR,
+        error: 'Failed to check ADB status: ' + error.message
+      }));
       return false;
     }
   }, []);
 
-  // Check ADB status on component mount and when WebSocket connects
-  useEffect(() => {
-    let intervalId;
+  // WebSocket connection manager
+  const connectWebSocket = useCallback(() => {
+    console.log('connectWebSocket called, current attempts:', reconnectAttempts.current);
     
-    const checkStatus = async () => {
-      const isInstalled = await checkAdbStatus();
-      
-      // Only set up interval if ADB is not installed
-      if (!isInstalled && !intervalId) {
-        intervalId = setInterval(checkAdbStatus, 10000);
-      }
-    };
-    
-    // Initial check
-    checkStatus();
-    
-    // Cleanup function
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, []); // Empty dependency array to run only on mount/unmount
-
-  // Handle ADB installation
-  const installAdb = useCallback(async () => {
-    try {
-      setIsInstalling(true);
-      setInstallProgress([{ 
-        type: 'info', 
-        message: 'Starting ADB installation...',
-        timestamp: Date.now()
-      }]);
-      
-      // Show installation instructions
-      const installUrl = 'https://developer.android.com/studio/releases/platform-tools';
-      setInstallProgress(prev => [...prev, {
-        type: 'info',
-        message: `Please install ADB from: ${installUrl}`,
-        timestamp: Date.now()
-      }]);
-      
-      // Open installation page in new tab
-      window.open(installUrl, '_blank');
-      
-      // Show success message
-      setInstallProgress(prev => [...prev, {
-        type: 'success',
-        message: 'Please follow the installation instructions in the new tab',
-        timestamp: Date.now()
-      }]);
-      
-      // Close modal after delay
-      setTimeout(() => {
-        setShowInstallModal(false);
-        setIsInstalling(false);
-        setInstallProgress([]);
-      }, 5000);
-      
-    } catch (error) {
-      console.error('Error during ADB installation:', error);
-      setInstallProgress(prev => [...prev, {
-        type: 'error',
-        message: `Installation error: ${error.message}`,
-        timestamp: Date.now()
-      }]);
-      setIsInstalling(false);
+    // Don't reconnect if we're already connected or have exceeded max attempts
+    if (ws.current?.readyState === WebSocket.OPEN || reconnectAttempts.current >= 5) {
+      console.log('WebSocket already connected or max attempts reached');
+      return;
     }
-  }, []);
 
-  // Initialize WebSocket connection for device communication
-  const initWebSocket = useCallback(() => {
+    // Clean up any existing connection
     if (ws.current) {
-      ws.current.close();
+      console.log('Cleaning up existing WebSocket connection');
+      ws.current.onopen = null;
+      ws.current.onclose = null;
+      ws.current.onerror = null;
+      ws.current.onmessage = null;
+      try {
+        ws.current.close();
+      } catch (e) {
+        console.error('Error closing WebSocket:', e);
+      }
+      ws.current = null;
     }
 
-    setStatus(STATUS.CONNECTING);
-    setLoading(true);
+    // Only update state if this is the first attempt
+    if (reconnectAttempts.current === 0) {
+      updateState(prev => ({
+        ...prev,
+        status: STATUS.CONNECTING,
+        error: null
+      }));
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    const wsUrl = `${protocol}//${host}/ws/frontend`;
+    
+    console.log('Creating new WebSocket connection to:', wsUrl);
     
     try {
-      // Generate a unique client ID if no device is connected
-      const deviceId = deviceStatus.device?.id || `client_${Date.now()}`;
-      const wsUrl = getWebSocketUrl(deviceId);
-      
-      console.log('Connecting to Android WebSocket:', wsUrl);
       ws.current = new WebSocket(wsUrl);
 
-      ws.current.onopen = async () => {
-        if (!isMounted.current) return;
-        
-        try {
-          setStatus(STATUS.CONNECTED);
-          reconnectAttempts.current = 0;
-          console.log('WebSocket connected for Android control');
-          
-          // Register this as a control client
-          ws.current.send(JSON.stringify({ 
-            type: 'register_client',
-            userId: 'current_user_id', // Replace with actual user ID from your auth system
-            timestamp: Date.now(),
-            clientType: 'web'
-          }));
-          
-          // Initial status check - this will handle ADB status check via API
-          await refreshStatus();
-          
-        } catch (error) {
-          console.error('Error during WebSocket initialization:', error);
-          setStatus(STATUS.ERROR);
-          setError('Failed to initialize device connection. Please try again.');
-          
-          // Attempt to reconnect on error
-          if (reconnectAttempts.current < maxReconnectAttempts) {
-            console.log('Attempting to reconnect...');
-            attemptReconnect();
-          }
-        }
+      ws.current.onopen = () => {
+        console.log('WebSocket connected successfully');
+        reconnectAttempts.current = 0;
+        updateState(prev => ({
+          ...prev,
+          status: STATUS.CONNECTED,
+          error: null
+        }));
       };
 
       ws.current.onmessage = (event) => {
-        if (!isMounted.current) return;
-        
         try {
           const data = JSON.parse(event.data);
-          console.log('WebSocket message received:', data.type, data);
+          console.log('WebSocket message received:', data);
           
           // Handle different message types
           switch (data.type) {
-            case 'connection_ack':
-              console.log('Successfully registered with WebSocket server');
-              setStatus(STATUS.CONNECTED);
-              setLoading(false);
-              break;
-              
-            case 'device_status_update':
-              // Update device status from server
-              setDeviceStatus(prev => ({
-                ...prev,
-                status: data.status,
-                lastUpdated: data.timestamp
-              }));
-              break;
-              
             case 'device_connected':
-              setDeviceStatus(prev => ({
+              console.log('Device connected:', data.device);
+              updateState(prev => ({
                 ...prev,
-                connected: true,
                 device: data.device,
-                error: null
+                // Only add to devices list if not already present
+                devices: prev.devices.some(d => d.id === data.device.id) 
+                  ? prev.devices 
+                  : [...prev.devices, data.device],
+                status: STATUS.CONNECTED,
+                error: null,
+                loading: false
               }));
-              setStatus(STATUS.CONNECTED);
-              message.success(`Device connected: ${data.device?.name || 'Android device'}`);
               break;
               
             case 'device_disconnected':
-              setDeviceStatus(prev => ({
-                ...prev,
-                connected: false,
-                device: null,
-                error: data.reason || 'Device disconnected'
-              }));
-              setStatus(STATUS.DISCONNECTED);
-              message.warning('Device disconnected');
+              console.log('Device disconnected:', data.deviceId);
+              updateState(prev => {
+                const newDevices = prev.devices.filter(dev => dev.id !== data.deviceId);
+                return {
+                  ...prev,
+                  // Only clear current device if it's the one that disconnected
+                  device: prev.device?.id === data.deviceId ? null : prev.device,
+                  devices: newDevices,
+                  // Only go to disconnected state if it was the current device
+                  status: prev.device?.id === data.deviceId ? STATUS.DISCONNECTED : prev.status,
+                  error: prev.device?.id === data.deviceId ? 'Device disconnected' : prev.error
+                };
+              });
               break;
               
-            case 'pong':
-              // Update last pong time for keep-alive
-              if (ws.current) {
-                ws.current.lastPong = Date.now();
+            case 'connection_established':
+              console.log('WebSocket connection established');
+              updateState(prev => ({
+                ...prev,
+                status: STATUS.CONNECTED,
+                error: null
+              }));
+              
+              // Request current device status
+              if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+                ws.current.send(JSON.stringify({ type: 'get_device_status' }));
               }
               break;
               
             case 'error':
               console.error('WebSocket error:', data.message);
-              setError(data.message);
-              setStatus(STATUS.ERROR);
+              updateState(prev => ({
+                ...prev,
+                status: data.severity === 'warning' ? prev.status : STATUS.ERROR,
+                error: data.message || 'Connection error'
+              }));
+              break;
+              
+            case 'device_list':
+              console.log('Received device list:', data.devices);
+              if (data.devices && data.devices.length > 0) {
+                updateState(prev => ({
+                  ...prev,
+                  devices: data.devices,
+                  // If we don't have a current device but have devices, use the first one
+                  device: prev.device || data.devices[0],
+                  status: prev.device ? prev.status : STATUS.CONNECTED
+                }));
+              }
               break;
               
             default:
-              console.warn('Unhandled WebSocket message type:', data.type);
+              console.log('Unhandled WebSocket message type:', data.type);
           }
         } catch (error) {
           console.error('Error processing WebSocket message:', error, event.data);
+          updateState(prev => ({
+            ...prev,
+            status: STATUS.ERROR,
+            error: 'Failed to process message from server',
+            loading: false
+          }));
         }
       };
 
       ws.current.onerror = (error) => {
         console.error('WebSocket error:', error);
-        setStatus(STATUS.ERROR);
-        setError('Connection error. Please check your network and try again.');
-        attemptReconnect();
+        // Don't update state here to avoid UI flicker, let onclose handle it
       };
 
-      ws.current.onclose = () => {
-        if (!isMounted.current) return;
+      ws.current.onclose = (event) => {
+        console.log('WebSocket closed:', event.code, event.reason);
         
-        console.log('WebSocket disconnected');
-        setStatus(STATUS.DISCONNECTED);
-        
-        // Attempt to reconnect if not manually closed
-        if (isMounted.current) {
-          attemptReconnect();
-        }
-      };
-      
-      // Set up ping-pong for connection keep-alive
-      const pingInterval = setInterval(() => {
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-          ws.current.send(JSON.stringify({
-            type: 'ping',
-            timestamp: Date.now()
+        // Only attempt to reconnect if we're still mounted and haven't exceeded max attempts
+        if (isMounted.current && reconnectAttempts.current < 5) {
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000); // Exponential backoff with max 30s
+          console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current + 1}/5)`);
+          
+          reconnectAttempts.current += 1;
+          
+          // Clear any existing timeout to prevent multiple reconnection attempts
+          if (reconnectTimeout.current) {
+            clearTimeout(reconnectTimeout.current);
+          }
+          
+          reconnectTimeout.current = setTimeout(() => {
+            if (isMounted.current) {
+              connectWebSocket();
+            }
+          }, delay);
+        } else if (isMounted.current) {
+          console.log('Max reconnection attempts reached');
+          updateState(prev => ({
+            ...prev,
+            status: STATUS.ERROR,
+            error: 'Connection lost. Please refresh the page.',
+            loading: false
           }));
         }
-      }, 30000); // Ping every 30 seconds
-      
-      // Return cleanup function
-      return () => {
-        clearInterval(pingInterval);
       };
+      
     } catch (error) {
-      console.error('Error initializing WebSocket:', error);
-      setError('Failed to initialize WebSocket connection');
-      setStatus(STATUS.ERROR);
-      setLoading(false);
+      console.error('Error creating WebSocket:', error);
+      if (isMounted.current) {
+        updateState(prev => ({
+          ...prev,
+          status: STATUS.ERROR,
+          error: 'Failed to connect to server',
+          loading: false
+        }));
+      }
     }
+  }, []);
 
+  // Initialize WebSocket connection when component mounts
+  useEffect(() => {
+    isMounted.current = true;
+    connectWebSocket();
+    
+    // Cleanup function
     return () => {
+      isMounted.current = false;
+      
+      // Clear any pending reconnection attempts
+      if (reconnectTimeout.current) {
+        clearTimeout(reconnectTimeout.current);
+        reconnectTimeout.current = null;
+      }
+      
+      // Close WebSocket connection
       if (ws.current) {
-        ws.current.close();
+        console.log('Cleaning up WebSocket on unmount');
+        ws.current.onopen = null;
+        ws.current.onclose = null;
+        ws.current.onerror = null;
+        ws.current.onmessage = null;
+        try {
+          ws.current.close();
+        } catch (e) {
+          console.error('Error closing WebSocket on unmount:', e);
+        }
+        ws.current = null;
       }
     };
-  }, [checkAdbStatus]);
+  }, [connectWebSocket]);
 
-  const attemptReconnect = () => {
-    if (reconnectAttempts.current >= maxReconnectAttempts) {
-      setError('Max reconnection attempts reached. Please refresh the page.');
+  // Check for connected devices
+  const checkForDevices = useCallback(async () => {
+    try {
+      const status = await api.android.getStatus();
+      
+      if (!status.installed) {
+        return { 
+          error: 'ADB is not installed. Please install Android Debug Bridge first.',
+          requiresInstall: true
+        };
+      }
+      
+      if (!status.devices || status.devices.length === 0) {
+        return { 
+          error: 'No Android devices found. Please connect a device via USB and enable USB debugging.',
+          requiresConnection: true
+        };
+      }
+      
+      return { devices: status.devices };
+    } catch (error) {
+      console.error('Device check failed:', error);
+      return { 
+        error: error.message || 'Failed to check for devices',
+        requiresRetry: true
+      };
+    }
+  }, []);
+
+  // Track retry attempts for device connection
+  const retryCount = useRef(0);
+  const maxRetries = 3;
+  const connectionInProgress = useRef(false);
+
+  // Connect to device
+  const handleConnect = useCallback(async (isRetry = false) => {
+    // Prevent multiple connection attempts in parallel
+    if (connectionInProgress.current) {
+      console.log('Connection attempt already in progress');
       return;
     }
 
-    reconnectAttempts.current += 1;
-    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
-    
-    if (reconnectTimeout.current) {
-      clearTimeout(reconnectTimeout.current);
-    }
-    
-    reconnectTimeout.current = setTimeout(() => {
-      if (isMounted.current) {
-        initWebSocket();
-      }
-    }, delay);
-  };
-
-  // handlePing and handlePingMessage are already defined at the top of the file
-  // Handle installation status updates - implementation moved to the top of the file
-  // handleDeviceDisconnected is already defined at the top of the file
-
-  const handleError = (errorMessage) => {
-    setError(errorMessage);
-    message.error(errorMessage);
-  };
-
-  useEffect(() => {
-    isMounted.current = true;
-    initWebSocket();
-
-    return () => {
-      isMounted.current = false;
-      if (ws.current) {
-        ws.current.close();
-      }
-      if (reconnectTimeout.current) {
-        clearTimeout(reconnectTimeout.current);
-      }
-    };
-  }, [initWebSocket]);
-
-  const refreshStatus = async () => {
     try {
-      setLoading(true);
+      connectionInProgress.current = true;
       
-      // Get ADB status and device list from the API
-      const status = await api.android.getStatus();
+      // Reset retry count if this is a manual connection attempt
+      if (!isRetry) {
+        retryCount.current = 0;
+      }
+
+      updateState(prev => ({
+        ...prev,
+        status: STATUS.CONNECTING,
+        loading: true,
+        error: null
+      }));
+
+      // Check if WebSocket is connected
+      if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
+        if (reconnectAttempts.current < 5) {
+          console.log('WebSocket not connected, attempting to reconnect...');
+          connectWebSocket();
+          
+          // Wait a bit for connection to establish
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // If still not connected after waiting, throw error
+          if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
+            throw new Error('Unable to establish connection to server');
+          }
+        } else {
+          throw new Error('Connection to server failed after multiple attempts');
+        }
+      }
+
+      // Check for available devices
+      const deviceCheck = await checkForDevices();
       
-      // Update ADB status state
-      setAdbStatus({
-        installed: status.installed,
-        checking: false,
-        version: status.version || null,
-        error: status.error || null
-      });
+      if (deviceCheck.error) {
+        // Only show installation prompt if this is not a retry
+        if (deviceCheck.requiresInstall && !isRetry) {
+          updateState(prev => ({
+            ...prev,
+            showInstallModal: true,
+            loading: false
+          }));
+          return;
+        }
+        
+        // If we have devices but still get an error, it might be a connection issue
+        if (deviceCheck.requiresConnection) {
+          throw new Error(
+            'No Android device detected.\n\n' +
+            '1. Connect your device via USB\n' +
+            '2. Enable USB debugging in Developer options\n' +
+            '3. If prompted on your device, allow USB debugging\n' +
+            '4. Try a different USB cable or port if needed'
+          );
+        }
+        throw new Error(deviceCheck.error);
+      }
       
-      if (!status.installed) {
-        console.log('ADB not installed, showing installation prompt');
-        // Don't automatically show the install modal here
-        // Let the user click the install button
+      if (!deviceCheck.devices || deviceCheck.devices.length === 0) {
+        // Only show the error if this is the first attempt
+        if (!isRetry) {
+          throw new Error('No devices available for connection');
+        }
+        // For retries, just return and let the retry logic handle it
         return;
       }
-      const hasDevices = status.devices && status.devices.length > 0;
+
+      // Connect to the first available device
+      const device = deviceCheck.devices[0];
+      console.log('Attempting to connect to device:', device.id);
       
-      // Update device status based on server response
-      setDeviceStatus(prev => ({
+      // Update state to show connecting to device
+      updateState(prev => ({
         ...prev,
-        connected: hasDevices,
-        status: hasDevices ? 'connected' : 'disconnected',
-        devices: status.devices || [],
-        error: hasDevices ? null : 'No devices found'
+        device: { ...device, status: 'connecting' },
+        loading: true,
+        error: null
       }));
       
-      // Show appropriate message
-      if (hasDevices) {
-        message.success(`Found ${status.devices.length} device(s)`);
-      } else {
-        message.info('No Android devices found. Please connect a device.');
-      }
+      // Connect to the device
+      await api.android.connectDevice(device.id);
+      
+      // The WebSocket message handler will update the state when connection is confirmed
+      
     } catch (error) {
-      console.error('Error refreshing status:', error);
-      message.error('Failed to refresh device status: ' + (error.message || 'Unknown error'));
+      console.error('Connection failed:', error);
       
-      // Fall back to WebUSB check if server check fails
-      const isWebUsbAvailable = !!navigator.usb;
-      setDeviceStatus(prev => ({
-        ...prev,
-        connected: false,
-        status: 'error',
-        error: isWebUsbAvailable ? 'No devices found' : 'WebUSB not available',
-        devices: []
-      }));
-      
-      if (!isWebUsbAvailable) {
-        setShowInstallModal(true);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Connect to an Android device
-  const handleConnect = async () => {
-    try {
-      setLoading(true);
-      
-      // First check if ADB is installed using the API
-      const status = await api.android.getStatus();
-      
-      if (!status.installed) {
-        message.warning('ADB is required to connect to Android devices. Please install ADB first.');
-        setShowInstallModal(true);
-        return false;
-      }
-      
-      // If we have a selected device, connect to it
-      if (selectedDevice) {
-        await connectDevice(selectedDevice.id);
-      }
-
-      setLoading(true);
-      
-      // Request USB device access
-      try {
-        const device = await navigator.usb.requestDevice({
-          filters: [{
-            classCode: 0xFF, // Vendor specific class
-            protocolCode: 0x01 // ADB protocol
-          }]
-        });
-
-        console.log('Selected USB device:', device);
+      // Only retry if we haven't exceeded max retries
+      if (retryCount.current < maxRetries) {
+        retryCount.current += 1;
+        const retryMessage = `Connection failed (attempt ${retryCount.current}/${maxRetries})...`;
+        console.log(`${retryMessage}:`, error.message);
         
-        // Notify WebSocket server about the connection
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-          ws.current.send(JSON.stringify({
-            type: 'connect_device',
-            deviceId: device.serialNumber || device.deviceId,
-            deviceInfo: {
-              vendorId: device.vendorId,
-              productId: device.productId,
-              deviceName: device.productName || 'Android Device'
-            },
-            timestamp: Date.now()
-          }));
-          
-          setStatus(STATUS.CONNECTING);
-          message.info('Connecting to device...');
+        // Show loading state during retry
+        updateState(prev => ({
+          ...prev,
+          status: STATUS.CONNECTING,
+          loading: true,
+          error: retryMessage
+        }));
+        
+        // Wait before retrying (exponential backoff)
+        const delay = Math.min(1000 * Math.pow(2, retryCount.current - 1), 10000); // Max 10s delay
+        console.log(`Retrying in ${delay}ms...`);
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        // Retry the connection if we're still mounted
+        if (isMounted.current) {
+          return handleConnect(true);
         }
-      } catch (error) {
-        console.log('No device selected or access denied:', error);
-        message.warning('No device selected or access denied');
-        setLoading(false);
+        return;
+      }
+      
+      // If we've exhausted retries, show error
+      updateState(prev => ({
+        ...prev,
+        status: STATUS.ERROR,
+        error: `Failed to connect: ${error.message || 'Unknown error'}`,
+        loading: false
+      }));
+    } finally {
+      connectionInProgress.current = false;
+    }
+  }, [checkForDevices, connectWebSocket, updateState]);
+
+  // Disconnect from device
+  const handleDisconnect = useCallback(async () => {
+    // Don't proceed if already disconnected
+    if (state.status === STATUS.DISCONNECTED) {
+      return;
+    }
+
+    // Set loading state
+    updateState(prev => ({
+      ...prev,
+      loading: true,
+      error: null
+    }));
+
+    try {
+      // Only try to disconnect if we have a device connected
+      if (state.device) {
+        console.log('Disconnecting device:', state.device.id);
+        await api.android.disconnectDevice();
+      }
+      
+      // Update the UI immediately for better responsiveness
+      updateState(prev => ({
+        ...prev,
+        status: STATUS.DISCONNECTED,
+        device: null,
+        loading: false,
+        error: null
+      }));
+      
+      console.log('Device disconnected successfully');
+      
+    } catch (error) {
+      console.error('Disconnect failed:', error);
+      // Even if the API call fails, we can still update the UI
+      updateState(prev => ({
+        ...prev,
+        status: STATUS.DISCONNECTED,
+        device: null,
+        loading: false,
+        error: error.message || 'Device was disconnected, but there was an error'
+      }));
+    }
+  }, [state.device, state.status, updateState]);
+  const handleInstall = useCallback(async () => {
+    try {
+      updateState({ 
+        isInstalling: true, 
+        installProgress: [{
+          type: 'info',
+          message: 'Starting ADB installation...',
+          timestamp: Date.now()
+        }],
+        error: null
+      });
+      
+      // Add a small delay to show the initial message
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Start the installation process
+      const response = await api.android.install({
+        onProgress: (progress) => {
+          updateState(prev => ({
+            installProgress: [
+              ...prev.installProgress,
+              {
+                type: progress.status || 'info',
+                message: progress.message,
+                details: progress.details,
+                timestamp: Date.now()
+              }
+            ]
+          }));
+        }
+      });
+      
+      if (response.success) {
+        // Add success message
+        updateState(prev => ({
+          installProgress: [
+            ...prev.installProgress,
+            {
+              type: 'success',
+              message: 'ADB installed successfully!',
+              timestamp: Date.now()
+            }
+          ]
+        }));
+        
+        // Update ADB status after a short delay
+        setTimeout(() => {
+          checkAdbStatus();
+        }, 1500);
+      } else {
+        throw new Error(response.error || 'Installation failed');
       }
     } catch (error) {
-      console.error('Connection error:', error);
-      message.error(`Connection failed: ${error.message}`);
-      setStatus(STATUS.ERROR);
-      setLoading(false);
-    }
-  };
-
-  const handleInstall = () => {
-    try {
-      // Open the Android command-line tools download page in a new tab
-      const downloadUrl = 'https://developer.android.com/studio/releases/platform-tools';
-      const newWindow = window.open(downloadUrl, '_blank');
-      
-      if (!newWindow) {
-        throw new Error('Please allow popups for this site to download Android Tools');
-      }
-      
-      // Show installation modal with instructions
-      setShowInstallModal(true);
-      setInstallProgress([
-        {
-          type: 'info',
-          message: 'Opened Android Command Line Tools download page in your browser.',
-          timestamp: Date.now()
-        },
-        {
-          type: 'info',
-          message: 'Please follow these steps to install ADB:',
-          timestamp: Date.now()
-        },
-        {
-          type: 'info',
-          message: '1. Download the Command-line tools for your operating system',
-          timestamp: Date.now()
-        },
-        {
-          type: 'info',
-          message: '2. Extract the downloaded package to a location of your choice (e.g., C:\\android-sdk)',
-          timestamp: Date.now()
-        },
-        {
-          type: 'info',
-          message: '3. Add the platform-tools directory to your system PATH',
-          timestamp: Date.now()
-        },
-        {
-          type: 'info',
-          message: '4. Set the following environment variables:',
-          timestamp: Date.now()
-        },
-        {
-          type: 'info',
-          message: '   - ANDROID_HOME: Path to your Android SDK directory (e.g., C:\\android-sdk)',
-          timestamp: Date.now()
-        },
-        {
-          type: 'info',
-          message: '   - ANDROID_SDK_ROOT: Same as ANDROID_HOME',
-          timestamp: Date.now()
-        },
-        {
-          type: 'info',
-          message: '5. Verify the installation by opening a new terminal and running: adb --version',
-          timestamp: Date.now()
-        },
-        {
-          type: 'info',
-          message: '6. Restart this application after installation',
-          timestamp: Date.now()
-        }
-      ]);
-      
-    } catch (err) {
-      console.error('Error opening download page:', err);
-      setError('Failed to open download page: ' + (err.message || 'Unknown error'));
-      
-      // Fallback: If popup is blocked, show the URL directly
-      if (err.message.includes('popup')) {
-        setInstallProgress([
+      console.error('Installation error:', error);
+      updateState(prev => ({
+        error: error.message || 'Failed to install ADB',
+        isInstalling: false,
+        installProgress: [
+          ...prev.installProgress,
           {
             type: 'error',
-            message: 'Pop-up was blocked. Please visit this URL manually:',
-            timestamp: Date.now()
-          },
-          {
-            type: 'info',
-            message: 'https://developer.android.com/studio/releases/platform-tools',
+            message: 'Installation failed',
+            details: error.message,
             timestamp: Date.now()
           }
-        ]);
+        ]
+      }));
+    }
+  }, [checkAdbStatus]);
+
+  // Initialize/cleanup based on active state
+  useEffect(() => {
+    console.log('AndroidConnection active state changed:', active);
+    
+    if (active) {
+      isMounted.current = true;
+      console.log('Initializing AndroidConnection...');
+      
+      // Initialize ADB status check
+      checkAdbStatus().then(installed => {
+        console.log('ADB status checked, installed:', installed);
+        if (installed) {
+          // Only initialize WebSocket if ADB is installed
+          connectWebSocket();
+        }
+      });
+    } else {
+      console.log('Cleaning up AndroidConnection...');
+      // Cleanup WebSocket and timeouts
+      if (ws.current) {
+        console.log('Closing WebSocket connection');
+        ws.current.close();
+        ws.current = null;
+      }
+      if (reconnectTimeout.current) {
+        console.log('Clearing reconnect timeout');
+        clearTimeout(reconnectTimeout.current);
+        reconnectTimeout.current = null;
       }
     }
-  };
 
-  const getStatusBadge = () => {
-    switch (status) {
+    return () => {
+      if (!active) {
+        console.log('Component unmounting, cleaning up...');
+        isMounted.current = false;
+        if (ws.current) {
+          console.log('Closing WebSocket connection (cleanup)');
+          ws.current.close();
+          ws.current = null;
+        }
+        if (reconnectTimeout.current) {
+          console.log('Clearing reconnect timeout (cleanup)');
+          clearTimeout(reconnectTimeout.current);
+          reconnectTimeout.current = null;
+        }
+      }
+    };
+  }, [active]); // Removed checkAdbStatus and initWebSocket from deps to prevent unnecessary re-renders
+
+  // Render status badge based on connection state
+  const renderStatusBadge = () => {
+    switch (state.status) {
       case STATUS.CONNECTED:
         return <Badge status="success" text="Connected" />;
       case STATUS.CONNECTING:
-        return <Badge status="processing" text="Connecting..." />;
+        return <Badge status="processing" text="Connecting" />;
       case STATUS.ERROR:
-        return <Badge status="error" text="Connection Error" />;
+        return <Badge status="error" text="Error" />;
       default:
         return <Badge status="default" text="Disconnected" />;
     }
   };
 
-  const deviceConnect = useCallback(async (deviceUdid = null) => {
-    const udid = deviceUdid || selectedDevice?.udid;
-    
-    if (!udid) {
-      setError('No device selected');
-      return;
-    }
-
-    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
-      setError('Not connected to server');
-      return;
-    }
-    
-    setLoading(true);
-    setError('');
-
-    setDeviceStatus(prev => ({
-      ...prev,
-      status: 'connecting',
-      error: null
-    }));
-
-    try {
-      // Check if ADB is installed and working
-      const isAdbInstalled = await checkAdbStatus();
-      if (!isAdbInstalled) {
-        throw new Error('ADB is not installed or not working. Please check your ADB installation.');
-      }
-
-      // Send connect command via WebSocket
-      ws.current.send(JSON.stringify({
-        type: 'connect_device',
-        deviceUdid: udid,
-        timestamp: Date.now()
-      }));
-      
-      // Update the selected device from the current device list
-      setSelectedDevice(deviceStatus.devices.find(d => d.udid === udid) || null);
-      
-      // For local connection, we'll assume success after a short delay
-      // The actual connection status will be updated by the WebSocket handler
-      setTimeout(() => {
-        setDeviceStatus(prev => ({
-          ...prev,
-          status: 'connected',
-          connectedDevice: udid,
-          error: null
-        }));
-      }, 1000);
-      
-    } catch (err) {
-      console.error('Connection error:', err);
-      setDeviceStatus(prev => ({
-        ...prev,
-        status: 'disconnected',
-        error: err.message || 'Failed to connect to device',
-        connectedDevice: null
-      }));
-      setError('Failed to connect to device: ' + (err.message || 'Unknown error'));
-    } finally {
-      setLoading(false);
-    }
-  }, [ws, setSelectedDevice, checkAdbStatus, selectedDevice]);
-
-  const handleDisconnect = async () => {
-    // Try WebSocket disconnection first if available
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      try {
-        setLoading(true);
-        ws.current.send(JSON.stringify({
-          type: 'disconnect_device',
-          timestamp: Date.now()
-        }));
-        
-        // Update UI immediately for better UX
-        setConnectedDevice(null);
-        setDevices([]);
-        setStatus(STATUS.DISCONNECTED);
-        message.success('Disconnected from Android device');
-        return;
-      } catch (err) {
-        console.error('WebSocket disconnect error:', err);
-        // Fall through to API-based disconnection
-      }
-    }
-    
-    // Fall back to API-based disconnection if WebSocket fails or isn't available
-    try {
-      setLoading(true);
-      const data = await apiRequest('/api/android/disconnect', { method: 'POST' });
-      
-      if (data.success) {
-        message.success('Disconnected from Android device');
-        setConnectedDevice(null);
-        setDevices([]);
-        setStatus(STATUS.DISCONNECTED);
-      } else {
-        throw new Error(data.error || 'Failed to disconnect');
-      }
-    } catch (err) {
-      console.error('Disconnect error:', err);
-      message.error(err.status === 401 ? 'Session expired' : 'Failed to disconnect: ' + (err.message || 'Unknown error'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Removed runSetupScript as we're now using manual installation
-  // The handleInstall function now handles the manual installation process
-
-  const renderConnectionButton = () => {
-    // Connection in progress
-    if (status === STATUS.CONNECTING || deviceStatus.connecting) {
+  // Render device connection status
+  const renderDeviceStatus = () => {
+    if (state.error) {
       return (
-        <div className="connection-status warning">
-          <LoadingOutlined className="status-icon" />
-          <span className="status-text">Connecting to device...</span>
+        <div className="device-status error" style={{ padding: '16px', borderRadius: '8px', background: '#fff2f0', border: '1px solid #ffccc7' }}>
+          <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: '24px', marginBottom: '12px' }} />
+          <div className="status-content" style={{ textAlign: 'center' }}>
+            <h4 style={{ color: '#ff4d4f', marginBottom: '8px' }}>Connection Failed</h4>
+            <div className="error-message" style={{ 
+              background: 'white', 
+              padding: '12px', 
+              borderRadius: '4px', 
+              borderLeft: '3px solid #ff4d4f',
+              marginBottom: '16px',
+              textAlign: 'left'
+            }}>
+              {state.error.split('\n').map((line, i) => (
+                <React.Fragment key={i}>
+                  {line}
+                  <br />
+                </React.Fragment>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+              <Button 
+                type="primary" 
+                onClick={handleConnect}
+                loading={state.loading}
+                icon={<ReloadOutlined />}
+                style={{ marginRight: '8px' }}
+              >
+                Try Again
+              </Button>
+              <Button 
+                onClick={handleDisconnect}
+                disabled={state.status !== STATUS.CONNECTED}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
         </div>
       );
     }
 
-    // Connected state
-    if (status === STATUS.CONNECTED && deviceStatus.device) {
+    if (state.status === STATUS.CONNECTED && state.device) {
       return (
-        <div className="connection-status connected">
+        <div className="device-status connected">
           <CheckCircleOutlined className="status-icon" />
-          <div className="status-text">
-            <div>Connected to <strong>{deviceStatus.device.name || 'Android Device'}</strong></div>
-            {deviceStatus.device.model && (
-              <div className="device-details">
-                <span>Model: {deviceStatus.device.model}</span>
-                {deviceStatus.device.serial && <span>Serial: {deviceStatus.device.serial}</span>}
-              </div>
-            )}
-          </div>
-          <div className="connection-actions">
+          <div className="status-content">
+            <h4>Device Connected</h4>
+            <p className="device-name">{state.device.name || 'Android Device'}</p>
             <Button 
-              type="default"
+              type="primary" 
               danger
-              icon={<DisconnectOutlined />}
               onClick={handleDisconnect}
-              disabled={loading}
+              icon={<UsbOutlined />}
             >
               Disconnect
             </Button>
@@ -1091,788 +807,564 @@ const AndroidConnection = () => {
       );
     }
 
-    // Checking ADB status
-    if (adbStatus.checking) {
-      return (
-        <div className="connection-status">
-          <LoadingOutlined className="status-icon" />
-          <span className="status-text">Checking ADB installation...</span>
-        </div>
-      );
-    }
-
-    // ADB not installed
-    if (!adbStatus.installed) {
-      return (
-        <div className="connection-status" style={{
-          padding: '16px',
-          borderRadius: '12px',
-          background: 'rgba(255, 255, 255, 0.08)',
-          backdropFilter: 'blur(10px)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)'
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            flexDirection: 'column',
-            alignItems: 'center',
-            textAlign: 'center',
-            padding: '24px 16px',
-            gap: '20px'
-          }}>
-            <div style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '50%',
-              background: 'rgba(255, 77, 79, 0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '8px'
-            }}>
-              <CloseCircleOutlined style={{ 
-                color: '#ff4d4f', 
-                fontSize: '32px' 
-              }} />
-            </div>
-            
-            <div>
-              <h3 style={{ 
-                margin: '0 0 8px 0',
-                fontSize: '18px',
-                fontWeight: 600,
-                color: '#fff',
-                letterSpacing: '0.3px'
-              }}>
-                Android Debug Bridge Required
-              </h3>
-              <p style={{
-                margin: 0,
-                color: 'rgba(255, 255, 255, 0.75)',
-                fontSize: '14px',
-                lineHeight: '1.5',
-                maxWidth: '380px'
-              }}>
-                Connect to any Android device by installing ADB Tools. This will enable device debugging and automation features.
-              </p>
-            </div>
-            
-            <div style={{
-              display: 'flex',
-              gap: '12px',
-              flexWrap: 'wrap',
-              justifyContent: 'center',
-              marginTop: '8px'
-            }}>
-              <Button 
-                type="primary"
-                size="large"
-                icon={<DownloadOutlined />}
-                onClick={() => setShowInstallModal(true)}
-                style={{
-                  background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
-                  border: 'none',
-                  boxShadow: '0 2px 0 rgba(5, 145, 255, 0.1)',
-                  fontWeight: 500,
-                  padding: '0 24px',
-                  height: '40px',
-                  borderRadius: '8px'
-                }}
-              >
-                Install ADB Tools
-              </Button>
-              <Button 
-                type="default"
-                size="large"
-                icon={<QuestionCircleOutlined />}
-                onClick={() => window.open('https://developer.android.com/studio/command-line/adb', '_blank')}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  color: 'rgba(255, 255, 255, 0.85)',
-                  fontWeight: 500,
-                  padding: '0 20px',
-                  height: '40px',
-                  borderRadius: '8px'
-                }}
-              >
-                Learn More
-              </Button>
-            </div>
-            
-            <div style={{
-              marginTop: '16px',
-              padding: '12px 16px',
-              background: 'rgba(255, 255, 255, 0.05)',
-              borderRadius: '8px',
-              borderLeft: '3px solid rgba(24, 144, 255, 0.6)',
-              textAlign: 'left',
-              width: '100%',
-              maxWidth: '420px'
-            }}>
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center',
-                marginBottom: '8px',
-                color: 'rgba(255, 255, 255, 0.85)',
-                fontWeight: 500
-              }}>
-                <InfoCircleOutlined style={{ marginRight: '8px', color: '#1890ff' }} />
-                Quick Start Guide
-              </div>
-              <div style={{ 
-                fontSize: '13px', 
-                color: 'rgba(255, 255, 255, 0.65)',
-                lineHeight: '1.6'
-              }}>
-                <ol style={{ margin: '0 0 0 16px', padding: 0 }}>
-                  <li style={{ marginBottom: '6px' }}>Download and extract Android Command Line Tools</li>
-                  <li style={{ marginBottom: '6px' }}>Set environment variables for <code style={{
-                    background: 'rgba(0, 0, 0, 0.3)',
-                    padding: '2px 6px',
-                    borderRadius: '4px',
-                    fontFamily: 'monospace',
-                    fontSize: '12px'
-                  }}>ANDROID_HOME</code> and update <code style={{
-                    background: 'rgba(0, 0, 0, 0.3)',
-                    padding: '2px 6px',
-                    borderRadius: '4px',
-                    fontFamily: 'monospace',
-                    fontSize: '12px'
-                  }}>PATH</code></li>
-                  <li>Verify installation by running <code style={{
-                    background: 'rgba(0, 0, 0, 0.3)',
-                    padding: '2px 6px',
-                    borderRadius: '4px',
-                    fontFamily: 'monospace',
-                    fontSize: '12px'
-                  }}>adb --version</code></li>
-                </ol>
-                <p style={{ marginTop: '12px', fontStyle: 'italic', color: 'rgba(255, 255, 255, 0.5)' }}>
-                  Note: You may need to restart your computer for the PATH changes to take effect.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // Ready to connect
     return (
-      <div className="connection-status">
-        <InfoCircleOutlined className="status-icon" />
-        <div className="status-text">
-          <div><strong>Ready to connect</strong></div>
-          <div className="device-details">Connect an Android device with USB debugging enabled</div>
-        </div>
-        <div className="connection-actions">
+      <div className="device-status idle">
+        <AndroidFilled className="status-icon" />
+        <div className="status-content">
+          <h4>Ready to Connect</h4>
+          <p>Connect your Android device via USB</p>
           <Button 
             type="primary" 
-            icon={<UsbFilled />} 
             onClick={handleConnect}
-            loading={loading}
+            loading={state.loading}
+            icon={<LinkOutlined />}
           >
-            Connect Device
+            {state.loading ? 'Connecting...' : 'Connect Device'}
           </Button>
         </div>
       </div>
     );
   };
 
-  const renderInstallButton = () => {
-    return (
-      <Tooltip 
-        title="Download and install Android command-line tools"
-        placement="top"
-      >
-        <Button 
-          type="primary"
-          icon={<DownloadOutlined />}
-          onClick={() => window.open('https://developer.android.com/studio/releases/platform-tools', '_blank')}
-          style={{ marginTop: 16 }}
+  // Render connection button based on state
+  const renderConnectionButton = () => {
+    // Base button class with additional custom class for connection status
+    const baseButtonClass = 'ant-btn';
+    const statusClass = `connection-status ${state.status === STATUS.CONNECTED ? 'connected' : ''} ${state.status === STATUS.ERROR ? 'error' : ''}`;
+
+    if (state.loading) {
+      return (
+        <RippleButton
+          className={`${baseButtonClass} ant-btn-primary ant-btn-loading`}
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            cursor: 'wait'
+          }}
+          disabled
         >
-          Download Android Tools
-        </Button>
-      </Tooltip>
+          <LoadingOutlined style={{ fontSize: 16 }} spin />
+          <span>Connecting...</span>
+        </RippleButton>
+      );
+    }
+
+    // Show error state if there's an error
+    if (state.error) {
+      const isConnectionError = state.error.includes('No Android device detected');
+      
+      return (
+        <div className="connection-status error glass-card" style={{ padding: '16px', textAlign: 'center' }}>
+          <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: '24px', marginBottom: '8px' }} />
+          <h3 style={{ marginBottom: '8px' }}>Connection Error</h3>
+          <p style={{ 
+            color: 'rgba(255, 255, 255, 0.8)',
+            marginBottom: '16px',
+            fontSize: '14px'
+          }}>
+            {isConnectionError 
+              ? 'Unable to detect an Android device. Please check your connection and try again.'
+              : 'An error occurred while connecting to the device.'}
+          </p>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+            <RippleButton
+              className={`${baseButtonClass} ant-btn-primary`}
+              onClick={handleConnect}
+              icon={<ReloadOutlined />}
+            >
+              Retry
+            </RippleButton>
+            <RippleButton
+              className={`${baseButtonClass}`}
+              onClick={() => updateState({ showInstallModal: true })}
+            >
+              View Setup Instructions
+            </RippleButton>
+          </div>
+        </div>
+      );
+    }
+
+    if (state.adbStatus.error || !state.adbStatus.installed) {
+      return (
+        <div className="connection-status error glass-card">
+          <CloseCircleOutlined className="anticon" />
+          <h3>ADB Not Found</h3>
+          <p className="status-message">
+            Android Debug Bridge (ADB) is required to connect to Android devices.
+          </p>
+          <RippleButton
+            className={`${baseButtonClass} ant-btn-primary`}
+            icon={<DownloadOutlined />}
+            onClick={() => updateState({ showInstallModal: true })}
+          >
+            Install ADB Tools
+          </RippleButton>
+        </div>
+      );
+    }
+
+    if (state.status === STATUS.CONNECTED) {
+      return (
+        <div className={`${statusClass} glass-card`}>
+          <CheckCircleOutlined className="anticon" />
+          <h3>Device Connected</h3>
+          <p className="device-name">
+            {state.device?.name || 'Android Device'}
+          </p>
+          <RippleButton
+            className={`${baseButtonClass} ant-btn-dangerous`}
+            icon={<UsbOutlined />}
+            onClick={handleDisconnect}
+          >
+            Disconnect
+          </RippleButton>
+        </div>
+      );
+    }
+
+
+
+    // Default connect button
+    return (
+      <RippleButton
+        className={`${baseButtonClass} ant-btn-primary`}
+        icon={<LinkOutlined />}
+        onClick={handleConnect}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px',
+          opacity: state.adbStatus.installed ? 1 : 0.6,
+          cursor: state.adbStatus.installed ? 'pointer' : 'not-allowed'
+        }}
+        disabled={!state.adbStatus.installed}
+      >
+        {state.adbStatus.installed ? 'Connect to Device' : 'ADB Not Installed'}
+      </RippleButton>
     );
   };
 
-  // Calculate installation progress percentage
-  const calculateProgress = () => {
-    if (!installProgress.length) return 0;
-    
-    const totalSteps = 5; // Total expected steps in installation
-    const completedSteps = installProgress.filter(p => 
-      p.type === 'success' || 
-      (p.type === 'info' && p.message.includes('completed'))
-    ).length;
-    
-    return Math.min(Math.round((completedSteps / totalSteps) * 100), 100);
-  };
-
-  // Render installation modal
+  // Render installation modal with detailed guide
   const renderInstallModal = () => {
-    const progress = calculateProgress();
-    const hasError = installProgress.some(p => p.type === 'error');
-    const isComplete = installProgress.some(p => p.type === 'success' && p.message.includes('completed'));
-    
+    const tabItems = [
+      {
+        key: 'android_studio',
+        label: <span><CodeOutlined style={{ marginRight: 8 }} />Android Studio</span>,
+        children: (
+          <div style={{ padding: '8px 0' }}>
+            <h3 style={{ marginTop: 0 }}>Install ADB via Android Studio</h3>
+            <p>For a complete development environment with GUI tools:</p>
+            <ol style={{ paddingLeft: 20, marginBottom: 16 }}>
+              <li>Download and install <a href="https://developer.android.com/studio" target="_blank" rel="noopener noreferrer">Android Studio</a></li>
+              <li>Launch Android Studio and open SDK Manager:
+                <ul style={{ margin: '8px 0' }}>
+                  <li>Click <strong>More Actions</strong> → <strong>SDK Manager</strong> (or use the SDK Manager icon in the toolbar)</li>
+                  <li>Go to <strong>SDK Tools</strong> tab</li>
+                  <li>Check <strong>Android SDK Platform-Tools</strong> and <strong>Android SDK Build-Tools</strong></li>
+                  <li>Click <strong>Apply</strong> to install</li>
+                </ul>
+              </li>
+              <li>Find your SDK location:
+                <ul style={{ margin: '8px 0' }}>
+                  <li>In Android Studio, go to <strong>File</strong> → <strong>Project Structure</strong></li>
+                  <li>Note the <strong>Android SDK Location</strong> path (usually <code>%USERPROFILE%\\AppData\\Local\\Android\\Sdk</code>)</li>
+                </ul>
+              </li>
+              <li>Add to PATH (Windows):
+                <div style={{ margin: '8px 0' }}>
+                  <div style={{ marginBottom: 4 }}>Run these commands in Command Prompt (as Administrator):</div>
+                  <pre style={{
+                    background: 'rgba(15, 18, 30, 0.9)',
+                    color: 'rgba(255, 255, 255, 0.9)',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    margin: '4px 0',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-all',
+                    overflowX: 'auto',
+                    maxWidth: '100%'
+                  }}>
+                    setx ANDROID_HOME "%USERPROFILE%\\AppData\\Local\\Android\\Sdk"
+                  </pre>
+                  <pre style={{
+                    background: 'rgba(15, 18, 30, 0.9)',
+                    color: 'rgba(255, 255, 255, 0.9)',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    margin: '4px 0',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-all',
+                    overflowX: 'auto',
+                    maxWidth: '100%'
+                  }}>
+                    setx PATH "%PATH%;%ANDROID_HOME%\\platform-tools"
+                  </pre>
+                </div>
+              </li>
+              <li>Restart your computer for changes to take effect</li>
+              <li>Verify installation in Command Prompt:
+                <pre style={{ background: 'rgba(15, 18, 30, 0.9)', color: 'rgba(255, 255, 255, 0.9)', padding: '8px', borderRadius: '4px', margin: '8px 0' }}>
+                  adb --version
+                </pre>
+              </li>
+            </ol>
+          </div>
+        )
+      },
+      {
+        key: 'manual_setup',
+        label: <span><ToolOutlined style={{ marginRight: 8 }} />Manual Setup</span>,
+        children: (
+          <div style={{ padding: '8px 0' }}>
+            <h3 style={{ marginTop: 0 }}>Windows Setup</h3>
+            <ol style={{ paddingLeft: 20, marginBottom: 16 }}>
+              <li>Download <code>platform-tools.zip</code> from the link below</li>
+              <li>Extract the zip file - you'll get a folder named <code>platform-tools</code></li>
+              <li>Move this folder to <code>C:\\</code> so the final path is <code>C:\\platform-tools</code></li>
+              <li>Press <code>Win + R</code>, type <code>sysdm.cpl</code> and press Enter</li>
+              <li>Go to "Advanced" tab → "Environment Variables"</li>
+              <li>Under "System variables", click "New" and add:
+                <ul style={{ margin: '8px 0' }}>
+                  <li><strong>Variable name:</strong> <code>ANDROID_HOME</code></li>
+                  <li><strong>Variable value:</strong> <code>C:\\platform-tools</code></li>
+                </ul>
+              </li>
+              <li>Still in "System variables", find and select the "Path" variable, then click "Edit"</li>
+              <li>In the Edit Environment Variable window:
+                <ul style={{ margin: '8px 0' }}>
+                  <li>Click "New" to add a new entry</li>
+                  <li>Type: <code>%ANDROID_HOME%</code></li>
+                  <li>Click "OK" to save</li>
+                </ul>
+              </li>
+              <li>Click "OK" on all open dialogs to save your changes</li>
+              <li><strong>Important:</strong> Close and reopen any open Command Prompts</li>
+              <li>Open a new Command Prompt and verify:
+                <pre style={{ background: 'rgba(15, 18, 30, 0.9)', color: 'rgba(255, 255, 255, 0.9)', padding: '8px', borderRadius: '4px', margin: '8px 0' }}>
+                  adb --version
+                  echo %ANDROID_HOME%
+                </pre>
+              </li>
+            </ol>
+          </div>
+        )
+      },
+      {
+        key: 'macos',
+        label: 'macOS',
+        children: (
+          <div style={{ padding: '8px 0' }}>
+            <h3 style={{ marginTop: 0 }}>macOS Setup</h3>
+            <ol style={{ paddingLeft: 20, marginBottom: 16 }}>
+              <li>Download and extract Platform Tools ZIP file</li>
+              <li>Open Terminal and run these commands:
+                <pre style={{ background: 'rgba(15, 18, 30, 0.9)', color: 'rgba(255, 255, 255, 0.9)', padding: '8px', borderRadius: '4px', margin: '8px 0' }}>
+                  {`# Extract to home directory
+unzip ~/Downloads/platform-tools-*.zip -d ~/
+
+# Set up environment variables
+echo 'export ANDROID_HOME=$HOME/platform-tools' >> ~/.zshrc
+echo 'export PATH=$PATH:$ANDROID_HOME' >> ~/.zshrc
+
+# Apply changes
+source ~/.zshrc
+
+# Verify installation
+adb --version`}
+                </pre>
+              </li>
+              <li>Note: If you're using bash instead of zsh, replace <code>~/.zshrc</code> with <code>~/.bash_profile</code> or <code>~/.bashrc</code></li>
+            </ol>
+            <p><strong>Alternative (using Homebrew):</strong></p>
+            <pre style={{ background: 'rgba(15, 18, 30, 0.9)', color: 'rgba(255, 255, 255, 0.9)', padding: '8px', borderRadius: '4px', margin: '8px 0' }}>
+              brew install --cask android-platform-tools
+            </pre>
+          </div>
+        )
+      },
+      {
+        key: 'linux',
+        label: 'Linux',
+        children: (
+          <div style={{ padding: '8px 0' }}>
+            <h3 style={{ marginTop: 0 }}>Linux Setup</h3>
+            <ol style={{ paddingLeft: 20, marginBottom: 16 }}>
+              <li>Download and extract Platform Tools ZIP file</li>
+              <li>Open Terminal and run these commands:
+                <pre style={{ background: 'rgba(15, 18, 30, 0.9)', color: 'rgba(255, 255, 255, 0.9)', padding: '8px', borderRadius: '4px', margin: '8px 0' }}>
+                  {`# Create directory for Android SDK
+mkdir -p ~/Android/Sdk
+
+# Extract platform-tools
+unzip ~/Downloads/platform-tools-*.zip -d ~/Android/Sdk
+
+# Set up environment variables
+echo 'export ANDROID_HOME=$HOME/Android/Sdk/platform-tools' >> ~/.bashrc
+echo 'export PATH=$PATH:$ANDROID_HOME' >> ~/.bashrc
+
+# Apply changes
+source ~/.bashrc
+
+# Verify installation
+adb --version`}
+                </pre>
+              </li>
+              <li>Note: If you're using zsh, replace <code>~/.bashrc</code> with <code>~/.zshrc</code></li>
+            </ol>
+            <p><strong>Ubuntu/Debian (alternative):</strong></p>
+            <pre style={{ background: 'rgba(15, 18, 30, 0.9)', color: 'rgba(255, 255, 255, 0.9)', padding: '8px', borderRadius: '4px', margin: '8px 0' }}>
+              sudo apt-get install android-sdk-platform-tools
+            </pre>
+          </div>
+        )
+      }
+    ];
+
     return (
       <Modal
         title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <DownloadOutlined />
-            <span>Android Tools Installation</span>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <AndroidFilled style={{ marginRight: 8, color: '#6e7aff' }} />
+            <span>Android Debug Bridge (ADB) Setup</span>
           </div>
         }
-        open={showInstallModal}
-        onCancel={() => !isInstalling && setShowInstallModal(false)}
+        width={700}
+        open={state.showInstallModal}
+        onCancel={() => !state.isInstalling && updateState({ showInstallModal: false })}
         footer={[
           <Button 
             key="close" 
-            type="primary"
-            onClick={() => setShowInstallModal(false)}
-            disabled={isInstalling && !isComplete}
+            onClick={() => updateState({ showInstallModal: false })}
+            style={{ marginRight: 8 }}
           >
-            {isComplete ? 'Done' : isInstalling ? 'Installing...' : 'Close'}
+            Close
+          </Button>,
+          <Button 
+            key="download" 
+            type="primary"
+            icon={<DownloadOutlined />}
+            onClick={() => window.open('https://developer.android.com/studio/releases/platform-tools', '_blank')}
+          >
+            Download Platform Tools
           </Button>
         ]}
-        width={700}
-        maskClosable={!isInstalling}
-        keyboard={!isInstalling}
-      >
-        <div style={{ marginBottom: 16 }}>
-          {isInstalling && !isComplete && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span>Installation Progress</span>
-                <span>{progress}%</span>
+        bodyStyle={{ maxHeight: '70vh', overflowY: 'auto' }}>
+        <div style={{ marginBottom: 24 }}>
+          <Alert 
+            type="info" 
+            message="What is ADB?"
+            description={
+              <div>
+                <p>Android Debug Bridge (ADB) is a command-line tool that lets your computer communicate with an Android device. This app uses ADB to:</p>
+                <ul style={{ margin: '8px 0 0 20px' }}>
+                  <li>Connect to Android devices</li>
+                  <li>Transfer files and data</li>
+                  <li>Access device features</li>
+                  <li>Enable debugging capabilities</li>
+                </ul>
               </div>
-              <Progress 
-                percent={progress} 
-                status={hasError ? 'exception' : 'active'}
-                showInfo={false}
-                strokeColor={hasError ? '#ff4d4f' : '#1890ff'}
+            }
+            style={{ marginBottom: 24 }}
+          />
+          
+          <div style={{ marginBottom: 24 }}>
+            <h3>Installation Steps</h3>
+            
+            <div style={{ 
+              backgroundColor: 'rgba(110, 122, 255, 0.12)', 
+              border: '1px solid rgba(175, 110, 255, 0.12)',
+              borderRadius: 8,
+              padding: '16px 16px 8px',
+              marginBottom: 16
+            }}>
+              <h4>1. Download Platform Tools</h4>
+              <p>Get the latest version for your operating system:</p>
+              <Button 
+                type="primary" 
+                icon={<DownloadOutlined />}
+                onClick={() => window.open('https://developer.android.com/studio/releases/platform-tools', '_blank')}
+                style={{ margin: '8px 0 16px' }}
+              >
+                Download Platform Tools
+              </Button>
+              
+              <h4>2. Install and Configure</h4>
+              <Tabs
+                defaultActiveKey="android_studio"
+                items={tabItems}
+                style={{ marginTop: 16 }}
+              />
+              
+              <div style={{ borderTop: '1px solid #f0f0f0' }}>
+                <h4 style={{ marginTop: 0 }}>3. Enable USB Debugging on Your Android Device</h4>
+                <ol style={{ paddingLeft: 20, marginBottom: 16 }}>
+                  <li><strong>Enable Developer Options</strong>:
+                    <ol type="a" style={{ margin: '8px 0' }}>
+                      <li>Open <strong>Settings</strong> on your Android device</li>
+                      <li>Scroll down and tap <strong>About phone</strong></li>
+                      <li>Tap the <strong>Software Information</strong> menu</li>
+                      <li>Find <strong>Build number</strong> and tap it 7 times</li>
+                      <li>Enter your PIN/pattern if prompted</li>
+                      <li>You'll see a message "You are now a developer!"</li>
+                    </ol>
+                  </li>
+                  <li><strong>Enable USB Debugging</strong>:
+                    <ol type="a" style={{ margin: '8px 0' }}>
+                      <li>Go back to <strong>Settings</strong> home</li>
+                      <li>Scroll to bottom of Settings, tap <strong>Developer options</strong></li>
+                      <li>Toggle on <strong>USB debugging</strong>. (if greyed out, go to Settings {'>'} Security and Privacy {'>'} <strong>Auto Blocker</strong>. Disable it first, go back to Developer Settings - allow usb debugging)</li>
+                      <li>Confirm the security prompt</li>
+                    </ol>
+                  </li>
+                  <li><strong>Connect Your Device</strong>:
+                    <ol type="a" style={{ margin: '8px 0' }}>
+                      <li>Connect your device to the computer via USB</li>
+                      <li>On your device, tap the USB notification</li>
+                      <li>Select <strong>File transfer</strong> or <strong>MTP</strong> mode</li>
+                      <li>If prompted, allow USB debugging from this computer</li>
+                    </ol>
+                  </li>
+                </ol>
+                <Alert 
+                  type="info"
+                  message="Troubleshooting Tips"
+                  description={
+                    <ul style={{ margin: '8px 0 0 20px' }}>
+                      <li>If you don't see the USB debugging prompt, try a different USB port</li>
+                      <li>Make sure your device is not in "Charge only" mode</li>
+                      <li>Try a different USB cable if connection fails</li>
+                    </ul>
+                  }
+                  style={{ marginTop: 16 }}
+                />
+              </div>
+              
+              <h4>4. Verify Installation</h4>
+              <p>Open a new terminal/command prompt and run:</p>
+              <pre style={{ 
+                background: 'rgba(15, 18, 30, 0.9)', 
+                color: 'rgba(255, 255, 255, 0.9)',
+                padding: '8px 12px', 
+                borderRadius: '4px',
+                overflowX: 'auto',
+                margin: '8px 0 16px'
+              }}>
+                <code>adb version</code>
+              </pre>
+              <p>You should see the ADB version number if installed correctly.</p>
+              
+              <Alert 
+                type="info"
+                style={{ margin: '16px 0' }}
+                message={
+                  <>
+                    <strong>After installation:</strong>
+                    <ul style={{ margin: '8px 0 0 16px' }}>
+                      <li>Restart this application for the changes to take effect</li>
+                      <li>When prompted by Windows Firewall to "Allow access" for adb.exe, make sure to check both <strong>Private</strong> and <strong>Public</strong> networks</li>
+                      <li>After restarting App, go to <strong>Command Center → Devices</strong> to connect your Android device</li>
+                    </ul>
+                  </>
+                }
               />
             </div>
-          )}
-          
-          <div style={{ 
-            maxHeight: '50vh', 
-            overflowY: 'auto', 
-            border: '1px solid #f0f0f0',
-            borderRadius: 4,
-            padding: 16
-          }}>
-            {installProgress.length > 0 ? (
-              installProgress.map((item, index) => (
-                <div 
-                  key={index}
-                  style={{ 
-                    padding: '8px 0',
-                    borderBottom: '1px solid #f0f0f0',
-                    color: item.type === 'error' ? '#ff4d4f' : 'inherit'
-                  }}
-                >
-                  {item.message}
-                </div>
-              ))
-            ) : (
-              <div style={{ textAlign: 'center', padding: '20px 0', color: 'rgba(0, 0, 0, 0.45)' }}>
-                <LoadingOutlined style={{ fontSize: 24, marginBottom: 16, display: 'block' }} />
-                <div>Preparing installation instructions...</div>
-              </div>
-            )}
           </div>
           
-          {isComplete && (
-            <div style={{ 
-              marginTop: 16,
-              padding: '12px 16px',
-              backgroundColor: '#f6ffed',
-              border: '1px solid #b7eb8f',
-              borderRadius: 4
-            }}>
-              <CheckCircleOutlined style={{ color: '#52c41a', marginRight: 8 }} />
-              Installation completed successfully!
-            </div>
-          )}
-          
-          {hasError && (
-            <div style={{ 
-              marginTop: 16,
-              padding: '12px 16px',
-              backgroundColor: '#fff2f0',
-              border: '1px solid #ffccc7',
-              borderRadius: 4
-            }}>
-              <CloseCircleOutlined style={{ color: '#ff4d4f', marginRight: 8 }} />
-              Installation encountered an error. Please check the logs above for details.
-            </div>
-          )}
+          <Alert 
+            type="warning" 
+            showIcon
+            message="Troubleshooting"
+            description={
+              <ul style={{ margin: '8px 0 0 20px' }}>
+                <li>Restart your computer after installation</li>
+                <li>On Windows, install USB drivers if devices aren't detected</li>
+                <li>Enable USB debugging in Developer Options on your device</li>
+                <li>Check USB connection mode (use "File Transfer" or "PTP" mode)</li>
+              </ul>
+            }
+            style={{ marginBottom: 16 }}
+          />
         </div>
       </Modal>
     );
   };
 
   return (
-    <ErrorBoundary>
-      <Card 
-        title={
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <AndroidFilled style={{ marginRight: 8 }} />
-            <span>Android Device</span>
-            <div style={{ marginLeft: 8 }}>
-              {getStatusBadge()}
-            </div>
-            <Tooltip 
-              title={
-                <div>
-                  <p>Connection status: {status}</p>
-                  {error && <p>Error: {error}</p>}
-                  <p>Click for more details</p>
-                </div>
-              }
-              placement="right"
-            >
-              <Button 
-                type="text" 
-                size="small" 
-                icon={<InfoCircleOutlined />} 
-                onClick={() => setModalVisible(true)}
-              />
-            </Tooltip>
-            <Button 
-              type="text" 
-              size="small" 
-              icon={<ReloadOutlined />} 
-              onClick={refreshStatus}
-              loading={loading}
-              style={{ marginLeft: 4 }}
-            />
+    <Card
+      className="glass-card"
+      title={
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center',
+          color: 'rgba(255, 255, 255, 0.9)'
+        }}>
+          <AndroidFilled style={{ 
+            marginRight: 10,
+            fontSize: 18,
+            color: '#52c41a',
+            textShadow: '0 0 10px rgba(82, 196, 26, 0.5)'
+          }} />
+          <span style={{ 
+            fontSize: 15,
+            fontWeight: 500
+          }}>
+            Android Device
+          </span>
+          <div style={{ marginLeft: 10 }}>
+            {renderStatusBadge()}
           </div>
-        }
-    >
-      <div style={{ minHeight: '120px' }}>
-        {error && (
-          <Alert
-            type="error"
-            message="Connection Error"
-            description={
-              <div>
-                <p>{error}</p>
-                <Button 
-                  type="primary" 
-                  size="small" 
-                  onClick={refreshStatus}
-                  loading={loading}
-                >
-                  Retry
-                </Button>
-              </div>
-            }
-            showIcon
-            style={{ marginBottom: 16 }}
-          />
-        )}
-
-        {loading && !error ? (
-          <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <LoadingOutlined style={{ fontSize: 24 }} />
-            <div>Checking status...</div>
-          </div>
-        ) : status === STATUS.CONNECTED ? (
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <List
-              dataSource={deviceStatus.devices || []}
-              renderItem={device => (
-                <List.Item>
-                  <List.Item.Meta
-                    title={device.name}
-                    description={
-                      <Space direction="vertical" size={0}>
-                        <Text type="secondary" style={{ fontSize: 12 }}>ID: {device.id}</Text>
-                        <Text type="success" style={{ fontSize: 12 }}>
-                          <Badge status="success" /> Connected
-                        </Text>
-                      </Space>
-                    }
-                  />
-                </List.Item>
-              )}
-            />
-            {renderConnectionButton()}
-          </Space>
-        ) : (
-          <Space direction="vertical" style={{ width: '100%' }}>
-            {renderConnectionButton()}
-            <Button 
-              type="link" 
-              block 
-              onClick={() => setModalVisible(true)}
-              style={{ marginTop: 8 }}
-            >
-              Setup Instructions & Troubleshooting
-            </Button>
-          </Space>
-        )}
-      </div>
-
-      <Modal
-        title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <AndroidFilled />
-            <span>Android Device Setup</span>
-          </div>
-        }
-        open={modalVisible}
-        onCancel={() => setModalVisible(false)}
-        footer={[
-          <Button 
-            key="close" 
-            onClick={() => setModalVisible(false)}
-          >
-            Close
-          </Button>,
-          <Button 
-            key="download" 
-            type="primary" 
-            onClick={handleInstall}
-            icon={<DownloadOutlined />}
-          >
-            Download Android Tools
-          </Button>
-        ]}
-        width={600}
-      >
-        <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '0 16px 16px 0' }}>
-          <div style={{ marginBottom: 24 }}>
-            <Title level={5} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-              <span style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 28,
-                height: 28,
-                borderRadius: '50%',
-                backgroundColor: '#1890ff',
-                color: '#fff',
-                fontWeight: 'bold',
-                flexShrink: 0
-              }}>
-                1
-              </span>
-              <span>Install Android Command Line Tools</span>
-            </Title>
-            <div style={{ paddingLeft: 40, marginBottom: 24 }}>
-              <div style={{ 
-                backgroundColor: '#f0f7ff',
-                border: '1px solid #91d5ff',
-                borderRadius: 8,
-                padding: '16px',
-                marginBottom: '24px'
-              }}>
-                <Title level={5} style={{ marginTop: 0, marginBottom: 12 }}>What is ADB?</Title>
-                <p style={{ marginBottom: 12, lineHeight: 1.6 }}>
-                  <strong>Android Debug Bridge (ADB)</strong> is a command-line tool that lets you communicate with an Android device. 
-                  This app uses ADB to:
-                </p>
-                <ul style={{ margin: '0 0 16px 0', paddingLeft: '24px', lineHeight: 1.8 }}>
-                  <li>Securely connect to Android devices</li>
-                  <li>Transfer files between your computer and device</li>
-                  <li>Access device features and debugging information</li>
-                  <li>Enable advanced functionality within this application</li>
-                </ul>
-                <p style={{ marginBottom: 0, lineHeight: 1.6 }}>
-                  To get started, you'll need to install the Android Command Line Tools which include ADB.
-                </p>
-              </div>
-
-              <div style={{ marginBottom: 16 }}>
-                <Title level={5} style={{ marginBottom: 12 }}>Download Android Command Line Tools</Title>
-                <Button 
-                  type="primary" 
-                  icon={<DownloadOutlined />}
-                  onClick={handleInstall}
-                  size="large"
-                  style={{ marginBottom: 16 }}
-                >
-                  Download Now
-                </Button>
-                <div style={{ color: '#595959', marginBottom: 16 }}>
-                  <p>After downloading, follow these steps:</p>
-                </div>
-                
-                <div style={{ 
-                  backgroundColor: '#f9f9f9', 
-                  border: '1px solid #f0f0f0',
-                  borderRadius: 8,
-                  padding: 16,
-                  marginBottom: 16
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 12 }}>
-                    <div style={{
-                      backgroundColor: '#e6f7ff',
-                      color: '#1890ff',
-                      borderRadius: '50%',
-                      width: 24,
-                      height: 24,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginRight: 12,
-                      flexShrink: 0,
-                      fontWeight: 'bold'
-                    }}>A</div>
-                    <div>
-                      <div style={{ fontWeight: 500, marginBottom: 4 }}>Extract the downloaded ZIP file</div>
-                      <div style={{ color: '#595959', fontSize: 14 }}>
-                        Extract the contents to a permanent location, for example:
-                        <div style={{ 
-                          backgroundColor: '#f0f0f0', 
-                          padding: '8px 12px', 
-                          borderRadius: 4,
-                          margin: '8px 0',
-                          fontFamily: 'monospace',
-                          fontSize: 13
-                        }}>
-                          C:\\android-sdk
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <Divider style={{ margin: '16px 0' }} />
-                  
-                  <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 12 }}>
-                    <div style={{
-                      backgroundColor: '#e6f7ff',
-                      color: '#1890ff',
-                      borderRadius: '50%',
-                      width: 24,
-                      height: 24,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginRight: 12,
-                      flexShrink: 0,
-                      fontWeight: 'bold'
-                    }}>B</div>
-                    <div>
-                      <div style={{ fontWeight: 500, marginBottom: 4 }}>Set up environment variables</div>
-                      <ol style={{ margin: '8px 0', paddingLeft: 20, color: '#595959' }}>
-                        <li>Press <Text keyboard>Win + X</Text> and select <Text>System</Text></li>
-                        <li>Click <Text>About</Text> &gt; <Text>Advanced system settings</Text></li>
-                        <li>Click <Text>Environment Variables</Text></li>
-                        <li>Under <Text>System variables</Text>, click <Text>New</Text> and add:
-                          <ul style={{ margin: '8px 0 8px 20px', paddingLeft: 8 }}>
-                            <li>Variable name: <Text code>ANDROID_HOME</Text></li>
-                            <li>Variable value: <Text code>C:\\android-sdk</Text> (or your chosen path)</li>
-                          </ul>
-                        </li>
-                        <li>Find and select the <Text code>Path</Text> variable, then click <Text>Edit</Text>
-                          <ul style={{ margin: '8px 0 8px 20px', paddingLeft: 8 }}>
-                            <li>Click <Text>New</Text> and add: <Text code>%ANDROID_HOME%\\platform-tools</Text></li>
-                            <li>Click <Text>New</Text> and add: <Text code>%ANDROID_HOME%\\cmdline-tools\\latest\\bin</Text></li>
-                          </ul>
-                        </li>
-                      </ol>
-                    </div>
-                  </div>
-                  
-                  <Divider style={{ margin: '16px 0' }} />
-                  
-                  <div style={{ display: 'flex', alignItems: 'flex-start' }}>
-                    <div style={{
-                      backgroundColor: '#e6f7ff',
-                      color: '#1890ff',
-                      borderRadius: '50%',
-                      width: 24,
-                      height: 24,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginRight: 12,
-                      flexShrink: 0,
-                      fontWeight: 'bold'
-                    }}>C</div>
-                    <div>
-                      <div style={{ fontWeight: 500, marginBottom: 4 }}>Verify the installation</div>
-                      <div style={{ color: '#595959' }}>
-                        <p>1. Open a new Command Prompt or PowerShell window</p>
-                        <p>2. Run this command:</p>
-                        <div style={{ 
-                          backgroundColor: '#1e1e1e', 
-                          color: '#d4d4d4',
-                          padding: '8px 12px', 
-                          borderRadius: 4,
-                          margin: '8px 0',
-                          fontFamily: 'monospace',
-                          fontSize: 13,
-                          overflowX: 'auto'
-                        }}>
-                          adb --version
-                        </div>
-                        <p>3. You should see the ADB version number if installed correctly</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <Alert 
-                  type="info"
-                  showIcon
-                  message="Important Notes"
-                  description={
-                    <div>
-                      <p>• You may need to <strong>restart your computer</strong> for the PATH changes to take effect</p>
-                      <p>• After installation, <strong>restart this application</strong> to detect the changes</p>
-                      <p>• If you encounter issues, try running your terminal as Administrator</p>
-                    </div>
-                  }
-                  style={{ marginTop: 16 }}
-                />
-              </div>
-            </div>
-          </div>
-          
-          <div style={{ marginBottom: 24 }}>
-            <Title level={5} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 24,
-                height: 24,
-                borderRadius: '50%',
-                backgroundColor: '#f0f0f0',
-                fontWeight: 'normal',
-              }}>
-                2
-              </span>
-              Enable Developer Options
-            </Title>
-            <div style={{ paddingLeft: 32 }}>
-              <Paragraph type="secondary">
-                Go to <Text code>Settings</Text> {'>'} <Text code>About phone</Text> {'>'} Tap "Build number" 7 times
-              </Paragraph>
-              <div style={{ marginTop: 8 }}>
-                <Alert 
-                  type="info"
-                  message="Look for 'Build number' in the 'About phone' section"
-                  showIcon
-                />
-              </div>
-            </div>
-          </div>
-          
-          <div style={{ marginBottom: 24 }}>
-            <Title level={5} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 24,
-                height: 24,
-                borderRadius: '50%',
-                backgroundColor: '#f0f0f0',
-                fontWeight: 'normal',
-              }}>
-                3
-              </span>
-              Enable USB Debugging
-            </Title>
-            <div style={{ paddingLeft: 32 }}>
-              <Paragraph type="secondary">
-                Go to <Text code>Settings</Text> {'>'} <Text code>System</Text> {'>'} 
-                <Text code>Developer options</Text> {'>'} Enable <Text code>USB debugging</Text>
-              </Paragraph>
-              <div style={{ marginTop: 8 }}>
-                <Alert 
-                  type="info"
-                  message="Developer options will appear after enabling it in step 2"
-                  showIcon
-                />
-              </div>
-            </div>
-          </div>
-          
-          <div>
-            <Title level={5} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 24,
-                height: 24,
-                borderRadius: '50%',
-                backgroundColor: '#f0f0f0',
-                fontWeight: 'normal',
-              }}>
-                4
-              </span>
-              Connect Your Device
-            </Title>
-            <div style={{ paddingLeft: 32 }}>
-              <Paragraph type="secondary">
-                Connect your device via USB and tap "Allow USB debugging" on the prompt
-              </Paragraph>
-              <div style={{ marginTop: 8 }}>
-                <Alert 
-                  type="info"
-                  message={
-                    <div>
-                      <p>• Use a USB cable to connect your Android device</p>
-                      <p>• Look for a "USB debugging" prompt on your device</p>
-                      <p>• Tap "OK" to allow USB debugging from this computer</p>
-                      <p>• Check "Always allow from this computer" to avoid future prompts</p>
-                    </div>
-                  }
-                  showIcon
-                />
-              </div>
-            </div>
-          </div>
-
-          {error && (
-            <div style={{ marginTop: 24 }}>
-              <Alert
-                type="error"
-                message="Troubleshooting"
-                description={
-                  <div>
-                    <p>If you're having trouble connecting:</p>
-                    <ol>
-                      <li>Make sure USB debugging is enabled in Developer options</li>
-                      <li>Try a different USB cable or USB port</li>
-                      <li>On your device, check for any prompts to allow USB debugging</li>
-                      <li>Restart both your computer and Android device</li>
-                      <li>Ensure you have the latest device drivers installed</li>
-                    </ol>
-                    <div style={{ marginTop: 16 }}>
-                      <Button 
-                        type="primary" 
-                        onClick={refreshStatus}
-                        loading={loading}
-                      >
-                        Check Connection Again
-                      </Button>
-                    </div>
-                  </div>
-                }
-                showIcon
-              />
-            </div>
-          )}
         </div>
-      </Modal>
+      }
+      extra={
+        <Space>
+          <Tooltip title="Refresh status">
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={checkAdbStatus}
+              loading={state.loading}
+              size="small"
+              type="text"
+              style={{
+                color: 'rgba(255, 255, 255, 0.65)',
+                transition: 'all 0.2s',
+                ':hover': {
+                  color: '#fff',
+                  transform: 'rotate(180deg)'
+                }
+              }}
+            />
+          </Tooltip>
+          {onClose && (
+            <Button
+              icon={<CloseCircleOutlined />}
+              onClick={onClose}
+              size="small"
+              type="text"
+              style={{
+                color: 'rgba(255, 77, 79, 0.8)',
+                transition: 'all 0.2s',
+                ':hover': {
+                  color: '#ff4d4f',
+                  transform: 'scale(1.1)'
+                }
+              }}
+            />
+          )}
+        </Space>
+      }
+    >
+      <div className="connection-status">
+        {renderConnectionButton()}
+      </div>
+      {renderInstallModal()}
     </Card>
-    </ErrorBoundary>
   );
-};
-
-AndroidConnection.propTypes = {
-  // Add any props if needed in the future
 };
 
 export default AndroidConnection;

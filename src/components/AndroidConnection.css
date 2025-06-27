@@ -1,51 +1,258 @@
 /* AndroidConnection.css */
 
+/* Glass effect base */
+.glass-card {
+  background: rgba(22, 27, 34, 0.75) !important;
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.125) !important;
+  box-shadow: 0 4px 16px 0 rgba(31, 38, 135, 0.2) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+  max-height: 260px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Card header */
+.glass-card .ant-card-head {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  padding: 6px 12px !important;
+  min-height: 36px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.glass-card .ant-card-head-title {
+  padding: 0 !important;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.glass-card .ant-card-body {
+  padding: 12px !important;
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+/* Custom scrollbar */
+.glass-card .ant-card-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.glass-card .ant-card-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.glass-card .ant-card-body::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
 /* Connection status container */
 .connection-status {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  padding: 12px 16px;
-  border-radius: 8px;
-  margin-bottom: 16px;
-  background-color: #fafafa;
-  border: 1px solid #f0f0f0;
+  text-align: center;
+  border-radius: 6px;
+  margin: 4px 0;
+  /*
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  */
   transition: all 0.3s ease;
+}
+
+.connection-status .anticon {
+  margin-bottom: 6px;
+  font-size: 18px;
+}
+
+.connection-status h3 {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  width: 100%;
+}
+
+.connection-status p {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.3;
+}
+
+.connection-status .ant-btn {
+  margin-top: 4px;
+  align-self: center;
 }
 
 /* Connected state */
 .connection-status.connected {
-  background-color: #f6ffed;
-  border-color: #b7eb8f;
+  background: linear-gradient(90deg, rgba(82, 196, 26, 0.1), rgba(82, 196, 26, 0.05)) !important;
+  border: 1px solid rgba(82, 196, 26, 0.2) !important;
+  box-shadow: 0 4px 15px rgba(82, 196, 26, 0.1);
 }
 
 /* Error state */
 .connection-status.error {
-  background-color: #fff2f0;
-  border-color: #ffccc7;
+  background: linear-gradient(90deg, rgba(142, 77, 255, 0.05), rgba(178, 77, 255, 0.01)) !important;
+  border: 1px solid rgba(255, 77, 79, 0.2) !important;
+  box-shadow: 0 4px 15px rgba(255, 77, 79, 0.1);
 }
 
 /* Warning state */
 .connection-status.warning {
-  background-color: #fffbe6;
-  border-color: #ffe58f;
+  background: linear-gradient(90deg, rgba(250, 173, 20, 0.1), rgba(250, 173, 20, 0.05)) !important;
+  border: 1px solid rgba(250, 173, 20, 0.2) !important;
+  box-shadow: 0 4px 15px rgba(250, 173, 20, 0.1);
 }
 
 /* Status icon */
 .connection-status .anticon {
-  margin-right: 8px;
+  margin-right: 10px;
   font-size: 16px;
+  transition: all 0.2s ease;
 }
 
 .connection-status.connected .anticon {
   color: #52c41a;
+  text-shadow: 0 0 10px rgba(82, 196, 26, 0.3);
 }
 
 .connection-status.error .anticon {
   color: #ff4d4f;
+  text-shadow: 0 0 10px rgba(255, 77, 79, 0.3);
 }
 
 .connection-status.warning .anticon {
   color: #faad14;
+  text-shadow: 0 0 10px rgba(250, 173, 20, 0.3);
+}
+
+/* Button styles */
+/* Base button styles - now mostly handled by RippleButton.css */
+.ant-btn {
+  position: relative;
+  overflow: hidden;
+  border: none;
+  font-size: 14px;
+  padding: 0 20px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.ant-btn::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.2);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.ant-btn:hover::after {
+  opacity: 1;
+}
+
+.ant-btn:active {
+  transform: translateY(1px) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1) !important;
+}
+
+.ant-btn-primary {
+  background: linear-gradient(135deg, #1890ff, #096dd9);
+  color: white;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.12);
+}
+
+.ant-btn-primary:hover, .ant-btn-primary:focus {
+  background: rgb(110, 122, 255);
+  border-color: rgb(110, 122, 255);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(24, 144, 255, 0.25);
+}
+
+.ant-btn-dangerous {
+  background: linear-gradient(135deg, #ff4d4f, #cf1322);
+  color: white;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.12);
+}
+
+.ant-btn-dangerous:hover,
+.ant-btn-dangerous:focus {
+  background: linear-gradient(135deg, #ff7875, #ff4d4f);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(255, 77, 79, 0.25);
+}
+
+/* Success button variant */
+.ant-btn-success {
+  background: linear-gradient(135deg, #52c41a, #389e0d);
+  color: white;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.12);
+}
+
+.ant-btn-success:hover,
+.ant-btn-success:focus {
+  background: linear-gradient(135deg, #73d13d, #52c41a);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(82, 196, 26, 0.25);
+}
+
+/* Loading animation */
+@keyframes buttonPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.98); }
+  100% { transform: scale(1); }
+}
+
+.ant-btn-loading {
+  animation: buttonPulse 1.5s ease-in-out infinite;
+  opacity: 0.9;
+}
+
+/* Ripple effect */
+/* Button states */
+.ant-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Text styles */
+.connection-status h3,
+.connection-status p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Buttons */
+.connection-status .ant-btn {
+  transition: all 0.2s ease;
+  border-radius: 6px;
+}
+
+.connection-status .ant-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.connection-status .ant-btn:active {
+  transform: translateY(0);
 }
 
 /* Status text */

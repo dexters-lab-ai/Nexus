@@ -117,10 +117,7 @@
 
 /* Collapsible Sidebar */
 .sidebar-toggle {
-  position: absolute;
-  top: 50%;
-  left: -15px;
-  transform: translateY(-50%);
+  position: relative;
   width: 30px;
   height: 30px;
   border-radius: 50%;

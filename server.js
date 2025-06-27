@@ -289,13 +289,63 @@ function setupWebSocketServer(server) {
   
   // WebSocket connection handler
   wss.on('connection', (ws, req) => {
-    // Check if this is an Android device connection
     const url = new URL(req.url, `http://${req.headers.host}`);
+    const userId = req.session?.userId || 'anonymous';
+    
+    // Add to all clients set for tracking
+    allClients.add(ws);
+    
+    // Handle frontend client connection
+    if (url.pathname === '/ws/frontend') {
+      console.log(`Frontend client connected for user ${userId}`);
+      
+      // Initialize user's connection set if it doesn't exist
+      if (!userClients.has(userId)) {
+        userClients.set(userId, new Set());
+      }
+      
+      // Add this connection to the user's connections
+      userClients.get(userId).add(ws);
+      
+      // Send connection acknowledgment
+      ws.send(JSON.stringify({
+        type: 'connection_established',
+        message: 'WebSocket connection established',
+        timestamp: new Date().toISOString()
+      }));
+      
+      // Send current device status if available
+      const clientId = `${userId}:${url.searchParams.get('deviceId') || 'unknown'}`;
+      const deviceWs = androidClients.get(clientId);
+      if (deviceWs?.deviceInfo) {
+        ws.send(JSON.stringify({
+          type: 'device_connected',
+          device: deviceWs.deviceInfo
+        }));
+      }
+      
+      // Handle cleanup on close
+      ws.on('close', () => {
+        console.log(`Frontend client disconnected for user ${userId}`);
+        allClients.delete(ws);
+        if (userClients.has(userId)) {
+          userClients.get(userId).delete(ws);
+          if (userClients.get(userId).size === 0) {
+            userClients.delete(userId);
+          }
+        }
+      });
+      
+      return;
+    }
+    
+    // Handle Android device connection
     if (url.pathname === '/ws/android') {
       const deviceId = url.searchParams.get('deviceId');
       const userId = req.session?.userId || 'anonymous';
       
       if (!deviceId) {
+        console.error('No device ID provided for Android connection');
         ws.close(1008, 'Device ID is required');
         return;
       }
@@ -303,8 +353,46 @@ function setupWebSocketServer(server) {
       const clientId = `${userId}:${deviceId}`;
       console.log(`Android WebSocket connected: ${clientId}`);
       
-      // Store the WebSocket connection
+      // Store the WebSocket connection with device info
+      const deviceInfo = {
+        id: deviceId,
+        name: `Android Device ${deviceId.slice(-4)}`, // Default name
+        model: url.searchParams.get('model') || 'Unknown',
+        manufacturer: url.searchParams.get('manufacturer') || 'Unknown',
+        sdkVersion: url.searchParams.get('sdkVersion') || 'Unknown',
+        connectedAt: new Date().toISOString(),
+        status: 'connected',
+        lastSeen: Date.now()
+      };
+      
+      // Store the WebSocket connection with device info
+      ws.deviceInfo = deviceInfo;
+      ws.deviceId = deviceId;
+      ws.userId = userId;
+      
+      // Store in androidClients map
       androidClients.set(clientId, ws);
+      
+      // Track device by user
+      if (!userDevices.has(userId)) {
+        userDevices.set(userId, new Map());
+      }
+      userDevices.get(userId).set(deviceId, deviceInfo);
+      
+      console.log(`Stored device info for ${clientId}:`, deviceInfo);
+      
+      // Send device connected event to all frontend clients for this user
+      broadcastToUser(userId, {
+        type: 'device_connected',
+        device: deviceInfo
+      });
+      
+      // Send current device list to the newly connected device
+      const devices = getUserDevices(userId);
+      ws.send(JSON.stringify({
+        type: 'device_list',
+        devices: devices
+      }));
       
       // Handle messages from Android device
       ws.on('message', (message) => {
@@ -332,7 +420,35 @@ function setupWebSocketServer(server) {
       // Handle disconnection
       ws.on('close', () => {
         console.log(`Android WebSocket disconnected: ${clientId}`);
+        
+        const { userId, deviceId } = ws;
+        
+        // Clean up device tracking
+        if (userId && deviceId) {
+          // Remove from user's devices
+          if (userDevices.has(userId)) {
+            userDevices.get(userId).delete(deviceId);
+            console.log(`Removed device ${deviceId} from user ${userId}`);
+            
+            // Clean up empty user entries
+            if (userDevices.get(userId).size === 0) {
+              userDevices.delete(userId);
+            }
+          }
+          
+          // Notify all frontend clients
+          broadcastToUser(userId, {
+            type: 'device_disconnected',
+            deviceId: deviceId,
+            timestamp: Date.now()
+          });
+          
+          console.log(`Notified clients about disconnection of device ${deviceId}`);
+        }
+        
+        // Remove from clients map
         androidClients.delete(clientId);
+        console.log(`Removed client ${clientId} from androidClients`);
       });
       
       // Handle errors
@@ -352,6 +468,60 @@ function setupWebSocketServer(server) {
 
   // Track WebSocket clients by user ID
   const userClients = new Map();
+  
+  // Track all connected clients for broadcasting
+  const allClients = new Set();
+  
+  // Track connected Android devices by user ID
+  const userDevices = new Map();
+  
+  /**
+   * Broadcast a message to all WebSocket connections for a specific user
+   * @param {string} userId - The user ID to broadcast to
+   * @param {Object} message - The message to send
+   */
+  function broadcastToUser(userId, message) {
+    console.log(`Broadcasting ${message.type} to user ${userId}`, message);
+    
+    if (!userId) {
+      console.error('No user ID provided for broadcast');
+      return;
+    }
+    
+    if (!userClients.has(userId)) {
+      console.log(`No active connections for user ${userId}`);
+      return;
+    }
+    
+    const connections = userClients.get(userId);
+    const messageStr = JSON.stringify(message);
+    let sentCount = 0;
+    
+    connections.forEach(ws => {
+      try {
+        if (ws.readyState === WebSocket.OPEN) {
+          console.log(`Sending to connection ${ws.clientId || 'unknown'}:`, message.type);
+          ws.send(messageStr);
+          sentCount++;
+        } else {
+          console.log(`Skipping closed connection for user ${userId}`);
+        }
+      } catch (error) {
+        console.error(`Error sending message to user ${userId}:`, error);
+      }
+    });
+    
+    console.log(`Broadcasted ${message.type} to ${sentCount} connections for user ${userId}`);
+  }
+  
+  /**
+   * Get all devices for a user
+   * @param {string} userId - The user ID
+   * @returns {Array} Array of devices
+   */
+  function getUserDevices(userId) {
+    return Array.from(userDevices.get(userId)?.values() || []);
+  }
 
   // Handle WebSocket control messages
   function handleControlMessage(ws, data) {

@@ -1,0 +1,121 @@
+/* Ripple effect */
+@keyframes ripple {
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+.ripple-button {
+  position: relative;
+  overflow: hidden;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transform: translateZ(0);
+  will-change: transform, box-shadow;
+}
+
+.ripple-button:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(24, 144, 255, 0.3);
+}
+
+.ripple-button:active {
+  transform: translateY(1px);
+}
+
+.ripple-button-disabled {
+  opacity: 0.6;
+  cursor: not-allowed !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Default button style */
+.ripple-button-default {
+  color: rgba(0, 0, 0, 0.85);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.02);
+}
+
+.ripple-button-default:not(.ripple-button-disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Primary button style */
+.ripple-button-primary {
+  background: linear-gradient(135deg, #1890ff, #096dd9);
+  color: white;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.045);
+}
+
+.ripple-button-primary:not(.ripple-button-disabled):hover {
+  background: linear-gradient(135deg, #40a9ff, #1890ff);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+}
+
+/* Danger button style */
+.ripple-button-danger {
+  background: linear-gradient(135deg, #ff4d4f, #cf1322);
+  color: white;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.045);
+}
+
+.ripple-button-danger:not(.ripple-button-disabled):hover {
+  background: linear-gradient(135deg, #ff7875, #ff4d4f);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 77, 79, 0.3);
+}
+
+/* Success button style */
+.ripple-button-success {
+  background: linear-gradient(135deg, #52c41a, #389e0d);
+  color: white;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.045);
+}
+
+.ripple-button-success:not(.ripple-button-disabled):hover {
+  background: linear-gradient(135deg, #73d13d, #52c41a);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(82, 196, 26, 0.3);
+}
+
+/* Ripple effect */
+.ripple-effect {
+  position: absolute;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.4);
+  transform: scale(0);
+  animation: ripple 0.6s linear;
+  pointer-events: none;
+  opacity: 1;
+  transform-origin: center;
+  width: 20px;
+  height: 20px;
+  margin-left: -10px;
+  margin-top: -10px;
+}
+
+.ripple-content {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  pointer-events: none;
+}

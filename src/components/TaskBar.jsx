@@ -597,7 +597,7 @@ export function TaskBar(props = {}) {
   
   // Connection status indicator
   const connectionStatus = document.createElement('div');
-  connectionStatus.className = 'status-item connection-status';
+  connectionStatus.className = 'status-item';
   connectionStatus.innerHTML = `
     <i class="fas fa-wifi"></i>
     <span class="status-value">Stable</span>

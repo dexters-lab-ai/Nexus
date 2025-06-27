@@ -2062,7 +2062,21 @@ export function CommandCenter(props = {}) {
         messageTimeline.style.height = ''; // Reset to default
       }
     } else if (tab === TAB_TYPES.DEVICES) {
-      document.getElementById('devices-section').classList.add('active');
+      const devicesSection = document.getElementById('devices-section');
+      devicesSection.classList.add('active');
+      
+      // Ensure the AndroidConnection container exists
+      let container = devicesSection.querySelector('.devices-container');
+      if (!container) {
+        container = document.createElement('div');
+        container.className = 'devices-container';
+        devicesSection.appendChild(container);
+      }
+      
+      // Always re-render the AndroidConnection when switching to Devices tab
+      const root = ReactDOM.createRoot(container);
+      root.render(React.createElement(AndroidConnection, { active: true }));
+      
       if (messageTimeline) {
         messageTimeline.style.setProperty('height', '400px', 'important');
         messageTimeline.style.setProperty('overflow-y', 'auto', 'important');
@@ -2918,10 +2932,6 @@ export function CommandCenter(props = {}) {
   const androidConnectionContainer = document.createElement('div');
   androidConnectionContainer.className = 'devices-container';
   devicesSection.appendChild(androidConnectionContainer);
-  
-  // Render the React component using createRoot
-  const root = ReactDOM.createRoot(androidConnectionContainer);
-  root.render(React.createElement(AndroidConnection, {}));
   
   taskSections.appendChild(devicesSection);
   

@@ -156,9 +156,6 @@
 
 .sidebar-toggle {
   position: relative !important;
-  top: 0% !important;
-  left: 0px !important;
-  transform: translateY(-100%) !important;
   padding: 0.5rem !important;
   margin: 0.5rem !important;
   background: var(--glass-background) !important;
@@ -173,10 +170,6 @@
 
 .sidebar-collapsed .sidebar-area {
   overflow: hidden;
-}
-
-.sidebar-collapsed .sidebar-toggle {
-  left: 100%;
 }
 
 .sidebar-collapsed .sidebar-content {
@@ -529,20 +522,8 @@
 }
 
 .sidebar-header {
-  height: 32px !important;
   background: var(--glass-background) !important;
   border-bottom: var(--glass-border) !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  padding: 0 1rem !important;
-}
-
-.sidebar-toggle {
-  position: static !important;
-  top: auto !important;
-  left: auto !important;
-  margin: 4px 0 !important;
-  padding: 0.25rem !important;
 }
 
 .sidebar {
@@ -630,13 +611,6 @@
 }
 
 /* --- Sidebar Header Styling --- */
-.sidebar-header {
-  display: flex;
-  align-items: flex-start !important;
-  justify-content: flex-end;
-  height: 40px !important;
-  padding: 0 0.5rem !important;
-}
 
 .sidebar-header-content {
   display: flex;
@@ -771,12 +745,6 @@
 }
 
 /* Ensure toggle stays visible and anchored */
-.sidebar-toggle {
-  position: absolute !important;
-  top: 25px !important;
-  left: -2rem !important;
-  z-index: 3001 !important;
-}
 
 /* Always center main content wrapper */
 .layout-container .content-wrapper,
@@ -795,16 +763,6 @@
 }
 
 /* Ensure toggle remains visible and anchored */
-.sidebar-toggle {
-  display: block !important;
-  position: absolute !important;
-  top: 25px !important;
-  left: -2rem !important;
-  z-index: 9999 !important;
-  margin: 0 !important;
-  padding: 0.5rem !important;
-}
-
 /* Show full sidebar content when expanded */
 .sidebar:not(.collapsed) .sidebar-wrapper {
   display: flex !important;
@@ -822,9 +780,6 @@
 /* Sidebar Header Compact & Tabs Styles */
 .sidebar-header {
   display: flex;
-  align-items: flex-start !important;
-  justify-content: flex-end;
-  height: 40px !important;
   padding: 0 0.5rem !important;
 }
 .sidebar-toggle {
@@ -888,7 +843,6 @@
 .sidebar-wrapper {
   align-items: flex-start !important;
 }
-.sidebar-header,
 .sidebar-header-content,
 .sidebar-header-menu,
 .sidebar-content,
@@ -906,18 +860,6 @@
 }
 
 /* Final polish: toggle positioning, rounded corners, nav polish */
-.sidebar-header {
-  position: relative !important;
-  height: 28px !important;
-}
-.sidebar-toggle {
-  position: absolute !important;
-  top: 25px !important;
-  left: 4px !important;
-  z-index: 10000 !important;
-  margin: 0 !important;
-  padding: 0.5rem !important;
-}
 .sidebar {
   border-radius: 0 1rem 1rem 0 !important;
   overflow: hidden !important;
