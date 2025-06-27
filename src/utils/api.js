@@ -653,28 +653,49 @@ export const api = {
   android: {
     /**
      * Get Android device status and ADB information
-     * @returns {Promise<{installed: boolean, version: string, devices: Array<{id: string, name: string}>, error: string|null, status: string}>}
+     * @returns {Promise<{installed: boolean, version: string, devices: Array<{id: string, name: string, type: string}>, error: string|null, status: string}>}
      */
-    async getStatus() {
+    getStatus: async () => {
       try {
-        const data = await fetchAPI('android/status');
+        const response = await fetchAPI('/api/android/status', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.success) {
+          console.error('Failed to get Android status:', response.error);
+          return {
+            installed: false,
+            version: 'unknown',
+            devices: [],
+            error: response.error || 'Failed to get Android status',
+            status: 'error'
+          };
+        }
+
+        // Ensure devices have a type (usb or tcpip)
+        const devices = (response.devices || []).map(device => ({
+          ...device,
+          type: device.type || (device.id && device.id.includes(':') ? 'tcpip' : 'usb')
+        }));
+
         return {
-          installed: data.installed || false,
-          version: data.version || null,
-          devices: Array.isArray(data.devices) ? data.devices : [],
-          error: data.error || null,
-          status: data.status || 'success',
-          timestamp: data.timestamp || new Date().toISOString()
+          installed: response.installed,
+          version: response.version,
+          devices,
+          error: null,
+          status: 'connected'
         };
       } catch (error) {
-        console.error('Error getting ADB status:', error);
+        console.error('Error getting Android status:', error);
         return {
           installed: false,
-          version: null,
+          version: 'unknown',
           devices: [],
-          error: error.message || 'Failed to check ADB status',
-          status: 'error',
-          timestamp: new Date().toISOString()
+          error: error.message,
+          status: 'error'
         };
       }
     },
@@ -682,26 +703,77 @@ export const api = {
     /**
      * Connect to an Android device
      * @param {string} deviceId - Device ID to connect to
+     * @param {Object} [options] - Connection options
+     * @param {string} [options.type='usb'] - Connection type ('usb' or 'tcpip')
      * @returns {Promise<{success: boolean, message: string, device: Object, status: string}>}
      */
-    async connectDevice(deviceId) {
-      if (!deviceId) {
-        console.error('No deviceId provided to connectDevice');
+    connectDevice: async (deviceId, options = {}) => {
+      try {
+        const { type = deviceId.includes(':') ? 'tcpip' : 'usb' } = options;
+        
+        const response = await fetchAPI('/api/android/connect', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            deviceId,
+            type,
+            ...(type === 'tcpip' && { host: deviceId.split(':')[0] })
+          })
+        });
+
+        if (response.success) {
+          androidState._activeDevice = {
+            ...response.device,
+            type: type
+          };
+          return {
+            success: true,
+            message: response.message || 'Device connected successfully',
+            device: response.device,
+            status: 'connected'
+          };
+        } else {
+          androidState._lastError = response.error || 'Failed to connect to device';
+          return {
+            success: false,
+            message: response.error || 'Failed to connect to device',
+            device: null,
+            status: 'error'
+          };
+        }
+      } catch (error) {
+        console.error('Error connecting to Android device:', error);
+        androidState._lastError = error.message;
         return {
           success: false,
-          message: 'Device ID is required',
+          message: error.message,
           device: null,
           status: 'error'
         };
       }
+    },
 
+    /**
+     * Connect to an Android device over network
+     * @param {string} ip - Device IP address
+     * @param {number} [port=5555] - ADB port (default: 5555)
+     * @returns {Promise<{success: boolean, message: string, device: Object, status: string}>}
+     */
+    connectOverNetwork: async (ip, port = 5555) => {
       try {
-        return await post('android/connect', { deviceId });
+        if (!ip) {
+          throw new Error('IP address is required');
+        }
+        
+        const deviceId = port ? `${ip}:${port}` : ip;
+        return await api.android.connectDevice(deviceId, { type: 'tcpip' });
       } catch (error) {
-        console.error('Error connecting to device:', error);
+        console.error('Error connecting to network device:', error);
         return {
           success: false,
-          message: error.message || 'Failed to connect to device',
+          message: error.message,
           device: null,
           status: 'error'
         };
@@ -712,14 +784,29 @@ export const api = {
      * Disconnect from current Android device
      * @returns {Promise<{success: boolean, message: string, status: string}>}
      */
-    async disconnectDevice() {
+    disconnectDevice: async () => {
       try {
-        return await post('android/disconnect');
+        const response = await fetchAPI('/api/android/disconnect', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.success) {
+          androidState._resetState();
+        }
+
+        return {
+          success: response.success,
+          message: response.message || (response.success ? 'Device disconnected' : 'Failed to disconnect'),
+          status: response.success ? 'disconnected' : 'error'
+        };
       } catch (error) {
-        console.error('Error disconnecting from device:', error);
+        console.error('Error disconnecting Android device:', error);
         return {
           success: false,
-          message: error.message || 'Failed to disconnect from device',
+          message: error.message,
           status: 'error'
         };
       }
@@ -729,31 +816,63 @@ export const api = {
      * Get connection status
      * @returns {Promise<{status: string, device: Object, devices: Array, error: string}>}
      */
-    async getConnectionStatus() {
+    getConnectionStatus: async () => {
       try {
-        const status = await this.getStatus();
-        const connectionStatus = status.installed 
-          ? (status.devices?.length ? 'connected' : 'no_devices')
-          : 'error';
+        const response = await fetchAPI('/api/android/status');
+        
+        // Check if the request was successful (HTTP 200)
+        if (response) {
+          // Find the first connected device if any
+          const connectedDevice = Array.isArray(response.devices) 
+            ? response.devices.find(device => device.state === 'device')
+            : null;
+            
+          // Update active device if we have a connected device
+          if (connectedDevice) {
+            androidState._activeDevice = connectedDevice;
+          } else if (response.devices && response.devices.length > 0) {
+            // If no connected device but we have devices, use the first one
+            androidState._activeDevice = response.devices[0];
+          } else {
+            androidState._activeDevice = null;
+          }
+          
+          // Ensure devices have a type
+          const devices = (response.devices || []).map(device => ({
+            ...device,
+            type: device.type || (device.id && device.id.includes(':') ? 'tcpip' : 'usb'),
+            // Ensure consistent state field
+            state: device.state || 'unknown'
+          }));
+          
+          return {
+            installed: response.installed || false,
+            version: response.version || null,
+            status: connectedDevice ? 'connected' : 'disconnected',
+            device: connectedDevice || null,
+            devices,
+            error: null
+          };
+        }
         
         return {
-          status: connectionStatus,
-          device: status.devices?.[0] || null,
-          devices: status.devices || [],
-          error: status.error || null,
-          timestamp: status.timestamp
+          installed: false,
+          version: null,
+          status: 'error',
+          device: null,
+          devices: [],
+          error: response?.error || 'Failed to get connection status'
         };
       } catch (error) {
-        console.error('Error getting connection status:', error);
+        console.error('Error getting Android connection status:', error);
         return {
           status: 'error',
           device: null,
           devices: [],
-          error: error.message || 'Failed to get connection status',
-          timestamp: new Date().toISOString()
+          error: error.message
         };
       }
-    }
+    },
   },
   
   // Billing endpoints

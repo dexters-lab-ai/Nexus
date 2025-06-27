@@ -20,13 +20,17 @@ import {
   CheckCircleOutlined, 
   CloseCircleOutlined, 
   DownloadOutlined, 
+  InfoCircleOutlined,
   LoadingOutlined, 
   QuestionCircleOutlined, 
   ReloadOutlined, 
   UsbOutlined,
   LinkOutlined,
   ToolOutlined,
-  CodeOutlined
+  CodeOutlined,
+  DisconnectOutlined, 
+  SettingOutlined, 
+  RobotOutlined
 } from '@ant-design/icons'; 
 import RippleButton from './RippleButton';
 import api from '../utils/api';
@@ -87,7 +91,14 @@ const AndroidConnection = ({ onClose, active = false }) => {
     devices: [],
     showInstallModal: false,
     isInstalling: false,
-    installProgress: []
+    installProgress: [],
+    // Network connection state
+    connectionType: 'usb', // 'usb' or 'network'
+    networkSettings: {
+      ip: '',
+      port: '5555'
+    },
+    showNetworkForm: false
   });
 
   const isMounted = useRef(true);
@@ -197,7 +208,7 @@ const AndroidConnection = ({ onClose, active = false }) => {
     }
   }, []);
 
-  // Poll connection status periodically
+  // Poll connection status periodically (every 10 seconds)
   const pollConnectionStatus = useCallback(async () => {
     if (!isMounted.current) return;
     
@@ -255,8 +266,30 @@ const AndroidConnection = ({ onClose, active = false }) => {
     }
   }, []);
 
+  // Toggle between USB and network connection
+  const toggleConnectionType = useCallback(() => {
+    updateState(prev => ({
+      ...prev,
+      connectionType: prev.connectionType === 'usb' ? 'network' : 'usb',
+      showNetworkForm: prev.connectionType === 'usb',
+      error: null
+    }));
+  }, []);
+
+  // Handle network settings change
+  const handleNetworkSettingsChange = useCallback((field, value) => {
+    updateState(prev => ({
+      ...prev,
+      networkSettings: {
+        ...prev.networkSettings,
+        [field]: value
+      },
+      error: null
+    }));
+  }, []);
+
   // Connect to device using api.android
-  const handleConnect = useCallback(async (selectedDeviceId) => {
+  const handleConnect = useCallback(async (selectedDeviceId, connectionOptions = {}) => {
     if (!isMounted.current) return;
     
     try {
@@ -266,33 +299,44 @@ const AndroidConnection = ({ onClose, active = false }) => {
         error: null, 
         status: STATUS.CONNECTING 
       }));
+
+      let result;
       
-      // Get current status first to check ADB and devices
-      const status = await api.android.getStatus();
-      console.log('ADB Status:', status);
-      
-      if (!status.installed) {
-        throw new Error(status.error || 'ADB is not installed. Please install Android Debug Bridge and try again.');
+      if (state.connectionType === 'network') {
+        // Handle network connection
+        const { ip, port = '5555' } = state.networkSettings;
+        if (!ip) {
+          throw new Error('Please enter a valid IP address');
+        }
+        
+        console.log(`Connecting to network device: ${ip}:${port}`);
+        result = await api.android.connectOverNetwork(ip, parseInt(port, 10));
+      } else {
+        // Handle USB connection
+        const status = await api.android.getStatus();
+        console.log('ADB Status:', status);
+        
+        if (!status.installed) {
+          throw new Error(status.error || 'ADB is not installed. Please install Android Debug Bridge and try again.');
+        }
+        
+        // If no devices found but ADB is installed
+        if (!status.devices || status.devices.length === 0) {
+          throw new Error('No Android devices found. Please ensure:' +
+            '\n1. USB debugging is enabled on your device' +
+            '\n2. Device is properly connected' +
+            '\n3. You have authorized this computer for debugging');
+        }
+        
+        // Use selected device or first available
+        const deviceToConnect = selectedDeviceId || (status.devices[0]?.id);
+        if (!deviceToConnect) {
+          throw new Error('No valid device ID found');
+        }
+        
+        console.log(`Connecting to USB device: ${deviceToConnect}`);
+        result = await api.android.connectDevice(deviceToConnect, { type: 'usb' });
       }
-      
-      // If no devices found but ADB is installed
-      if (!status.devices || status.devices.length === 0) {
-        throw new Error('No Android devices found. Please ensure:' +
-          '\n1. USB debugging is enabled on your device' +
-          '\n2. Device is properly connected' +
-          '\n3. You have authorized this computer for debugging');
-      }
-      
-      // Use selected device or first available
-      const deviceToConnect = selectedDeviceId || (status.devices[0]?.id);
-      if (!deviceToConnect) {
-        throw new Error('No valid device ID found');
-      }
-      
-      console.log(`Connecting to device: ${deviceToConnect}`);
-      
-      // Connect to the device
-      const result = await api.android.connectDevice(deviceToConnect);
       
       if (!result.success) {
         throw new Error(result.message || 'Failed to connect to device');
@@ -307,16 +351,26 @@ const AndroidConnection = ({ onClose, active = false }) => {
       updateState(prev => ({
         ...prev,
         status: connectionStatus.status === 'connected' ? STATUS.CONNECTED : STATUS.DISCONNECTED,
-        device: connectionStatus.device || result.device || { id: deviceToConnect, name: `Android Device (${deviceToConnect})` },
-        devices: connectionStatus.devices || status.devices || [],
+        device: connectionStatus.device || result.device || { 
+          id: state.connectionType === 'network' 
+            ? `${state.networkSettings.ip}:${state.networkSettings.port}` 
+            : selectedDeviceId,
+          name: state.connectionType === 'network'
+            ? `Network Device (${state.networkSettings.ip}:${state.networkSettings.port})`
+            : `Android Device (${selectedDeviceId})`
+        },
+        devices: connectionStatus.devices || [],
         loading: false,
-        error: null
+        error: null,
+        showNetworkForm: false
       }));
       
       // Show success notification
       notification.success({
         message: 'Device Connected',
-        description: `Successfully connected to ${deviceToConnect}`,
+        description: `Successfully connected to ${state.connectionType === 'network' 
+          ? `${state.networkSettings.ip}:${state.networkSettings.port}` 
+          : selectedDeviceId}`,
         placement: 'bottomRight'
       });
       
@@ -425,11 +479,14 @@ const AndroidConnection = ({ onClose, active = false }) => {
 
     init();
 
+    // Poll every 10 seconds when active
+    const POLLING_INTERVAL = 10000;
+    
     pollingRef.current = setInterval(() => {
       if (isMounted.current) {
         pollConnectionStatus().catch(console.error);
       }
-    }, 5000);
+    }, POLLING_INTERVAL);
 
     return () => {
       isMounted.current = false;
@@ -452,6 +509,47 @@ const AndroidConnection = ({ onClose, active = false }) => {
       default:
         return <Badge status="default" text="Disconnected" />;
     }
+  };
+
+  // Render connection button based on status
+  const renderConnectionButton = () => {
+    if (state.status === STATUS.CONNECTING) {
+      return (
+        <Button
+          type="primary"
+          loading
+          icon={<LoadingOutlined />}
+          style={{ width: '100%' }}
+        >
+          Connecting...
+        </Button>
+      );
+    }
+
+    if (state.status === STATUS.CONNECTED) {
+      return (
+        <Button
+          type="primary"
+          danger
+          onClick={handleDisconnect}
+          icon={<DisconnectOutlined />}
+          style={{ width: '100%' }}
+        >
+          Disconnect Device
+        </Button>
+      );
+    }
+
+    return (
+      <Button
+        type="primary"
+        onClick={handleConnect}
+        icon={<LinkOutlined />}
+        style={{ width: '100%' }}
+      >
+        Connect to Device
+      </Button>
+    );
   };
 
   // Render device connection status
@@ -506,67 +604,153 @@ const AndroidConnection = ({ onClose, active = false }) => {
           <div className="status-content">
             <h4>Device Connected</h4>
             <p className="device-name">{state.device.name || 'Android Device'}</p>
-            <Button 
-              type="primary" 
-              danger
-              onClick={handleDisconnect}
-              icon={<UsbOutlined />}
-            >
-              Disconnect
-            </Button>
+            {renderConnectionButton()}
           </div>
         </div>
       );
     }
 
-    return (
-      <div className="device-status idle">
-        <AndroidFilled className="status-icon" />
-        <div className="status-content">
-          <h4>Ready to Connect</h4>
-          <p>Connect your Android device via USB</p>
-          <Button 
-            type="primary" 
-            onClick={() => handleConnect()}
-            loading={state.loading}
-            icon={<LinkOutlined />}
-          >
-            {state.loading ? 'Connecting...' : 'Connect Device'}
-          </Button>
-        </div>
-      </div>
-    );
-  };
-
-  // Render connection button
-  const renderConnectionButton = () => {
-    const baseButtonClass = 'ant-btn';
-    const statusClass = `connection-status ${state.status === STATUS.CONNECTED ? 'connected' : ''} ${state.status === STATUS.ERROR ? 'error' : ''}`;
-
-    if (state.loading) {
-      return (
-        <RippleButton
-          className={`${baseButtonClass} ant-btn-primary ant-btn-loading`}
-          style={{
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            cursor: 'wait'
+  return (
+    <div className="device-status idle">
+      <AndroidFilled className="status-icon" />
+      <div className="status-content">
+        <h4>Ready to Connect</h4>
+        {state.status === STATUS.DISCONNECTED && (
+        <Button 
+          type="primary" 
+          icon={state.connectionType === 'usb' ? <UsbOutlined /> : <LinkOutlined />} 
+          onClick={() => {
+            if (state.connectionType === 'network' && !state.networkSettings.ip) {
+              updateState({ 
+                showNetworkForm: true,
+                error: 'Please enter a valid IP address'
+              });
+              return;
+            }
+            handleConnect();
           }}
-          disabled
+          loading={state.loading}
+          style={{ marginRight: 8 }}
         >
-          <LoadingOutlined style={{ fontSize: 16 }} spin />
-          <span>Connecting...</span>
-        </RippleButton>
-      );
-    }
+          {state.connectionType === 'usb' ? 'Connect via USB' : 'Connect via Network'}
+        </Button>
+      )}</div>
+    </div>
+  );
+};
 
-    if (state.error) {
-      const isConnectionError = state.error.includes('No Android device detected');
-      return (
-        <div className="connection-status error glass-card" style={{ padding: '16px', textAlign: 'center' }}>
+// Render network connection form
+const renderNetworkForm = () => (
+  <div style={{ 
+    margin: '16px 0',
+    padding: '16px',
+    backgroundColor: 'rgba(0, 0, 0, 0.02)',
+    borderRadius: '8px',
+    border: '1px dashed #d9d9d9'
+  }}>
+    <div style={{ marginBottom: '16px' }}>
+      <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
+        Device IP Address
+      </label>
+      <input
+        type="text"
+        value={state.networkSettings.ip}
+        onChange={(e) => handleNetworkSettingsChange('ip', e.target.value)}
+        placeholder="192.168.1.100"
+        style={{
+          width: '100%',
+          padding: '8px 12px',
+          borderRadius: '4px',
+          border: '1px solid #d9d9d9',
+          marginBottom: '12px'
+        }}
+      />
+    </div>
+    <div style={{ marginBottom: '16px' }}>
+      <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
+        ADB Port (default: 5555)
+      </label>
+      <input
+        type="number"
+        value={state.networkSettings.port}
+        onChange={(e) => handleNetworkSettingsChange('port', e.target.value)}
+        placeholder="5555"
+        style={{
+          width: '100%',
+          padding: '8px 12px',
+          borderRadius: '4px',
+          border: '1px solid #d9d9d9'
+        }}
+      />
+    </div>
+    <div style={{ fontSize: '12px', color: '#666', marginTop: '8px' }}>
+      <p>To connect over network:</p>
+      <ol style={{ paddingLeft: '20px', margin: '8px 0' }}>
+        <li>Ensure device is on the same network</li>
+        <li>Enable ADB over network in developer options</li>
+        <li>Enter device IP and port (default: 5555)</li>
+      </ol>
+    </div>
+  </div>
+);
+
+// Render connection type toggle
+const renderConnectionTypeToggle = () => (
+  <div style={{ 
+    display: 'flex', 
+    justifyContent: 'center', 
+    margin: '16px 0',
+    padding: '8px',
+    backgroundColor: 'rgba(0, 0, 0, 0.02)',
+    borderRadius: '8px'
+  }}>
+    <Button 
+      type={state.connectionType === 'usb' ? 'primary' : 'default'} 
+      icon={<UsbOutlined />}
+      onClick={() => toggleConnectionType()}
+      style={{ marginRight: '8px' }}
+    >
+      USB Connection
+    </Button>
+    <Button 
+      type={state.connectionType === 'network' ? 'primary' : 'default'} 
+      icon={<LinkOutlined />}
+      onClick={() => toggleConnectionType()}
+    >
+      Network Connection
+    </Button>
+  </div>
+);
+
+// Render connection status
+const renderConnectionStatus = () => {
+  const baseButtonClass = 'ant-btn';
+  const statusClass = `connection-status ${state.status === STATUS.CONNECTED ? 'connected' : ''} ${state.status === STATUS.ERROR ? 'error' : ''}`;
+
+  if (state.loading) {
+    return (
+      <RippleButton
+        className={`${baseButtonClass} ant-btn-primary ant-btn-loading`}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px',
+          cursor: 'wait'
+        }}
+        disabled
+      >
+        <LoadingOutlined style={{ fontSize: 16 }} spin />
+        <span>Connecting...</span>
+      </RippleButton>
+    );
+  }
+
+  if (state.error) {
+    const isConnectionError = state.error.includes('No Android device detected');
+    return (
+      <div className="connection-status error glass-card" style={{ padding: '16px', textAlign: 'center' }}>
         <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: '24px', marginBottom: '8px' }} />
         <h3 style={{ marginBottom: '8px' }}>Connection Error</h3>
         <p style={{ 
@@ -578,59 +762,289 @@ const AndroidConnection = ({ onClose, active = false }) => {
               ? 'Unable to detect an Android device. Please check your connection and try again.'
               : 'An error occurred while connecting to the device.'}
           </p>
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-            <RippleButton
-              className={`${baseButtonClass} ant-btn-primary`}
-              onClick={() => handleConnect()}
-              icon={<ReloadOutlined />}
-            >
-              Retry
-            </RippleButton>
-            <RippleButton
-              className={`${baseButtonClass}`}
-              onClick={() => updateState({ showInstallModal: true })}
-            >
-              View Setup Instructions
-            </RippleButton>
-          </div>
-        </div>
-      );
-    }
-
-    if (state.adbStatus.error || !state.adbStatus.installed) {
-      return (
-        <div className="connection-status error glass-card">
-          <CloseCircleOutlined className="anticon" />
-          <h3>ADB Not Found</h3>
-          <p className="status-message">
-            Android Debug Bridge (ADB) is required to connect to Android devices.
-          </p>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
           <RippleButton
             className={`${baseButtonClass} ant-btn-primary`}
-            icon={<DownloadOutlined />}
+            onClick={() => handleConnect()}
+            icon={<ReloadOutlined />}
+          >
+            Retry
+          </RippleButton>
+          <RippleButton
+            className={`${baseButtonClass}`}
             onClick={() => updateState({ showInstallModal: true })}
           >
-            Install ADB Tools
+            View Setup Instructions
           </RippleButton>
         </div>
-      );
-    }
+      </div>
+    );
+  }
 
-    if (state.status === STATUS.CONNECTED) {
-      return (
-        <div className={`${statusClass} glass-card`}>
-          <CheckCircleOutlined className="anticon" />
-          <h3>Device Connected</h3>
-          <p className="device-name">
-            {state.device?.name || 'Android Device'}
-          </p>
-          <RippleButton
-            className={`${baseButtonClass} ant-btn-dangerous`}
-            icon={<UsbOutlined />}
-            onClick={handleDisconnect}
-          >
-            Disconnect
-          </RippleButton>
+  if (state.adbStatus.error || !state.adbStatus.installed) {
+    return (
+      <div className="connection-status error glass-card">
+        <CloseCircleOutlined className="anticon" />
+        <h3>ADB Not Found</h3>
+        <p className="status-message">
+          Android Debug Bridge (ADB) is required to connect to Android devices.
+        </p>
+        <RippleButton
+          className={`${baseButtonClass} ant-btn-primary`}
+          icon={<DownloadOutlined />}
+          onClick={() => updateState({ showInstallModal: true })}
+        >
+          Install ADB Tools
+        </RippleButton>
+      </div>
+    );
+  }
+
+  if (state.status === STATUS.CONNECTED) {
+    return (
+      <div className="connected-device-container" style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+        width: '100%'
+      }}>
+        {/* Device Card */}
+        <div className="device-card glass-card" style={{
+          padding: '10px',
+          borderRadius: '12px',
+          background: 'rgba(255, 255, 255, 0.05)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            marginBottom: '10px',
+            gap: '7px'
+          }}>
+            <div style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #1890ff, #36cfc9)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '24px',
+              color: 'white',
+              textAlign: 'center'
+            }}>
+              <AndroidFilled />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '16px', color: 'white', textAlign: 'left' }}>
+                {state.device?.name || 'Mobile'}
+              </h3>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                marginTop: '4px'
+              }}>
+                <span style={{ color: 'rgba(255, 255, 255, 0.65)', fontSize: '12px' }}>
+                  {state.device?.id || 'Unknown ID'}
+                </span>
+                <Tag color="success" icon={<CheckCircleOutlined />}>
+                  Connected
+                </Tag>
+              </div>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
+            gap: '8px',
+            marginTop: '10px',
+            fontSize: '12px'
+          }}>
+            <div className="device-info-item">
+              <div style={{
+                color: 'rgba(255, 255, 255, 0.65)',
+                fontSize: '11px',
+                marginBottom: '2px',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}>
+                Model
+              </div>
+              <div style={{ 
+                fontWeight: 500, 
+                color: 'white',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}>
+                {state.device?.model || 'Unknown'}
+              </div>
+            </div>
+            <div className="device-info-item">
+              <div style={{
+                color: 'rgba(255, 255, 255, 0.65)',
+                fontSize: '11px',
+                marginBottom: '2px',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}>
+                Brand
+              </div>
+              <div style={{ 
+                fontWeight: 500, 
+                color: 'white',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}>
+                {state.device?.brand || 'Unknown'}
+              </div>
+            </div>
+            <div className="device-info-item">
+              <div style={{
+                color: 'rgba(255, 255, 255, 0.65)',
+                fontSize: '11px',
+                marginBottom: '2px',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}>
+                Android
+              </div>
+              <div style={{ 
+                fontWeight: 500, 
+                color: 'white',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}>
+                {state.device?.androidVersion || 'Unknown'}
+              </div>
+            </div>
+            <div className="device-info-item">
+              <div style={{
+                color: 'rgba(255, 255, 255, 0.65)',
+                fontSize: '11px',
+                marginBottom: '2px',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}>
+                CPU
+              </div>
+              <div style={{ 
+                fontWeight: 500, 
+                color: 'white',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}>
+                {state.device?.cpuAbi?.split('-')[0] || 'Unknown'}
+              </div>
+            </div>
+            <div className="device-info-item">
+              <div style={{
+                color: 'rgba(255, 255, 255, 0.65)',
+                fontSize: '11px',
+                marginBottom: '2px',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}>
+                SDK
+              </div>
+              <div style={{ 
+                fontWeight: 500, 
+                color: 'white',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '100%',
+                gap: '4px'
+              }}>
+                <div style={{ 
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  {state.device?.sdkVersion || '?'}
+                </div>
+                <Tooltip 
+                  title={
+                    <div style={{ padding: '8px' }}>
+                      <div style={{ fontWeight: 500, marginBottom: '8px' }}>Automate Device with AI</div>
+                      <div style={{ fontSize: '12px' }}>
+                        You can now use the Agent to automate your device through the command center.
+                        <div style={{ marginTop: '4px', fontStyle: 'italic' }}>
+                          Try: "android open twitter and tweet Happy Friyay"
+                        </div>
+                      </div>
+                    </div>
+                  }
+                  placement="topRight"
+                  color="#1f1f1f"
+                  overlayInnerStyle={{
+                    maxWidth: '280px',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+                  }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '100%',
+                    lineHeight: 1
+                  }}>
+                    <RobotOutlined style={{ 
+                      color: '#52c41a', 
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      marginLeft: '2px',
+                      verticalAlign: 'middle'
+                    }} />
+                  </div>
+                </Tooltip>
+              </div>
+            </div>
+          </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div style={{
+            display: 'flex',
+            gap: '12px',
+            marginTop: '0px'
+          }}>
+            <RippleButton
+              className={`${baseButtonClass} ant-btn-primary`}
+              icon={<ToolOutlined />}
+              style={{
+                flex: 1,
+                background: 'rgba(24, 144, 255, 0.1)',
+                borderColor: 'rgba(24, 144, 255, 0.5)'
+              }}
+            >
+              Device Tools
+            </RippleButton>
+            <RippleButton
+              className={`${baseButtonClass} ant-btn-dangerous`}
+              icon={<UsbOutlined />}
+              onClick={handleDisconnect}
+              style={{ flex: 1 }}
+            >
+              Disconnect
+            </RippleButton>
+          </div>
         </div>
       );
     }
@@ -1011,13 +1425,13 @@ adb --version`}
           color: 'rgba(255, 255, 255, 0.9)'
         }}>
           <AndroidFilled style={{ 
-            marginRight: 10,
             fontSize: 18,
             color: '#52c41a',
             textShadow: '0 0 10px rgba(82, 196, 26, 0.5)'
           }} />
           <span style={{ 
-            fontSize: 15,
+            marginLeft: 10,
+            fontSize: 14,
             fontWeight: 500
           }}>
             Android Device
@@ -1058,11 +1472,12 @@ adb --version`}
       }
     >
       <div className="connection-status">
-        {renderConnectionButton()}
+        {renderConnectionStatus()}  
       </div>
       {renderInstallModal()}
     </Card>
   );
 };
+// renderConnectionButton() for simple button, renderConnectionStatus for rich device card info, renderDeviceStatus for minimalistic device name & button.
 
 export default AndroidConnection;

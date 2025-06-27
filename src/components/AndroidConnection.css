@@ -12,6 +12,7 @@
   max-height: 260px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   color: rgba(255, 255, 255, 0.9);
+  line-height: 1;
 }
 
 /* Card header */
@@ -70,8 +71,8 @@
 }
 
 .connection-status .anticon {
-  margin-bottom: 6px;
   font-size: 18px;
+  margin: unset !important;
 }
 
 .connection-status h3 {

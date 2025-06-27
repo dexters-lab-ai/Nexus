@@ -1,12 +1,20 @@
-import { AndroidAgent, AndroidDevice, getConnectedDevices } from '@midscene/android';
+import { 
+  AndroidAgent, 
+  AndroidDevice, 
+  getConnectedDevices 
+} from '@midscene/android';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { v4 as uuidv4 } from 'uuid';
+
+const execPromise = promisify(exec);
 
 class AndroidControl {
   constructor() {
     this.device = null;
     this.agent = null;
     this.activeSessions = new Map();
-    this.isDocker = process.env.DOCKER === 'true' || process.env.IS_DOCKER === 'true';
+    this.isDocker = process.env.DOCKER === 'true' || process.env.NODE_ENV === 'production';
     this.logPrefix = '[AndroidControl]';
     this.config = this._getConfig();
   }
@@ -15,20 +23,194 @@ class AndroidControl {
    * Get connected Android devices
    * @returns {Promise<Array>} List of connected devices
    */
+  /**
+   * Get detailed device information using ADB shell commands
+   * @param {string} deviceId - Device UDID
+   * @returns {Promise<Object>} Detailed device information
+   */
+  async getDeviceDetails(deviceId) {
+    // In Docker/production, use Midscene's device info
+    if (this.isDocker || process.env.NODE_ENV === 'production') {
+      try {
+        // Get basic device info from Midscene
+        const devices = await getConnectedDevices();
+        const device = devices.find(d => d.udid === deviceId) || {};
+        
+        return {
+          model: device.model || 'Android Device',
+          manufacturer: device.manufacturer || 'Unknown',
+          device: device.udid || deviceId,
+          brand: device.brand || 'Unknown',
+          state: device.state || 'device',
+          lastUpdated: new Date().toISOString()
+        };
+      } catch (error) {
+        console.error(`${this.logPrefix} Error getting device info from Midscene:`, error);
+        return this._getFallbackDeviceInfo(deviceId);
+      }
+    }
+    
+    // In development, try to get detailed info via ADB
+    try {
+      const [
+        model, manufacturer, device, brand, 
+        androidVersion, sdkVersion, cpuAbi
+      ] = await Promise.all([
+        this._execAdbCommand(deviceId, 'getprop ro.product.model'),
+        this._execAdbCommand(deviceId, 'getprop ro.product.manufacturer'),
+        this._execAdbCommand(deviceId, 'getprop ro.product.device'),
+        this._execAdbCommand(deviceId, 'getprop ro.product.brand'),
+        this._execAdbCommand(deviceId, 'getprop ro.build.version.release'),
+        this._execAdbCommand(deviceId, 'getprop ro.build.version.sdk'),
+        this._execAdbCommand(deviceId, 'getprop ro.product.cpu.abi')
+      ]);
+
+      return {
+        model: model || 'Unknown',
+        manufacturer: manufacturer || 'Unknown',
+        device: device || 'Unknown',
+        brand: brand || 'Unknown',
+        androidVersion: androidVersion || 'Unknown',
+        sdkVersion: sdkVersion || 'Unknown',
+        cpuAbi: cpuAbi ? cpuAbi.split('-')[0] : 'Unknown',
+        lastUpdated: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error(`${this.logPrefix} Error getting device details:`, error);
+      return this._getFallbackDeviceInfo(deviceId);
+    }
+  }
+  
+  /**
+   * Get fallback device information when details can't be retrieved
+   * @private
+   */
+  _getFallbackDeviceInfo(deviceId) {
+    return {
+      model: 'Android Device',
+      manufacturer: 'Unknown',
+      device: deviceId,
+      brand: 'Unknown',
+      state: 'device',
+      lastUpdated: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Execute ADB shell command (local development only)
+   * @private
+   */
+  async _execAdbCommand(deviceId, command) {
+    if (this.isDocker || process.env.NODE_ENV === 'production') {
+      console.warn('ADB commands are disabled in production/Docker');
+      return '';
+    }
+
+    try {
+      // First try to use the device if we have an active connection
+      if (this.device && this.device.udid === deviceId) {
+        try {
+          const result = await this.device.shell(command);
+          return (result || '').trim();
+        } catch (error) {
+          console.warn(`${this.logPrefix} Device shell command failed, falling back to ADB CLI`);
+        }
+      }
+
+      // Fall back to local ADB CLI
+      const { stdout } = await execPromise(`adb -s ${deviceId} shell ${command}`);
+      return (stdout || '').trim();
+    } catch (error) {
+      console.warn(`${this.logPrefix} ADB command failed (${command}):`, error.message);
+      return '';
+    }
+  }
+  
+  /**
+   * Connect to a device using network ADB
+   * @param {string} ip - Device IP address
+   * @param {number} [port=5555] - ADB port (default: 5555)
+   * @returns {Promise<Object>} Connection result
+   */
+  async connectOverNetwork(ip, port = 5555) {
+    try {
+      // First try to connect using ADB
+      if (!this.isDocker && process.env.NODE_ENV !== 'production') {
+        await execPromise(`adb connect ${ip}:${port}`);
+      }
+      
+      // Then get device info using Midscene
+      const devices = await getConnectedDevices();
+      const device = devices.find(d => d.udid.includes(ip));
+      
+      if (device) {
+        this.device = device;
+        return { 
+          success: true, 
+          device: await this.getDeviceDetails(device.udid) 
+        };
+      }
+      
+      return { 
+        success: false, 
+        error: 'Device not found after connection' 
+      };
+    } catch (error) {
+      console.error(`${this.logPrefix} Network connection failed:`, error);
+      return { 
+        success: false, 
+        error: error.message 
+      };
+    }
+  }
+
   async getConnectedDevices() {
     try {
       const devices = await getConnectedDevices();
-      return devices.map(device => ({
-        id: device.udid,
-        name: `Android Device (${device.udid})`,
-        state: device.state,
-        port: device.port,
-        model: device.model || 'Unknown',
-        manufacturer: device.manufacturer || 'Unknown'
-      }));
+      
+      // If no devices found, return empty array instead of throwing
+      if (!devices || !Array.isArray(devices) || devices.length === 0) {
+        console.log(`${this.logPrefix} No devices found`);
+        return [];
+      }
+      
+      console.log(`${this.logPrefix} Found ${devices.length} device(s):`, devices.map(d => d.udid).join(', '));
+      
+      // Get detailed info for each device
+      const devicesWithDetails = [];
+      
+      for (const device of devices) {
+        try {
+          const details = await this.getDeviceDetails(device.udid);
+          devicesWithDetails.push({
+            id: device.udid,
+            name: details.model || `Android Device (${device.udid})`,
+            state: device.state || 'device',
+            port: device.port || 5555,
+            type: device.udid.includes(':') ? 'tcpip' : 'usb',
+            ...details
+          });
+        } catch (error) {
+          console.warn(`${this.logPrefix} Error getting details for device ${device.udid}:`, error);
+          // Still include the device but with minimal info
+          devicesWithDetails.push({
+            id: device.udid,
+            name: `Android Device (${device.udid})`,
+            state: device.state || 'unknown',
+            port: device.port || 5555,
+            type: device.udid.includes(':') ? 'tcpip' : 'usb',
+            model: 'Unknown',
+            manufacturer: 'Unknown',
+            error: error.message || 'Failed to get device details'
+          });
+        }
+      }
+
+      return devicesWithDetails;
     } catch (error) {
-      console.error(`${this.logPrefix} Error getting connected devices:`, error);
-      throw new Error(`Failed to get connected devices: ${error.message}`);
+      console.error(`${this.logPrefix} Error in getConnectedDevices:`, error);
+      // Return empty array instead of throwing to prevent unhandled rejections
+      return [];
     }
   }
 
@@ -38,19 +220,33 @@ class AndroidControl {
    */
   async checkAdbStatus() {
     try {
+      console.log(`${this.logPrefix} Checking ADB status...`);
+      
+      // Check if we can get devices
       const devices = await this.getConnectedDevices();
+      const isAdbAvailable = devices !== undefined; // getConnectedDevices returns [] on no devices, undefined on error
+      
+      console.log(`${this.logPrefix} ADB check complete, available:`, isAdbAvailable);
+      
       return {
-        installed: true,
-        version: 'ADB (via @midscene/android)',
-        devices,
-        error: null
+        installed: isAdbAvailable,
+        version: isAdbAvailable ? 'ADB (via @midscene/android)' : null,
+        devices: Array.isArray(devices) ? devices : [],
+        error: null,
+        status: 'success',
+        timestamp: new Date().toISOString()
       };
+      
     } catch (error) {
+      console.error(`${this.logPrefix} Error in checkAdbStatus:`, error);
+      
       return {
         installed: false,
         version: null,
         devices: [],
-        error: error.message || 'ADB not available'
+        error: error.message || 'ADB not available',
+        status: 'error',
+        timestamp: new Date().toISOString()
       };
     }
   }
@@ -304,18 +500,72 @@ class AndroidControl {
   }
 
   /**
+   * Disconnect from the current device
+   * @returns {Promise<Object>} Disconnect status
+   */
+  async disconnect() {
+    try {
+      console.log(`${this.logPrefix} Disconnecting from device...`);
+      
+      // Disconnect the device if connected
+      if (this.device) {
+        try {
+          await this.device.disconnect();
+        } catch (error) {
+          console.error(`${this.logPrefix} Error disconnecting device:`, error);
+          // Continue with cleanup even if device disconnect fails
+        }
+        this.device = null;
+      }
+
+      // Clean up the agent if it exists
+      if (this.agent) {
+        try {
+          await this.agent.disconnect();
+        } catch (error) {
+          console.error(`${this.logPrefix} Error disconnecting agent:`, error);
+          // Continue with cleanup even if agent disconnect fails
+        }
+        this.agent = null;
+      }
+
+      // Clear any active sessions
+      this.activeSessions.clear();
+
+      console.log(`${this.logPrefix} Successfully disconnected`);
+      
+      return {
+        success: true,
+        message: 'Successfully disconnected from device',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error(`${this.logPrefix} Error in disconnect:`, error);
+      throw {
+        success: false,
+        message: `Failed to disconnect: ${error.message}`,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
    * Clean up resources
    */
   async cleanup() {
     try {
       if (this.device) {
         await this.device.disconnect();
+        this.device = null;
       }
-      this.device = null;
-      this.agent = null;
+      if (this.agent) {
+        await this.agent.disconnect();
+        this.agent = null;
+      }
       this.activeSessions.clear();
     } catch (error) {
-      console.error('Error during Android control cleanup:', error);
+      console.error(`${this.logPrefix} Error during cleanup:`, error);
       throw error;
     }
   }
