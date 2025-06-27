@@ -64,8 +64,6 @@ const ActionButton = ({
   </RippleButton>
 );
 
-
-
 // Status constants
 const STATUS = {
   DISCONNECTED: 'disconnected',
@@ -92,10 +90,8 @@ const AndroidConnection = ({ onClose, active = false }) => {
     installProgress: []
   });
 
-  const ws = useRef(null);
-  const reconnectAttempts = useRef(0);
   const isMounted = useRef(true);
-  const reconnectTimeout = useRef(null);
+  const pollingRef = useRef(null);
 
   // Update state helper
   const updateState = (updates) => {
@@ -107,628 +103,344 @@ const AndroidConnection = ({ onClose, active = false }) => {
     }
   };
 
-  // Check ADB status with detailed feedback
+  // Check ADB status and connected devices
   const checkAdbStatus = useCallback(async () => {
-    console.log('checkAdbStatus called');
+    if (!isMounted.current) return false;
+    
     try {
       updateState(prev => ({
         ...prev,
         loading: true,
         error: null,
         adbStatus: { 
-          ...prev.adbStatus,
-          checking: true,
+          ...prev.adbStatus, 
+          checking: true, 
           error: null 
         }
       }));
 
-      const response = await api.android.getStatus();
+      // Get status from the backend API
+      const status = await api.android.getStatus();
+      console.log('ADB Status from backend:', status);
+
+      if (!isMounted.current) return false;
+
+      // Determine if we have any connected devices
+      const hasConnectedDevices = status.devices && status.devices.length > 0;
+      const isAdbInstalled = status.installed || hasConnectedDevices;
       
-      if (response.installed) {
-        updateState(prev => ({
+      // Update state with the new status
+      updateState(prev => {
+        const newState = {
           ...prev,
           loading: false,
           adbStatus: {
-            installed: true,
-            version: response.version,
-            error: null,
-            checking: false
+            installed: isAdbInstalled,
+            version: status.version || 'ADB',
+            checking: false,
+            error: status.error || null
           },
-          // Only update status if not already connected
-          ...(prev.status !== STATUS.CONNECTED && {
-            status: STATUS.DISCONNECTED,
-            error: null
-          })
-        }));
-      } else {
-        updateState(prev => ({
-          ...prev,
-          loading: false,
-          adbStatus: {
-            installed: false,
-            version: null,
-            error: response.error || 'ADB is not installed',
-            checking: false
-          },
-          status: STATUS.ERROR,
-          error: 'ADB is not installed. Please install Android Debug Bridge.'
-        }));
-      }
-      return response.installed;
+          devices: status.devices || [],
+          error: status.error || null
+        };
+
+        // Update connection status based on devices and previous state
+        if (hasConnectedDevices) {
+          // If we have devices but weren't connected, set to DISCONNECTED (ready to connect)
+          if (prev.status !== STATUS.CONNECTED) {
+            newState.status = STATUS.DISCONNECTED;
+          }
+          // If we were connected, keep that status
+        } else if (isAdbInstalled) {
+          // ADB is installed but no devices
+          newState.status = STATUS.DISCONNECTED;
+        } else {
+          // ADB not installed or error
+          newState.status = STATUS.ERROR;
+        }
+
+        return newState;
+      });
+
+      return isAdbInstalled;
+      
     } catch (error) {
       console.error('Error checking ADB status:', error);
+      
+      if (!isMounted.current) return false;
+      
+      const errorMessage = error.message || 'Failed to check ADB status';
+      
       updateState(prev => ({
         ...prev,
         loading: false,
         adbStatus: {
+          ...prev.adbStatus,
           installed: false,
           version: null,
-          error: error.message,
-          checking: false
+          checking: false,
+          error: errorMessage
         },
         status: STATUS.ERROR,
-        error: 'Failed to check ADB status: ' + error.message
+        error: errorMessage
       }));
+      
+      // Show error notification
+      notification.error({
+        message: 'ADB Status Error',
+        description: errorMessage,
+        placement: 'bottomRight',
+        duration: 5
+      });
+      
       return false;
     }
   }, []);
 
-  // WebSocket connection manager
-  const connectWebSocket = useCallback(() => {
-    console.log('connectWebSocket called, current attempts:', reconnectAttempts.current);
-    
-    // Don't reconnect if we're already connected or have exceeded max attempts
-    if (ws.current?.readyState === WebSocket.OPEN || reconnectAttempts.current >= 5) {
-      console.log('WebSocket already connected or max attempts reached');
-      return;
-    }
-
-    // Clean up any existing connection
-    if (ws.current) {
-      console.log('Cleaning up existing WebSocket connection');
-      ws.current.onopen = null;
-      ws.current.onclose = null;
-      ws.current.onerror = null;
-      ws.current.onmessage = null;
-      try {
-        ws.current.close();
-      } catch (e) {
-        console.error('Error closing WebSocket:', e);
-      }
-      ws.current = null;
-    }
-
-    // Only update state if this is the first attempt
-    if (reconnectAttempts.current === 0) {
-      updateState(prev => ({
-        ...prev,
-        status: STATUS.CONNECTING,
-        error: null
-      }));
-    }
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/ws/frontend`;
-    
-    console.log('Creating new WebSocket connection to:', wsUrl);
+  // Poll connection status periodically
+  const pollConnectionStatus = useCallback(async () => {
+    if (!isMounted.current) return;
     
     try {
-      ws.current = new WebSocket(wsUrl);
-
-      ws.current.onopen = () => {
-        console.log('WebSocket connected successfully');
-        reconnectAttempts.current = 0;
-        updateState(prev => ({
-          ...prev,
-          status: STATUS.CONNECTED,
-          error: null
-        }));
-      };
-
-      ws.current.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('WebSocket message received:', data);
-          
-          // Handle different message types
-          switch (data.type) {
-            case 'device_connected':
-              console.log('Device connected:', data.device);
-              updateState(prev => ({
-                ...prev,
-                device: data.device,
-                // Only add to devices list if not already present
-                devices: prev.devices.some(d => d.id === data.device.id) 
-                  ? prev.devices 
-                  : [...prev.devices, data.device],
-                status: STATUS.CONNECTED,
-                error: null,
-                loading: false
-              }));
-              break;
-              
-            case 'device_disconnected':
-              console.log('Device disconnected:', data.deviceId);
-              updateState(prev => {
-                const newDevices = prev.devices.filter(dev => dev.id !== data.deviceId);
-                return {
-                  ...prev,
-                  // Only clear current device if it's the one that disconnected
-                  device: prev.device?.id === data.deviceId ? null : prev.device,
-                  devices: newDevices,
-                  // Only go to disconnected state if it was the current device
-                  status: prev.device?.id === data.deviceId ? STATUS.DISCONNECTED : prev.status,
-                  error: prev.device?.id === data.deviceId ? 'Device disconnected' : prev.error
-                };
-              });
-              break;
-              
-            case 'connection_established':
-              console.log('WebSocket connection established');
-              updateState(prev => ({
-                ...prev,
-                status: STATUS.CONNECTED,
-                error: null
-              }));
-              
-              // Request current device status
-              if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-                ws.current.send(JSON.stringify({ type: 'get_device_status' }));
-              }
-              break;
-              
-            case 'error':
-              console.error('WebSocket error:', data.message);
-              updateState(prev => ({
-                ...prev,
-                status: data.severity === 'warning' ? prev.status : STATUS.ERROR,
-                error: data.message || 'Connection error'
-              }));
-              break;
-              
-            case 'device_list':
-              console.log('Received device list:', data.devices);
-              if (data.devices && data.devices.length > 0) {
-                updateState(prev => ({
-                  ...prev,
-                  devices: data.devices,
-                  // If we don't have a current device but have devices, use the first one
-                  device: prev.device || data.devices[0],
-                  status: prev.device ? prev.status : STATUS.CONNECTED
-                }));
-              }
-              break;
-              
-            default:
-              console.log('Unhandled WebSocket message type:', data.type);
-          }
-        } catch (error) {
-          console.error('Error processing WebSocket message:', error, event.data);
-          updateState(prev => ({
-            ...prev,
-            status: STATUS.ERROR,
-            error: 'Failed to process message from server',
-            loading: false
-          }));
-        }
-      };
-
-      ws.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        // Don't update state here to avoid UI flicker, let onclose handle it
-      };
-
-      ws.current.onclose = (event) => {
-        console.log('WebSocket closed:', event.code, event.reason);
+      const status = await api.android.getConnectionStatus();
+      
+      updateState(prev => {
+        // Skip update if nothing changed
+        const statusChanged = prev.status !== status.status;
+        const deviceChanged = JSON.stringify(prev.device) !== JSON.stringify(status.device);
+        const devicesChanged = JSON.stringify(prev.devices) !== JSON.stringify(status.devices);
         
-        // Only attempt to reconnect if we're still mounted and haven't exceeded max attempts
-        if (isMounted.current && reconnectAttempts.current < 5) {
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000); // Exponential backoff with max 30s
-          console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current + 1}/5)`);
-          
-          reconnectAttempts.current += 1;
-          
-          // Clear any existing timeout to prevent multiple reconnection attempts
-          if (reconnectTimeout.current) {
-            clearTimeout(reconnectTimeout.current);
-          }
-          
-          reconnectTimeout.current = setTimeout(() => {
-            if (isMounted.current) {
-              connectWebSocket();
-            }
-          }, delay);
-        } else if (isMounted.current) {
-          console.log('Max reconnection attempts reached');
-          updateState(prev => ({
-            ...prev,
-            status: STATUS.ERROR,
-            error: 'Connection lost. Please refresh the page.',
-            loading: false
-          }));
+        if (!statusChanged && !deviceChanged && !devicesChanged) {
+          return prev;
         }
-      };
-      
-    } catch (error) {
-      console.error('Error creating WebSocket:', error);
-      if (isMounted.current) {
-        updateState(prev => ({
+        
+        const newStatus = status.status === 'connected' ? STATUS.CONNECTED : 
+                         status.status === 'error' ? STATUS.ERROR : 
+                         STATUS.DISCONNECTED;
+        
+        // Determine if ADB is installed based on the response
+        const isAdbInstalled = status.installed || (status.devices && status.devices.length > 0);
+        
+        return {
           ...prev,
-          status: STATUS.ERROR,
-          error: 'Failed to connect to server',
-          loading: false
-        }));
-      }
-    }
-  }, []);
-
-  // Initialize WebSocket connection when component mounts
-  useEffect(() => {
-    isMounted.current = true;
-    connectWebSocket();
-    
-    // Cleanup function
-    return () => {
-      isMounted.current = false;
-      
-      // Clear any pending reconnection attempts
-      if (reconnectTimeout.current) {
-        clearTimeout(reconnectTimeout.current);
-        reconnectTimeout.current = null;
-      }
-      
-      // Close WebSocket connection
-      if (ws.current) {
-        console.log('Cleaning up WebSocket on unmount');
-        ws.current.onopen = null;
-        ws.current.onclose = null;
-        ws.current.onerror = null;
-        ws.current.onmessage = null;
-        try {
-          ws.current.close();
-        } catch (e) {
-          console.error('Error closing WebSocket on unmount:', e);
-        }
-        ws.current = null;
-      }
-    };
-  }, [connectWebSocket]);
-
-  // Check for connected devices
-  const checkForDevices = useCallback(async () => {
-    try {
-      const status = await api.android.getStatus();
-      
-      if (!status.installed) {
-        return { 
-          error: 'ADB is not installed. Please install Android Debug Bridge first.',
-          requiresInstall: true
+          status: newStatus,
+          device: status.device || null,
+          devices: status.devices || [],
+          error: status.error || null,
+          loading: false,
+          adbStatus: {
+            installed: isAdbInstalled,
+            version: status.version || 'ADB',
+            error: status.error || null,
+            checking: false
+          }
         };
-      }
-      
-      if (!status.devices || status.devices.length === 0) {
-        return { 
-          error: 'No Android devices found. Please connect a device via USB and enable USB debugging.',
-          requiresConnection: true
-        };
-      }
-      
-      return { devices: status.devices };
+      });
     } catch (error) {
-      console.error('Device check failed:', error);
-      return { 
-        error: error.message || 'Failed to check for devices',
-        requiresRetry: true
-      };
-    }
-  }, []);
-
-  // Track retry attempts for device connection
-  const retryCount = useRef(0);
-  const maxRetries = 3;
-  const connectionInProgress = useRef(false);
-
-  // Connect to device
-  const handleConnect = useCallback(async (isRetry = false) => {
-    // Prevent multiple connection attempts in parallel
-    if (connectionInProgress.current) {
-      console.log('Connection attempt already in progress');
-      return;
-    }
-
-    try {
-      connectionInProgress.current = true;
+      console.error('Failed to get connection status:', error);
+      if (!isMounted.current) return;
       
-      // Reset retry count if this is a manual connection attempt
-      if (!isRetry) {
-        retryCount.current = 0;
-      }
-
-      updateState(prev => ({
-        ...prev,
-        status: STATUS.CONNECTING,
-        loading: true,
-        error: null
-      }));
-
-      // Check if WebSocket is connected
-      if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
-        if (reconnectAttempts.current < 5) {
-          console.log('WebSocket not connected, attempting to reconnect...');
-          connectWebSocket();
-          
-          // Wait a bit for connection to establish
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // If still not connected after waiting, throw error
-          if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
-            throw new Error('Unable to establish connection to server');
-          }
-        } else {
-          throw new Error('Connection to server failed after multiple attempts');
-        }
-      }
-
-      // Check for available devices
-      const deviceCheck = await checkForDevices();
-      
-      if (deviceCheck.error) {
-        // Only show installation prompt if this is not a retry
-        if (deviceCheck.requiresInstall && !isRetry) {
-          updateState(prev => ({
-            ...prev,
-            showInstallModal: true,
-            loading: false
-          }));
-          return;
-        }
-        
-        // If we have devices but still get an error, it might be a connection issue
-        if (deviceCheck.requiresConnection) {
-          throw new Error(
-            'No Android device detected.\n\n' +
-            '1. Connect your device via USB\n' +
-            '2. Enable USB debugging in Developer options\n' +
-            '3. If prompted on your device, allow USB debugging\n' +
-            '4. Try a different USB cable or port if needed'
-          );
-        }
-        throw new Error(deviceCheck.error);
-      }
-      
-      if (!deviceCheck.devices || deviceCheck.devices.length === 0) {
-        // Only show the error if this is the first attempt
-        if (!isRetry) {
-          throw new Error('No devices available for connection');
-        }
-        // For retries, just return and let the retry logic handle it
-        return;
-      }
-
-      // Connect to the first available device
-      const device = deviceCheck.devices[0];
-      console.log('Attempting to connect to device:', device.id);
-      
-      // Update state to show connecting to device
-      updateState(prev => ({
-        ...prev,
-        device: { ...device, status: 'connecting' },
-        loading: true,
-        error: null
-      }));
-      
-      // Connect to the device
-      await api.android.connectDevice(device.id);
-      
-      // The WebSocket message handler will update the state when connection is confirmed
-      
-    } catch (error) {
-      console.error('Connection failed:', error);
-      
-      // Only retry if we haven't exceeded max retries
-      if (retryCount.current < maxRetries) {
-        retryCount.current += 1;
-        const retryMessage = `Connection failed (attempt ${retryCount.current}/${maxRetries})...`;
-        console.log(`${retryMessage}:`, error.message);
-        
-        // Show loading state during retry
-        updateState(prev => ({
-          ...prev,
-          status: STATUS.CONNECTING,
-          loading: true,
-          error: retryMessage
-        }));
-        
-        // Wait before retrying (exponential backoff)
-        const delay = Math.min(1000 * Math.pow(2, retryCount.current - 1), 10000); // Max 10s delay
-        console.log(`Retrying in ${delay}ms...`);
-        
-        await new Promise(resolve => setTimeout(resolve, delay));
-        
-        // Retry the connection if we're still mounted
-        if (isMounted.current) {
-          return handleConnect(true);
-        }
-        return;
-      }
-      
-      // If we've exhausted retries, show error
       updateState(prev => ({
         ...prev,
         status: STATUS.ERROR,
-        error: `Failed to connect: ${error.message || 'Unknown error'}`,
+        error: error.message || 'Failed to get connection status',
+        loading: false,
+        adbStatus: {
+          ...prev.adbStatus,
+          installed: false,
+          error: error.message || 'Failed to check ADB status',
+          checking: false
+        }
+      }));
+    }
+  }, []);
+
+  // Connect to device using api.android
+  const handleConnect = useCallback(async (selectedDeviceId) => {
+    if (!isMounted.current) return;
+    
+    try {
+      updateState(prev => ({ 
+        ...prev, 
+        loading: true, 
+        error: null, 
+        status: STATUS.CONNECTING 
+      }));
+      
+      // Get current status first to check ADB and devices
+      const status = await api.android.getStatus();
+      console.log('ADB Status:', status);
+      
+      if (!status.installed) {
+        throw new Error(status.error || 'ADB is not installed. Please install Android Debug Bridge and try again.');
+      }
+      
+      // If no devices found but ADB is installed
+      if (!status.devices || status.devices.length === 0) {
+        throw new Error('No Android devices found. Please ensure:' +
+          '\n1. USB debugging is enabled on your device' +
+          '\n2. Device is properly connected' +
+          '\n3. You have authorized this computer for debugging');
+      }
+      
+      // Use selected device or first available
+      const deviceToConnect = selectedDeviceId || (status.devices[0]?.id);
+      if (!deviceToConnect) {
+        throw new Error('No valid device ID found');
+      }
+      
+      console.log(`Connecting to device: ${deviceToConnect}`);
+      
+      // Connect to the device
+      const result = await api.android.connectDevice(deviceToConnect);
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to connect to device');
+      }
+      
+      // Get updated status after connection
+      const connectionStatus = await api.android.getConnectionStatus();
+      console.log('Connection successful, status:', connectionStatus);
+      
+      if (!isMounted.current) return;
+      
+      updateState(prev => ({
+        ...prev,
+        status: connectionStatus.status === 'connected' ? STATUS.CONNECTED : STATUS.DISCONNECTED,
+        device: connectionStatus.device || result.device || { id: deviceToConnect, name: `Android Device (${deviceToConnect})` },
+        devices: connectionStatus.devices || status.devices || [],
+        loading: false,
+        error: null
+      }));
+      
+      // Show success notification
+      notification.success({
+        message: 'Device Connected',
+        description: `Successfully connected to ${deviceToConnect}`,
+        placement: 'bottomRight'
+      });
+      
+    } catch (error) {
+      console.error('Connection failed:', error);
+      if (!isMounted.current) return;
+      
+      updateState(prev => ({
+        ...prev,
+        status: STATUS.ERROR,
+        error: error.message || 'Failed to connect to device',
         loading: false
       }));
-    } finally {
-      connectionInProgress.current = false;
+      
+      // Show error notification
+      notification.error({
+        message: 'Connection Failed',
+        description: error.message || 'Failed to connect to the device',
+        placement: 'bottomRight'
+      });
     }
-  }, [checkForDevices, connectWebSocket, updateState]);
+  }, []);
 
-  // Disconnect from device
+  // Disconnect from device using api.android
   const handleDisconnect = useCallback(async () => {
-    // Don't proceed if already disconnected
-    if (state.status === STATUS.DISCONNECTED) {
-      return;
-    }
-
-    // Set loading state
-    updateState(prev => ({
-      ...prev,
-      loading: true,
-      error: null
-    }));
+    if (state.status !== STATUS.CONNECTED && state.status !== STATUS.CONNECTING) return;
+    if (!isMounted.current) return;
 
     try {
-      // Only try to disconnect if we have a device connected
-      if (state.device) {
-        console.log('Disconnecting device:', state.device.id);
-        await api.android.disconnectDevice();
+      updateState(prev => ({ 
+        ...prev, 
+        loading: true, 
+        error: null 
+      }));
+      
+      console.log('Disconnecting from device...');
+      const result = await api.android.disconnectDevice();
+      
+      if (!result.success) {
+        throw new Error(result.message || result.error || 'Failed to disconnect device');
       }
       
-      // Update the UI immediately for better responsiveness
+      // Get updated status after disconnection
+      const status = await api.android.getConnectionStatus();
+      console.log('Disconnection successful, status:', status);
+      
+      if (!isMounted.current) return;
+      
       updateState(prev => ({
         ...prev,
         status: STATUS.DISCONNECTED,
         device: null,
+        devices: status.devices || [],
         loading: false,
-        error: null
-      }));
-      
-      console.log('Device disconnected successfully');
-      
-    } catch (error) {
-      console.error('Disconnect failed:', error);
-      // Even if the API call fails, we can still update the UI
-      updateState(prev => ({
-        ...prev,
-        status: STATUS.DISCONNECTED,
-        device: null,
-        loading: false,
-        error: error.message || 'Device was disconnected, but there was an error'
-      }));
-    }
-  }, [state.device, state.status, updateState]);
-  const handleInstall = useCallback(async () => {
-    try {
-      updateState({ 
-        isInstalling: true, 
-        installProgress: [{
-          type: 'info',
-          message: 'Starting ADB installation...',
-          timestamp: Date.now()
-        }],
-        error: null
-      });
-      
-      // Add a small delay to show the initial message
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Start the installation process
-      const response = await api.android.install({
-        onProgress: (progress) => {
-          updateState(prev => ({
-            installProgress: [
-              ...prev.installProgress,
-              {
-                type: progress.status || 'info',
-                message: progress.message,
-                details: progress.details,
-                timestamp: Date.now()
-              }
-            ]
-          }));
+        error: null,
+        adbStatus: {
+          ...prev.adbStatus,
+          installed: status.installed || false,
+          version: status.version || null,
+          error: status.error || null,
+          checking: false
         }
+      }));
+      
+      // Show success notification
+      notification.success({
+        message: 'Device Disconnected',
+        description: 'Successfully disconnected from the device',
+        placement: 'bottomRight'
       });
       
-      if (response.success) {
-        // Add success message
-        updateState(prev => ({
-          installProgress: [
-            ...prev.installProgress,
-            {
-              type: 'success',
-              message: 'ADB installed successfully!',
-              timestamp: Date.now()
-            }
-          ]
-        }));
-        
-        // Update ADB status after a short delay
-        setTimeout(() => {
-          checkAdbStatus();
-        }, 1500);
-      } else {
-        throw new Error(response.error || 'Installation failed');
-      }
     } catch (error) {
-      console.error('Installation error:', error);
+      console.error('Disconnection failed:', error);
+      if (!isMounted.current) return;
+      
       updateState(prev => ({
-        error: error.message || 'Failed to install ADB',
-        isInstalling: false,
-        installProgress: [
-          ...prev.installProgress,
-          {
-            type: 'error',
-            message: 'Installation failed',
-            details: error.message,
-            timestamp: Date.now()
-          }
-        ]
+        ...prev,
+        status: STATUS.ERROR,
+        loading: false,
+        error: error.message || 'Failed to disconnect from device'
       }));
+      
+      // Show error notification
+      notification.error({
+        message: 'Disconnection Failed',
+        description: error.message || 'Failed to disconnect from the device',
+        placement: 'bottomRight'
+      });
     }
-  }, [checkAdbStatus]);
+  }, [state.status]);
 
-  // Initialize/cleanup based on active state
+  // Set up polling when component is active
   useEffect(() => {
-    console.log('AndroidConnection active state changed:', active);
-    
-    if (active) {
-      isMounted.current = true;
-      console.log('Initializing AndroidConnection...');
-      
-      // Initialize ADB status check
-      checkAdbStatus().then(installed => {
-        console.log('ADB status checked, installed:', installed);
-        if (installed) {
-          // Only initialize WebSocket if ADB is installed
-          connectWebSocket();
-        }
-      });
-    } else {
-      console.log('Cleaning up AndroidConnection...');
-      // Cleanup WebSocket and timeouts
-      if (ws.current) {
-        console.log('Closing WebSocket connection');
-        ws.current.close();
-        ws.current = null;
-      }
-      if (reconnectTimeout.current) {
-        console.log('Clearing reconnect timeout');
-        clearTimeout(reconnectTimeout.current);
-        reconnectTimeout.current = null;
-      }
-    }
+    if (!active) return;
 
-    return () => {
-      if (!active) {
-        console.log('Component unmounting, cleaning up...');
-        isMounted.current = false;
-        if (ws.current) {
-          console.log('Closing WebSocket connection (cleanup)');
-          ws.current.close();
-          ws.current = null;
-        }
-        if (reconnectTimeout.current) {
-          console.log('Clearing reconnect timeout (cleanup)');
-          clearTimeout(reconnectTimeout.current);
-          reconnectTimeout.current = null;
-        }
+    isMounted.current = true;
+
+    const init = async () => {
+      try {
+        await checkAdbStatus();
+        await pollConnectionStatus();
+      } catch (error) {
+        console.error('Initialization error:', error);
       }
     };
-  }, [active]); // Removed checkAdbStatus and initWebSocket from deps to prevent unnecessary re-renders
 
-  // Render status badge based on connection state
+    init();
+
+    pollingRef.current = setInterval(() => {
+      if (isMounted.current) {
+        pollConnectionStatus().catch(console.error);
+      }
+    }, 5000);
+
+    return () => {
+      isMounted.current = false;
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [active, checkAdbStatus, pollConnectionStatus]);
+
+  // Render status badge
   const renderStatusBadge = () => {
     switch (state.status) {
       case STATUS.CONNECTED:
@@ -768,7 +480,7 @@ const AndroidConnection = ({ onClose, active = false }) => {
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
               <Button 
                 type="primary" 
-                onClick={handleConnect}
+                onClick={() => handleConnect()}
                 loading={state.loading}
                 icon={<ReloadOutlined />}
                 style={{ marginRight: '8px' }}
@@ -815,7 +527,7 @@ const AndroidConnection = ({ onClose, active = false }) => {
           <p>Connect your Android device via USB</p>
           <Button 
             type="primary" 
-            onClick={handleConnect}
+            onClick={() => handleConnect()}
             loading={state.loading}
             icon={<LinkOutlined />}
           >
@@ -826,9 +538,8 @@ const AndroidConnection = ({ onClose, active = false }) => {
     );
   };
 
-  // Render connection button based on state
+  // Render connection button
   const renderConnectionButton = () => {
-    // Base button class with additional custom class for connection status
     const baseButtonClass = 'ant-btn';
     const statusClass = `connection-status ${state.status === STATUS.CONNECTED ? 'connected' : ''} ${state.status === STATUS.ERROR ? 'error' : ''}`;
 
@@ -852,15 +563,13 @@ const AndroidConnection = ({ onClose, active = false }) => {
       );
     }
 
-    // Show error state if there's an error
     if (state.error) {
       const isConnectionError = state.error.includes('No Android device detected');
-      
       return (
         <div className="connection-status error glass-card" style={{ padding: '16px', textAlign: 'center' }}>
-          <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: '24px', marginBottom: '8px' }} />
-          <h3 style={{ marginBottom: '8px' }}>Connection Error</h3>
-          <p style={{ 
+        <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: '24px', marginBottom: '8px' }} />
+        <h3 style={{ marginBottom: '8px' }}>Connection Error</h3>
+        <p style={{ 
             color: 'rgba(255, 255, 255, 0.8)',
             marginBottom: '16px',
             fontSize: '14px'
@@ -872,7 +581,7 @@ const AndroidConnection = ({ onClose, active = false }) => {
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
             <RippleButton
               className={`${baseButtonClass} ant-btn-primary`}
-              onClick={handleConnect}
+              onClick={() => handleConnect()}
               icon={<ReloadOutlined />}
             >
               Retry
@@ -926,14 +635,11 @@ const AndroidConnection = ({ onClose, active = false }) => {
       );
     }
 
-
-
-    // Default connect button
     return (
       <RippleButton
         className={`${baseButtonClass} ant-btn-primary`}
         icon={<LinkOutlined />}
-        onClick={handleConnect}
+        onClick={() => handleConnect()}
         style={{
           width: '100%',
           display: 'flex',
@@ -950,7 +656,7 @@ const AndroidConnection = ({ onClose, active = false }) => {
     );
   };
 
-  // Render installation modal with detailed guide
+  // Render installation modal
   const renderInstallModal = () => {
     const tabItems = [
       {
@@ -980,6 +686,7 @@ const AndroidConnection = ({ onClose, active = false }) => {
                 <div style={{ margin: '8px 0' }}>
                   <div style={{ marginBottom: 4 }}>Run these commands in Command Prompt (as Administrator):</div>
                   <pre style={{
+                   过渡: 'all 0.2s',
                     background: 'rgba(15, 18, 30, 0.9)',
                     color: 'rgba(255, 255, 255, 0.9)',
                     padding: '8px',
@@ -1175,7 +882,6 @@ adb --version`}
           
           <div style={{ marginBottom: 24 }}>
             <h3>Installation Steps</h3>
-            
             <div style={{ 
               backgroundColor: 'rgba(110, 122, 255, 0.12)', 
               border: '1px solid rgba(175, 110, 255, 0.12)',
@@ -1326,17 +1032,13 @@ adb --version`}
           <Tooltip title="Refresh status">
             <Button
               icon={<ReloadOutlined />}
-              onClick={checkAdbStatus}
+              onClick={pollConnectionStatus}
               loading={state.loading}
               size="small"
               type="text"
               style={{
                 color: 'rgba(255, 255, 255, 0.65)',
-                transition: 'all 0.2s',
-                ':hover': {
-                  color: '#fff',
-                  transform: 'rotate(180deg)'
-                }
+                transition: 'all 0.2s'
               }}
             />
           </Tooltip>
@@ -1348,11 +1050,7 @@ adb --version`}
               type="text"
               style={{
                 color: 'rgba(255, 77, 79, 0.8)',
-                transition: 'all 0.2s',
-                ':hover': {
-                  color: '#ff4d4f',
-                  transform: 'scale(1.1)'
-                }
+                transition: 'all 0.2s'
               }}
             />
           )}

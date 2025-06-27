@@ -6,11 +6,6 @@ services:
       context: .
       dockerfile: Dockerfile
       target: production  # Ensure we're using the production stage from Dockerfile
-    container_name: nexus-app
-    
-    # Use host network for better Android device access
-    network_mode: host
-    
     environment:
       - NODE_ENV=production
       - DOCKER=true
@@ -46,21 +41,16 @@ services:
     # Security options
     security_opt:
       - no-new-privileges:true
-    
     # Shared memory settings for Chromium
-    shm_size: 2gb
+    shm_size: 1gb
     # Port mappings
     ports:
-      - "3000:3000"  # Frontend
       - "3420:3420"  # Backend API
       # Frontend should be served separately (e.g., via Nginx or CDN)
     # Volumes for persistent data
     volumes:
       - ./nexus_run:/usr/src/app/nexus_run
       - ./logs:/usr/src/app/logs
-      # Android SDK
-      - android-sdk:/opt/android-sdk
-    
     # DNS configuration for better network performance
     dns:
       - 1.1.1.1

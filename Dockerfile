@@ -51,7 +51,6 @@ RUN rm -rf node_modules package-lock.json pnpm-lock.yaml
 RUN echo "Installing dependencies..." && \
     npm install --legacy-peer-deps && \
     npm install @rollup/rollup-linux-x64-gnu rollup-plugin-visualizer@5.9.2 --save-dev && \
-    npm install @midscene/android@latest --save-dev && \
     echo "Dependency installation complete"
 
 # Create necessary directories

@@ -374,6 +374,20 @@ export async function deleteAccount() {
   return del('/api/auth/account');
 }
 
+const androidState = {
+  _activeDevice: null,  // Tracks the currently connected device
+  _lastError: null,     // Stores the last error for persistence
+
+  _getActiveDeviceId() {
+    return this._activeDevice ? this._activeDevice.id : null;
+  },
+
+  _resetState() {
+    this._activeDevice = null;
+    this._lastError = null;
+  }
+};
+
 /**
  * API service object with endpoint-specific methods
  * All methods automatically handle authentication, CORS, and error handling
@@ -635,26 +649,111 @@ export const api = {
     }
   },
 
-  // Android endpoints
+  // Android endpoints - Backend proxy
   android: {
     /**
      * Get Android device status and ADB information
-     * @returns {Promise<{installed: boolean, version: string, devices: Array, error: string}>} - Android status information
+     * @returns {Promise<{installed: boolean, version: string, devices: Array<{id: string, name: string}>, error: string|null, status: string}>}
      */
-    getStatus: () => get('/api/android/status'),
-    
+    async getStatus() {
+      try {
+        const data = await fetchAPI('android/status');
+        return {
+          installed: data.installed || false,
+          version: data.version || null,
+          devices: Array.isArray(data.devices) ? data.devices : [],
+          error: data.error || null,
+          status: data.status || 'success',
+          timestamp: data.timestamp || new Date().toISOString()
+        };
+      } catch (error) {
+        console.error('Error getting ADB status:', error);
+        return {
+          installed: false,
+          version: null,
+          devices: [],
+          error: error.message || 'Failed to check ADB status',
+          status: 'error',
+          timestamp: new Date().toISOString()
+        };
+      }
+    },
+
     /**
      * Connect to an Android device
      * @param {string} deviceId - Device ID to connect to
-     * @returns {Promise<{success: boolean, message: string}>} - Connection status
+     * @returns {Promise<{success: boolean, message: string, device: Object, status: string}>}
      */
-    connectDevice: (deviceId) => post('/api/android/connect', { deviceId }),
-    
+    async connectDevice(deviceId) {
+      if (!deviceId) {
+        console.error('No deviceId provided to connectDevice');
+        return {
+          success: false,
+          message: 'Device ID is required',
+          device: null,
+          status: 'error'
+        };
+      }
+
+      try {
+        return await post('android/connect', { deviceId });
+      } catch (error) {
+        console.error('Error connecting to device:', error);
+        return {
+          success: false,
+          message: error.message || 'Failed to connect to device',
+          device: null,
+          status: 'error'
+        };
+      }
+    },
+
     /**
      * Disconnect from current Android device
-     * @returns {Promise<{success: boolean, message: string}>} - Disconnection status
+     * @returns {Promise<{success: boolean, message: string, status: string}>}
      */
-    disconnectDevice: () => post('/api/android/disconnect')
+    async disconnectDevice() {
+      try {
+        return await post('android/disconnect');
+      } catch (error) {
+        console.error('Error disconnecting from device:', error);
+        return {
+          success: false,
+          message: error.message || 'Failed to disconnect from device',
+          status: 'error'
+        };
+      }
+    },
+
+    /**
+     * Get connection status
+     * @returns {Promise<{status: string, device: Object, devices: Array, error: string}>}
+     */
+    async getConnectionStatus() {
+      try {
+        const status = await this.getStatus();
+        const connectionStatus = status.installed 
+          ? (status.devices?.length ? 'connected' : 'no_devices')
+          : 'error';
+        
+        return {
+          status: connectionStatus,
+          device: status.devices?.[0] || null,
+          devices: status.devices || [],
+          error: status.error || null,
+          timestamp: status.timestamp
+        };
+      } catch (error) {
+        console.error('Error getting connection status:', error);
+        return {
+          status: 'error',
+          device: null,
+          devices: [],
+          error: error.message || 'Failed to get connection status',
+          timestamp: new Date().toISOString()
+        };
+      }
+    }
   },
   
   // Billing endpoints

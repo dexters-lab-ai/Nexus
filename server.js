@@ -9,9 +9,6 @@ import { fileURLToPath } from 'url';
 // ======================================
 import fs from 'fs';
 import { randomBytes } from 'crypto';
-import pcControl from './src/utils/pcControl.js';
-import androidControl from './src/utils/androidControl.js';
-import androidConfig from './src/config/androidControlConfig.js';
 import express from 'express';
 import { createServer } from 'http';
 import session from 'express-session';
@@ -32,31 +29,8 @@ import { AbortError } from 'p-retry';
 import jwt from 'jsonwebtoken';
 import cookie from 'cookie';
 
-// Create Express app and HTTP server
+// Create Express app
 const app = express();
-const server = createServer(app);
-
-// Track connected Android devices
-const androidClients = new Map();
-
-// Helper function to send message to Android device
-function sendToAndroidDevice(userId, deviceId, message) {
-  const clientId = `${userId}:${deviceId}`;
-  const ws = androidClients.get(clientId);
-  
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    try {
-      const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
-      ws.send(messageStr);
-      return true;
-    } catch (error) {
-      console.error(`Error sending message to ${clientId}:`, error);
-      return false;
-    }
-  }
-  
-  return false;
-}
 
 // ======================================
 // 0.1 HEALTH CHECK ENDPOINT
@@ -287,392 +261,11 @@ function setupWebSocketServer(server) {
     }
   });
   
-  // WebSocket connection handler
-  wss.on('connection', (ws, req) => {
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const userId = req.session?.userId || 'anonymous';
-    
-    // Add to all clients set for tracking
-    allClients.add(ws);
-    
-    // Handle frontend client connection
-    if (url.pathname === '/ws/frontend') {
-      console.log(`Frontend client connected for user ${userId}`);
-      
-      // Initialize user's connection set if it doesn't exist
-      if (!userClients.has(userId)) {
-        userClients.set(userId, new Set());
-      }
-      
-      // Add this connection to the user's connections
-      userClients.get(userId).add(ws);
-      
-      // Send connection acknowledgment
-      ws.send(JSON.stringify({
-        type: 'connection_established',
-        message: 'WebSocket connection established',
-        timestamp: new Date().toISOString()
-      }));
-      
-      // Send current device status if available
-      const clientId = `${userId}:${url.searchParams.get('deviceId') || 'unknown'}`;
-      const deviceWs = androidClients.get(clientId);
-      if (deviceWs?.deviceInfo) {
-        ws.send(JSON.stringify({
-          type: 'device_connected',
-          device: deviceWs.deviceInfo
-        }));
-      }
-      
-      // Handle cleanup on close
-      ws.on('close', () => {
-        console.log(`Frontend client disconnected for user ${userId}`);
-        allClients.delete(ws);
-        if (userClients.has(userId)) {
-          userClients.get(userId).delete(ws);
-          if (userClients.get(userId).size === 0) {
-            userClients.delete(userId);
-          }
-        }
-      });
-      
-      return;
-    }
-    
-    // Handle Android device connection
-    if (url.pathname === '/ws/android') {
-      const deviceId = url.searchParams.get('deviceId');
-      const userId = req.session?.userId || 'anonymous';
-      
-      if (!deviceId) {
-        console.error('No device ID provided for Android connection');
-        ws.close(1008, 'Device ID is required');
-        return;
-      }
-
-      const clientId = `${userId}:${deviceId}`;
-      console.log(`Android WebSocket connected: ${clientId}`);
-      
-      // Store the WebSocket connection with device info
-      const deviceInfo = {
-        id: deviceId,
-        name: `Android Device ${deviceId.slice(-4)}`, // Default name
-        model: url.searchParams.get('model') || 'Unknown',
-        manufacturer: url.searchParams.get('manufacturer') || 'Unknown',
-        sdkVersion: url.searchParams.get('sdkVersion') || 'Unknown',
-        connectedAt: new Date().toISOString(),
-        status: 'connected',
-        lastSeen: Date.now()
-      };
-      
-      // Store the WebSocket connection with device info
-      ws.deviceInfo = deviceInfo;
-      ws.deviceId = deviceId;
-      ws.userId = userId;
-      
-      // Store in androidClients map
-      androidClients.set(clientId, ws);
-      
-      // Track device by user
-      if (!userDevices.has(userId)) {
-        userDevices.set(userId, new Map());
-      }
-      userDevices.get(userId).set(deviceId, deviceInfo);
-      
-      console.log(`Stored device info for ${clientId}:`, deviceInfo);
-      
-      // Send device connected event to all frontend clients for this user
-      broadcastToUser(userId, {
-        type: 'device_connected',
-        device: deviceInfo
-      });
-      
-      // Send current device list to the newly connected device
-      const devices = getUserDevices(userId);
-      ws.send(JSON.stringify({
-        type: 'device_list',
-        devices: devices
-      }));
-      
-      // Handle messages from Android device
-      ws.on('message', (message) => {
-        try {
-          const data = JSON.parse(message);
-          console.log(`Message from ${clientId}:`, data);
-          
-          // Handle different message types
-          switch (data.type) {
-            case 'ping':
-              ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
-              break;
-            case 'log':
-              console.log(`[${deviceId}]`, data.message);
-              break;
-            case 'error':
-              console.error(`[${deviceId}] Error:`, data.message);
-              break;
-          }
-        } catch (error) {
-          console.error('Error processing WebSocket message:', error);
-        }
-      });
-      
-      // Handle disconnection
-      ws.on('close', () => {
-        console.log(`Android WebSocket disconnected: ${clientId}`);
-        
-        const { userId, deviceId } = ws;
-        
-        // Clean up device tracking
-        if (userId && deviceId) {
-          // Remove from user's devices
-          if (userDevices.has(userId)) {
-            userDevices.get(userId).delete(deviceId);
-            console.log(`Removed device ${deviceId} from user ${userId}`);
-            
-            // Clean up empty user entries
-            if (userDevices.get(userId).size === 0) {
-              userDevices.delete(userId);
-            }
-          }
-          
-          // Notify all frontend clients
-          broadcastToUser(userId, {
-            type: 'device_disconnected',
-            deviceId: deviceId,
-            timestamp: Date.now()
-          });
-          
-          console.log(`Notified clients about disconnection of device ${deviceId}`);
-        }
-        
-        // Remove from clients map
-        androidClients.delete(clientId);
-        console.log(`Removed client ${clientId} from androidClients`);
-      });
-      
-      // Handle errors
-      ws.on('error', (error) => {
-        console.error(`WebSocket error for ${clientId}:`, error);
-        ws.close();
-        androidClients.delete(clientId);
-      });
-      
-      return; // Skip default connection handling for Android connections
-    }
-    
-    // Handle regular WebSocket connections (existing code)
+  // WebSocket connection handler - individual connection management is handled in the upgrade handler
+  wss.on('connection', (ws) => {
     // Connection logging is handled in the upgrade handler
-    // All other event handlers are set up in the upgrade handler
+    // All event handlers are set up in the upgrade handler to avoid duplication
   });
-
-  // Track WebSocket clients by user ID
-  const userClients = new Map();
-  
-  // Track all connected clients for broadcasting
-  const allClients = new Set();
-  
-  // Track connected Android devices by user ID
-  const userDevices = new Map();
-  
-  /**
-   * Broadcast a message to all WebSocket connections for a specific user
-   * @param {string} userId - The user ID to broadcast to
-   * @param {Object} message - The message to send
-   */
-  function broadcastToUser(userId, message) {
-    console.log(`Broadcasting ${message.type} to user ${userId}`, message);
-    
-    if (!userId) {
-      console.error('No user ID provided for broadcast');
-      return;
-    }
-    
-    if (!userClients.has(userId)) {
-      console.log(`No active connections for user ${userId}`);
-      return;
-    }
-    
-    const connections = userClients.get(userId);
-    const messageStr = JSON.stringify(message);
-    let sentCount = 0;
-    
-    connections.forEach(ws => {
-      try {
-        if (ws.readyState === WebSocket.OPEN) {
-          console.log(`Sending to connection ${ws.clientId || 'unknown'}:`, message.type);
-          ws.send(messageStr);
-          sentCount++;
-        } else {
-          console.log(`Skipping closed connection for user ${userId}`);
-        }
-      } catch (error) {
-        console.error(`Error sending message to user ${userId}:`, error);
-      }
-    });
-    
-    console.log(`Broadcasted ${message.type} to ${sentCount} connections for user ${userId}`);
-  }
-  
-  /**
-   * Get all devices for a user
-   * @param {string} userId - The user ID
-   * @returns {Array} Array of devices
-   */
-  function getUserDevices(userId) {
-    return Array.from(userDevices.get(userId)?.values() || []);
-  }
-
-  // Handle WebSocket control messages
-  function handleControlMessage(ws, data) {
-    try {
-      if (!data.type) {
-        throw new Error('Message type is required');
-      }
-
-      console.log('WebSocket control message:', data.type);
-      
-      switch (data.type) {
-        case 'register_client':
-          // Register this as a control client
-          ws.clientType = 'control';
-          ws.clientId = `client_${Date.now()}`;
-          ws.userId = data.userId || 'anonymous';
-          
-          // Store the WebSocket connection
-          if (!userClients.has(ws.userId)) {
-            userClients.set(ws.userId, new Set());
-          }
-          userClients.get(ws.userId).add(ws);
-          
-          // Send acknowledgment
-          ws.send(JSON.stringify({
-            type: 'connection_ack',
-            clientId: ws.clientId,
-            userId: ws.userId,
-            timestamp: Date.now()
-          }));
-          break;
-          
-        case 'device_status_update':
-          // Forward status updates to other clients of the same user
-          if (ws.userId) {
-            broadcastToUser(ws.userId, {
-              type: 'device_status_update',
-              status: data.status,
-              timestamp: Date.now()
-            }, ws.clientId);
-          }
-          break;
-          
-        case 'device_connected':
-        case 'device_disconnected':
-          // Forward connection events to other clients of the same user
-          if (ws.userId) {
-            broadcastToUser(ws.userId, {
-              type: data.type,
-              device: data.device,
-              timestamp: Date.now()
-            }, ws.clientId);
-          }
-          break;
-          
-        default:
-          console.log('Unhandled control message type:', data.type);
-          ws.send(JSON.stringify({
-            type: 'error',
-            message: `Unhandled message type: ${data.type}`,
-            timestamp: Date.now()
-          }));
-      }
-    } catch (error) {
-      console.error('Error handling control message:', error);
-      sendError(ws, error);
-    }
-  }
-  
-  // Send error response to client
-  function sendError(ws, error) {
-    try {
-      ws.send(JSON.stringify({
-        type: 'error',
-        message: error.message || 'An error occurred',
-        timestamp: Date.now()
-      }));
-    } catch (e) {
-      console.error('Failed to send error to client:', e);
-    }
-  }
-  
-  // Broadcast message to all clients of a specific user
-  function broadcastToUser(userId, message, excludeClientId = null) {
-    const clients = userClients.get(userId);
-    if (!clients) return;
-    
-    const messageStr = JSON.stringify(message);
-    let disconnectedClients = [];
-    
-    clients.forEach(client => {
-      try {
-        // Skip excluded client
-        if (excludeClientId && client.clientId === excludeClientId) return;
-        
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(messageStr);
-        } else {
-          disconnectedClients.push(client);
-        }
-      } catch (error) {
-        console.error('Error sending message to client:', error);
-        disconnectedClients.push(client);
-      }
-    });
-    
-    // Clean up disconnected clients
-    if (disconnectedClients.length > 0) {
-      disconnectedClients.forEach(client => {
-        clients.delete(client);
-      });
-      
-      // Remove user entry if no more clients
-      if (clients.size === 0) {
-        userClients.delete(userId);
-      }
-    }
-  }
-  
-  // Clean up disconnected clients
-  function cleanupDisconnectedClients() {
-    let disconnectedCount = 0;
-    
-    userClients.forEach((clients, userId) => {
-      const beforeSize = clients.size;
-      
-      // Remove disconnected clients
-      clients.forEach(client => {
-        if (client.readyState !== WebSocket.OPEN) {
-          clients.delete(client);
-          disconnectedCount++;
-        }
-      });
-      
-      // Remove user entry if no more clients
-      if (clients.size === 0) {
-        userClients.delete(userId);
-      } else if (clients.size < beforeSize) {
-        console.log(`Cleaned up ${beforeSize - clients.size} disconnected clients for user ${userId}`);
-      }
-    });
-    
-    if (disconnectedCount > 0) {
-      console.log(`Cleaned up ${disconnectedCount} total disconnected clients`);
-    }
-    
-    return disconnectedCount;
-  }
-  
-  // Periodically clean up disconnected clients (every 5 minutes)
-  setInterval(cleanupDisconnectedClients, 5 * 60 * 1000);
 
   // Handle HTTP server upgrade for WebSocket connections
   server.on('upgrade', (request, socket, head) => {
@@ -875,12 +468,11 @@ function setupWebSocketServer(server) {
                 console.error(`[WebSocket] Error sending queued message to user ${userId}:`, error);
               }
             });
-            // Clear the queue after sending
             unsentMessages.delete(userId);
           }
           
-          // Define the WebSocket message handler
-          const handleMessage = async (message) => {
+          // Handle incoming messages
+          const handleMessage = (message) => {
             try {
               const now = Date.now();
               ws.lastActivity = now; // Update last activity timestamp
@@ -890,20 +482,13 @@ function setupWebSocketServer(server) {
               try {
                 data = JSON.parse(message);
               } catch (e) {
-                console.error(`[WebSocket] Error parsing message from ${connectionId}:`, e);
+                // Not a JSON message, ignore
                 return;
               }
               
               // Log message with connection details (filter out pings from logs)
               if (data.type !== 'ping' && data.type !== 'pong') {
                 console.log(`[WebSocket] Message from ${connectionId} (${userId}):`, data);
-              }
-              
-              // Handle Android control messages
-              if (data.type && data.type.startsWith('android_')) {
-                // Handle Android control messages
-                handleAndroidControlMessage(ws, data);
-                return;
               }
               
               // Handle application-level ping (client-initiated)
@@ -1003,20 +588,9 @@ function setupWebSocketServer(server) {
               }
               
               // Handle other message types here...
-              console.log(`[WebSocket] Unhandled message type: ${data.type}`);
               
             } catch (error) {
               console.error(`[WebSocket] Error processing message from ${connectionId}:`, error);
-              try {
-                ws.send(JSON.stringify({
-                  type: 'error',
-                  error: 'Failed to process message',
-                  details: error.message,
-                  timestamp: Date.now()
-                }));
-              } catch (sendError) {
-                console.error(`[WebSocket] Failed to send error response:`, sendError);
-              }
             }
           };
           
@@ -1949,23 +1523,8 @@ async function startApp() {
 // 10. ROUTES & MIDDLEWARE
 // ======================================
 
-// API endpoint to check ADB status and connected devices
-app.get('/api/android/status', async (req, res) => {
-  try {
-    const status = await androidControl.checkAdbStatus();
-    res.json(status);
-  } catch (error) {
-    console.error('Error checking ADB status:', error);
-    res.status(500).json({
-      installed: false,
-      version: null,
-      devices: [],
-      error: 'Failed to check ADB status: ' + error.message
-    });
-  }
-});
-
 import authRoutes from './src/routes/auth.js';
+import androidControl from './src/utils/androidControl.js';
 import taskRoutes from './src/routes/tasks.js';
 import billingRoutes from './src/routes/billing.js';
 import yamlMapsRoutes from './src/routes/yaml-maps.js';
@@ -2023,6 +1582,7 @@ const guard = (req, res, next) => {
 
 // Public API routes (no auth required)
 app.use('/api/auth', authRoutes);
+
 
 // API: Who Am I (userId sync endpoint) - Moved to robust implementation below
 
@@ -2657,18 +2217,11 @@ app.post('/api/nli', requireAuth, async (req, res) => {
   });
 
   let classification;
-  // Bypass NLI classification for device control commands
-  const trimmedPrompt = prompt.trim().toLowerCase();
-  if (trimmedPrompt.startsWith('pc ') || trimmedPrompt.startsWith('android ')) {
-    console.log(`[NLI] Bypassing classification for device control command: ${trimmedPrompt}`);
+  try {
+    classification = await openaiClassifyPrompt(prompt, userId);
+  } catch (err) {
+    console.error('Classification error', err);
     classification = 'task';
-  } else {
-    try {
-      classification = await openaiClassifyPrompt(prompt, userId);
-    } catch (err) {
-      console.error('Classification error', err);
-      classification = 'task';
-    }
   }
 
   if (classification === 'task') {
@@ -3194,6 +2747,165 @@ const errorHandler2 = (err, req, res, next) => {
 };
 
 // ======================================
+// 10.1 ANDROID DEVICE ENDPOINTS
+// ======================================
+
+// ======================================
+// 10.1 ANDROID DEVICE ENDPOINTS
+// ======================================
+
+/**
+ * @api {get} /api/android/status Get Android device status
+ * @apiName GetAndroidStatus
+ * @apiGroup Android
+ * @apiDescription Get the status of ADB and connected Android devices
+ * 
+ * @apiSuccess {Boolean} installed Whether ADB is installed and accessible
+ * @apiSuccess {String} version ADB version information
+ * @apiSuccess {Object[]} devices List of connected Android devices
+ * @apiSuccess {String} devices.id Device ID/UDID
+ * @apiSuccess {String} devices.name Display name of the device
+ * @apiSuccess {String} devices.state Connection state of the device
+ * @apiSuccess {String} [error] Error message if any
+ */
+app.get('/api/android/status', async (req, res) => {
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Content-Type', 'application/json');
+
+  try {
+    console.log('Fetching Android device status...');
+    const status = await androidControl.checkAdbStatus();
+    console.log('Android status:', JSON.stringify(status, null, 2));
+    
+    const response = {
+      installed: status.installed || false,
+      version: status.version || null,
+      devices: Array.isArray(status.devices) ? status.devices : [],
+      status: 'success',
+      timestamp: new Date().toISOString()
+    };
+    
+    res.json(response);
+  } catch (error) {
+    console.error('Error getting Android status:', error);
+    res.status(500).json({
+      installed: false,
+      version: null,
+      devices: [],
+      error: error.message || 'Failed to get Android status',
+      status: 'error',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * @api {post} /api/android/connect Connect to an Android device
+ * @apiName ConnectAndroidDevice
+ * @apiGroup Android
+ * @apiDescription Connect to a specific Android device by ID
+ * 
+ * @apiBody {String} deviceId The ID/UDID of the device to connect to
+ * 
+ * @apiSuccess {Boolean} success Whether the connection was successful
+ * @apiSuccess {String} message Status message
+ * @apiSuccess {Object} [device] Connected device information
+ */
+app.post('/api/android/connect', express.json(), async (req, res) => {
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Content-Type', 'application/json');
+  
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  const { deviceId } = req.body;
+  
+  if (!deviceId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Device ID is required',
+      status: 'error',
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  try {
+    console.log(`Attempting to connect to device: ${deviceId}`);
+    await androidControl.connect(deviceId);
+    const status = await androidControl.checkAdbStatus();
+    
+    // Find the connected device in the status
+    const device = Array.isArray(status.devices) 
+      ? status.devices.find(d => d.id === deviceId) 
+      : null;
+    
+    console.log(`Successfully connected to device: ${deviceId}`, device);
+    
+    res.json({
+      success: true,
+      message: `Connected to device ${deviceId}`,
+      device: device || { id: deviceId, name: `Android Device (${deviceId})` },
+      status: 'connected',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error connecting to Android device:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to connect to device',
+      device: null,
+      status: 'error',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * @api {post} /api/android/disconnect Disconnect from Android device
+ * @apiName DisconnectAndroidDevice
+ * @apiGroup Android
+ * @apiDescription Disconnect from the currently connected Android device
+ * 
+ * @apiSuccess {Boolean} success Whether the disconnection was successful
+ * @apiSuccess {String} message Status message
+ */
+app.post('/api/android/disconnect', async (req, res) => {
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Content-Type', 'application/json');
+  
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  try {
+    console.log('Disconnecting from Android device...');
+    await androidControl.disconnect();
+    
+    res.json({
+      success: true,
+      message: 'Disconnected from Android device',
+      status: 'disconnected',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error disconnecting from Android device:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to disconnect from device'
+    });
+  }
+});
+
+// ======================================
 // 10.a START THE SERVER
 // ======================================
 
@@ -3517,6 +3229,7 @@ const browserSessionHeartbeat = setInterval(async () => {
 }, 5 * 60 * 1000); // Check every 5 minutes
 
 
+// ======================================
 // 12. CLEANUP AND SHUTDOWN HANDLERS
 // ======================================
 
@@ -3527,105 +3240,69 @@ async function cleanupResources() {
   try {
     logger.info('Starting cleanup of resources...');
     
-    // 1. Clean up Android control resources
-    logger.info('Cleaning up Android control resources...');
-    try {
-      if (androidControl && typeof androidControl.cleanup === 'function') {
-        await androidControl.cleanup().catch(err => {
-          logger.error('Error during Android control cleanup:', err);
-        });
-        logger.info('Android control resources cleaned up');
-      }
-    } catch (err) {
-      logger.error('Error during Android control cleanup:', err);
-    }
-    
-    // 2. Clean up PC control resources
-    logger.info('Cleaning up PC control resources...');
-    try {
-      if (pcControl && typeof pcControl.cleanup === 'function') {
-        await pcControl.cleanup().catch(err => {
-          logger.error('Error during PC control cleanup:', err);
-        });
-        logger.info('PC control resources cleaned up');
-      }
-    } catch (err) {
-      logger.error('Error during PC control cleanup:', err);
-    }
-    
-    // 3. Clean up browser sessions
-    logger.info('Cleaning up browser sessions...');
-    const browserCleanupPromises = [];
-    for (const [taskId, session] of activeBrowsers) {
-      logger.info(`Closing browser for task ${taskId}...`);
+    // Close WebSocket server if it exists
+    if (global.wss || wss) {
+      const wsServer = global.wss || wss;
+      logger.info('Closing WebSocket server...');
+      
       try {
-        // Ensure we have a valid browser instance
-        if (session && session.browser) {
-          browserCleanupPromises.push(
-            session.browser.close().catch(err => {
-              logger.error(`Error closing browser for task ${taskId}:`, err);
-            })
-          );
+        // Close all active WebSocket connections
+        if (wsServer.clients) {
+          wsServer.clients.forEach(client => {
+            try {
+              if (client.readyState === WebSocket.OPEN) {
+                client.terminate();
+              }
+            } catch (err) {
+              logger.error('Error terminating WebSocket client:', err);
+            }
+          });
         }
         
-        // Release session if it has a release method
-        if (session && typeof session.release === 'function') {
-          browserCleanupPromises.push(
-            Promise.resolve().then(() => session.release()).catch(err => {
-              logger.error(`Error releasing session for task ${taskId}:`, err);
-            })
-          );
-        }
-      } catch (err) {
-        logger.error(`Error during browser cleanup for task ${taskId}:`, err);
-      }
-    }
-    
-    // Wait for all browser cleanups to complete
-    await Promise.allSettled(browserCleanupPromises);
-    activeBrowsers.clear();
-    logger.info('Browser cleanup complete');
-    
-    // 4. Clean up temporary files
-    logger.info('Cleaning up temporary files...');
-    try {
-      const tempDirs = [
-        path.join(__dirname, 'temp'),
-        path.join(__dirname, 'screenshots'),
-        path.join(__dirname, 'downloads')
-      ];
-      
-      for (const dir of tempDirs) {
-        try {
-          if (fs.existsSync(dir)) {
-            await fs.promises.rm(dir, { recursive: true, force: true });
-            logger.info(`Cleaned up directory: ${dir}`);
+        // Close the WebSocket server
+        await new Promise((resolve) => {
+          if (wsServer.close) {
+            wsServer.close(() => {
+              logger.info('WebSocket server closed');
+              resolve();
+            });
+          } else {
+            resolve();
           }
-        } catch (err) {
-          logger.error(`Error cleaning up directory ${dir}:`, err);
-        }
+        });
+      } catch (error) {
+        logger.error('Error during WebSocket server cleanup:', error);
       }
-    } catch (err) {
-      logger.error('Error during temp file cleanup:', err);
     }
     
-    // 5. Close database connections
-    logger.info('Closing database connections...');
-    try {
+    // Close MongoDB connection if connected
+    if (mongoose.connection && mongoose.connection.readyState === 1) {
+      logger.info('Closing MongoDB connection...');
       await mongoose.connection.close();
       logger.info('MongoDB connection closed');
-    } catch (err) {
-      logger.error('Error closing MongoDB connection:', err);
     }
     
-    // 6. Clean up any other resources
-    logger.info('Performing final cleanup...');
+    // Clear any intervals
+    if (browserSessionHeartbeat) {
+      logger.info('Clearing browser session heartbeat...');
+      clearInterval(browserSessionHeartbeat);
+    }
     
-    // Clear any intervals or timeouts
-    const maxIntervalId = setInterval(() => {}, 0);
-    for (let i = 0; i < maxIntervalId; i++) {
-      clearInterval(i);
-      clearTimeout(i);
+    // Clean up any active browser sessions
+    if (activeBrowsers && activeBrowsers.size > 0) {
+      logger.info(`Cleaning up ${activeBrowsers.size} active browser sessions...`);
+      const cleanupPromises = Array.from(activeBrowsers.values()).map(async (session) => {
+        try {
+          if (session && !session.closed && typeof session.release === 'function') {
+            await session.release();
+          }
+        } catch (error) {
+          logger.error('Error cleaning up browser session:', error);
+        }
+      });
+      
+      await Promise.all(cleanupPromises);
+      activeBrowsers.clear();
     }
     
     logger.info('Cleanup completed successfully');
@@ -3947,42 +3624,6 @@ function handleLargeContent(obj) {
 
 // Track tasks that have already been completed to prevent double-completion
 const completedTasks = new Set();
-
-// Rate limiting for PC control commands
-const pcControlRateLimit = {
-  // Track last execution time per user and command type
-  lastExecuted: new Map(),
-  // Rate limit configuration (in milliseconds)
-  limits: {
-    default: 5000, // 5 seconds between commands of the same type
-    system: 30000, // 30 seconds for system commands (more restrictive)
-  },
-  
-  // Check if a command can be executed
-  canExecute: function(userId, commandType) {
-    const now = Date.now();
-    const key = `${userId}:${commandType}`;
-    const lastTime = this.lastExecuted.get(key) || 0;
-    const cooldown = this.limits[commandType] || this.limits.default;
-    
-    if (now - lastTime < cooldown) {
-      return false;
-    }
-    
-    this.lastExecuted.set(key, now);
-    return true;
-  },
-  
-  // Get time until next allowed execution
-  getTimeUntilNext: function(userId, commandType) {
-    const now = Date.now();
-    const key = `${userId}:${commandType}`;
-    const lastTime = this.lastExecuted.get(key) || 0;
-    const cooldown = this.limits[commandType] || this.limits.default;
-    
-    return Math.max(0, (lastTime + cooldown - now) / 1000);
-  }
-};
 
 /**
  * Update task in database and notify clients with optimized storage.
@@ -6483,12 +6124,6 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
   }).save();
   console.log(`[ProcessTask] Starting ${taskId}: "${prompt}"`);
   
-  // Check for Android control commands (e.g., 'android open twitter', 'android like tweets')
-  const androidCommandMatch = prompt.match(/^android\s+(.+)$/i);
-  
-  // Check for PC control commands (e.g., 'pc search files', 'pc open camera', 'pc media play')
-  const pcCommandMatch = !androidCommandMatch && prompt.match(/^pc\s+(search|open|media|system)\s+(.+)$/i);
-  
   // Check if the prompt contains a YAML map reference or if it was attached via the UI
   let yamlMapId = extractYamlMapIdFromPrompt(prompt);
   
@@ -6503,239 +6138,6 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
     }
   }
   
-  // Handle PC control commands
-  if (pcCommandMatch) {
-    const [_, action, params] = pcCommandMatch;
-    console.log(`[ProcessTask] Detected PC control command: ${action} ${params}`);
-    
-    // Input validation
-    if (!action || !params) {
-      throw new Error('Invalid PC control command format. Expected format: pc <action> <params>');
-    }
-    
-    // Check if the action is allowed
-    const allowedActions = ['search', 'open', 'media', 'system'];
-    const normalizedAction = action.toLowerCase();
-    if (!allowedActions.includes(normalizedAction)) {
-      throw new Error(`Invalid PC control action. Allowed actions: ${allowedActions.join(', ')}`);
-    }
-    
-    // Apply rate limiting
-    const commandType = normalizedAction === 'system' ? 'system' : 'default';
-    if (!pcControlRateLimit.canExecute(userId, commandType)) {
-      const timeLeft = pcControlRateLimit.getTimeUntilNext(userId, commandType);
-      throw new Error(`Rate limit exceeded. Please wait ${timeLeft.toFixed(1)} seconds before executing another ${commandType} command.`);
-    }
-    
-    // Log the command execution attempt
-    console.log(`[PC Control] User ${userId} executing command: ${normalizedAction} ${params}`);
-    
-    try {
-      let result;
-      const normalizedAction = action.toLowerCase();
-      
-      // Log the start of command processing
-      console.log(`[PC Control] [${taskId}] Starting ${normalizedAction} command with params: ${params}`);
-      
-      // Handle different PC control actions
-      switch (normalizedAction) {
-        case 'search':
-          result = await pcControl.searchFiles(params);
-          break;
-          
-        case 'open':
-          if (params.toLowerCase().includes('camera')) {
-            result = await pcControl.openCamera();
-          } else {
-            result = { success: false, error: `Unsupported open command: ${params}` };
-          }
-          break;
-          
-        case 'media':
-          const mediaAction = params.toLowerCase().trim();
-          if (['play', 'pause', 'next', 'previous', 'volumeup', 'volumedown', 'mute', 'unmute'].includes(mediaAction)) {
-            result = await pcControl.mediaControl(mediaAction);
-          } else {
-            result = { success: false, error: `Unsupported media action: ${mediaAction}` };
-          }
-          break;
-          
-        case 'system':
-          const systemAction = params.toLowerCase().trim();
-          if (['lock', 'sleep', 'restart', 'shutdown', 'logoff'].includes(systemAction)) {
-            result = await pcControl.systemCommand(systemAction);
-          } else {
-            result = { success: false, error: `Unsupported system command: ${systemAction}` };
-          }
-          break;
-          
-        default:
-          result = { success: false, error: `Unknown PC control action: ${action}` };
-      }
-      
-      // Format the result for the task completion
-      const success = result.success !== false; // Handle both undefined and true as success
-      const message = result.message || (success ? 'PC control command executed successfully' : result.error || 'Unknown error');
-      
-      // Log the result
-      console.log(`[PC Control] [${taskId}] Command ${normalizedAction} completed with ${success ? 'success' : 'error'}:`, 
-        success ? message : result.error || 'Unknown error'
-      );
-      
-      try {
-        // Save the task completion
-        await saveTaskCompletionMessages(
-          userId,
-          taskId,
-          prompt,
-          JSON.stringify({
-            ...result,
-            timestamp: new Date().toISOString(),
-            command: normalizedAction,
-            params
-          }, null, 2),
-          message,
-          { 
-            pcControl: true, 
-            action: normalizedAction, 
-            params, 
-            success,
-            timestamp: new Date().toISOString()
-          }
-        );
-        
-        // Clean up any resources
-        await pcControl.cleanup();
-        
-        // Log successful cleanup
-        console.log(`[PC Control] [${taskId}] Resources cleaned up successfully`);
-        
-        return {
-          success,
-          message,
-          result: {
-            ...result,
-            command: normalizedAction,
-            params,
-            timestamp: new Date().toISOString()
-          },
-          taskId
-        };
-        
-      } catch (saveError) {
-        console.error(`[PC Control] [${taskId}] Error saving task completion:`, saveError);
-        // Re-throw with additional context
-        throw new Error(`Failed to save task completion: ${saveError.message}`);
-      }
-      
-    } catch (error) {
-      console.error(`[ProcessTask] Error executing PC control command:`, error);
-      
-      // Save error to task
-      await saveTaskCompletionMessages(
-        userId,
-        taskId,
-        prompt,
-        error.stack || error.message || 'Unknown error',
-        `Failed to execute PC control command: ${error.message}`,
-        { 
-          pcControl: true, 
-          error: true, 
-          action: pcCommandMatch[1], 
-          params: pcCommandMatch[2] 
-        }
-      );
-      
-      // Clean up any resources
-      await pcControl.cleanup().catch(cleanupError => {
-        console.error('[ProcessTask] Error during PC control cleanup:', cleanupError);
-      });
-      
-      throw error;
-    }
-  }
-  
-  // Handle Android control commands
-  if (androidCommandMatch) {
-    const [_, command] = androidCommandMatch;
-    console.log(`[ProcessTask] Detected Android command: ${command}`);
-    
-    // Input validation
-    if (!command) {
-      throw new Error('Invalid Android command format. Expected format: android <command>');
-    }
-    
-    try {
-      // Connect to Android device if not already connected
-      if (!androidControl.device) {
-        console.log('[AndroidControl] Connecting to Android device...');
-        await androidControl.connect(androidConfig.defaultDeviceUdid);
-      }
-      
-      // Execute the command
-      const result = await androidControl.executeAction(command, {
-        timeout: androidConfig.defaultCommandTimeout,
-        sessionId: taskId
-      });
-      
-      // Format the response
-      const response = {
-        success: true,
-        message: 'Android command executed successfully',
-        result,
-        taskId
-      };
-      
-      // Log the result
-      console.log(`[AndroidControl] [${taskId}] Command completed:`, response);
-      
-      // Save the task completion
-      await saveTaskCompletionMessages(
-        userId,
-        taskId,
-        prompt,
-        JSON.stringify(response, null, 2),
-        response.message,
-        { 
-          androidControl: true, 
-          command,
-          success: true,
-          timestamp: new Date().toISOString()
-        }
-      );
-      
-      return response;
-      
-    } catch (error) {
-      console.error(`[AndroidControl] [${taskId}] Error executing command:`, error);
-      
-      // Save error to task
-      await saveTaskCompletionMessages(
-        userId,
-        taskId,
-        prompt,
-        error.stack || error.message || 'Unknown error',
-        `Failed to execute Android command: ${error.message}`,
-        { 
-          androidControl: true, 
-          error: true, 
-          command: androidCommandMatch[1],
-          timestamp: new Date().toISOString()
-        }
-      );
-      
-      // Clean up resources
-      try {
-        await androidControl.cleanup();
-      } catch (cleanupError) {
-        console.error('[AndroidControl] Error during cleanup:', cleanupError);
-      }
-      
-      throw error;
-    }
-  }
-  
-  // Handle YAML map tasks
   if (yamlMapId) {
     console.log(`[ProcessTask] Detected YAML map reference: ${yamlMapId}`);
     await Task.updateOne({ _id: taskId }, { $set: { yamlMapId, status: 'executing' } });
