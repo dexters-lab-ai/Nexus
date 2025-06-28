@@ -47,13 +47,11 @@ COPY package*.json ./
 # Clean up any existing node_modules and lock files
 RUN rm -rf node_modules package-lock.json pnpm-lock.yaml
 
-# Install dependencies with explicit React version resolution
+# Install dependencies with legacy peer deps to handle React version conflicts
 RUN echo "Installing dependencies with legacy peer deps..." && \
     npm install --legacy-peer-deps && \
     echo "Installing Rollup and visualizer..." && \
-    npm install @rollup/rollup-linux-x64-gnu rollup-plugin-visualizer@5.9.2 --save-dev && \
-    echo "Forcing React 18.3.1 for Midscene compatibility..." && \
-    npm install react@18.3.1 react-dom@18.3.1 --legacy-peer-deps --save-exact && \
+    npm install @rollup/rollup-linux-x64-gnu rollup-plugin-visualizer@5.9.2 --save-dev --legacy-peer-deps && \
     echo "Dependency installation complete"
 
 # Create necessary directories
@@ -94,11 +92,9 @@ ENV NODE_ENV=development
 # Copy only package files first for better layer caching
 COPY package*.json ./
 
-# Install all dependencies with explicit React version for Midscene
+# Install all dependencies with legacy peer deps to handle React version conflicts
 RUN echo "Installing development dependencies with legacy peer deps..." && \
-    npm install --legacy-peer-deps && \
-    echo "Ensuring React 18.3.1 for Midscene compatibility..." && \
-    npm install react@18.3.1 react-dom@18.3.1 --legacy-peer-deps --save-exact
+    npm install --legacy-peer-deps
 
 # Copy the rest of the application
 COPY . .
