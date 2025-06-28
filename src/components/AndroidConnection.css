@@ -145,8 +145,8 @@
   overflow: hidden;
   border: none;
   font-size: 14px;
-  padding: 0 20px;
-  height: 40px;
+  padding: 0 10px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -206,6 +206,46 @@
   background: linear-gradient(135deg, #52c41a, #389e0d);
   color: white;
   text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.12);
+}
+
+/* Network Connection Form Styles */
+.network-connection-form {
+  margin-bottom: 7px;
+  padding: 7px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.network-connection-form .ant-input {
+  height: 26px;
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.2;
+  background-color: rgba(137, 43, 226, 0.06) !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+  border: 1px solid rgba(138, 43, 226, 0.3) !important;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+}
+
+.network-connection-form .ant-input::placeholder {
+  color: rgba(255, 255, 255, 0.5) !important;
+  opacity: 1;
+}
+
+.network-connection-form .ant-input:focus {
+  border-color: rgba(138, 43, 226, 0.6) !important;
+  box-shadow: 0 0 0 2px rgba(138, 43, 226, 0.2) !important;
+}
+
+.network-connection-form .ant-input:hover {
+  border-color: rgba(138, 43, 226, 0.5) !important;
+}
+
+.network-connection-form .ant-input:first-child {
+  margin-bottom: 6px;
 }
 
 .ant-btn-success:hover,

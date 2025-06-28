@@ -13,7 +13,8 @@ import {
   Steps, 
   Typography, 
   Tooltip, 
-  notification 
+  notification,
+  Input 
 } from 'antd';
 import { 
   AndroidFilled, 
@@ -1045,14 +1046,82 @@ const renderConnectionStatus = () => {
               Disconnect
             </RippleButton>
           </div>
-        </div>
-      );
-    }
+      </div>
+    );
+  }
 
-    return (
+  // If we get here, show the connect button with connection type toggle
+  return (
+    <div className={statusClass} style={{ textAlign: 'center' }}>
+      {/* Connection Type Toggle */}
+      <div style={{ 
+        display: 'flex', 
+        gap: '7px', 
+        marginBottom: '7px',
+        justifyContent: 'center',
+        padding: '7px',
+        background: 'rgba(255, 255, 255, 0.05)',
+        borderRadius: '8px',
+        border: '1px solid rgba(255, 255, 255, 0.1)'
+      }}>
+        <Button
+          type={state.connectionType === 'usb' ? 'primary' : 'default'}
+          icon={<UsbOutlined />}
+          onClick={() => updateState({ 
+            connectionType: 'usb',
+            showNetworkForm: false 
+          })}
+          size="small"
+        >
+          USB
+        </Button>
+        <Button
+          type={state.connectionType === 'network' ? 'primary' : 'default'}
+          icon={<LinkOutlined />}
+          onClick={() => updateState({ 
+            connectionType: 'network',
+            showNetworkForm: true 
+          })}
+          size="small"
+        >
+          Network
+        </Button>
+      </div>
+      
+      {/* Network Connection Form */}
+      {state.connectionType === 'network' && state.showNetworkForm && (
+        <div className="network-connection-form">
+          <div>
+            <Input
+              placeholder="Device IP (e.g., 192.168.1.100)"
+              value={state.networkSettings.ip}
+              onChange={(e) => updateState({
+                networkSettings: {
+                  ...state.networkSettings,
+                  ip: e.target.value
+                }
+              })}
+              className="network-connection-input"
+            />
+            <Input
+              placeholder="Port (default: 5555)"
+              value={state.networkSettings.port}
+              onChange={(e) => updateState({
+                networkSettings: {
+                  ...state.networkSettings,
+                  port: e.target.value
+                }
+              })}
+              className="network-connection-input"
+            />
+          </div>
+        </div>
+      )}
+      
+      {/* Connect Button */}
       <RippleButton
         className={`${baseButtonClass} ant-btn-primary`}
-        icon={<LinkOutlined />}
+        icon={state.connectionType === 'usb' ? <UsbOutlined /> : <LinkOutlined />}
         onClick={() => handleConnect()}
         style={{
           width: '100%',
@@ -1060,15 +1129,16 @@ const renderConnectionStatus = () => {
           alignItems: 'center',
           justifyContent: 'center',
           gap: '8px',
-          opacity: state.adbStatus.installed ? 1 : 0.6,
-          cursor: state.adbStatus.installed ? 'pointer' : 'not-allowed'
+          height: '40px',
+          fontSize: '14px',
+          fontWeight: 500
         }}
-        disabled={!state.adbStatus.installed}
       >
-        {state.adbStatus.installed ? 'Connect to Device' : 'ADB Not Installed'}
+        {state.connectionType === 'usb' ? 'Connect via USB' : 'Connect via Network'}
       </RippleButton>
-    );
-  };
+    </div>
+  );
+};
 
   // Render installation modal
   const renderInstallModal = () => {
