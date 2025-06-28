@@ -17,6 +17,84 @@ class AndroidControl {
     this.isDocker = process.env.DOCKER === 'true' || process.env.NODE_ENV === 'production';
     this.logPrefix = '[AndroidControl]';
     this.config = this._getConfig();
+    this.currentSettings = this._getDefaultSettings();
+    this.connectionState = {
+      isConnecting: false,
+      lastError: null,
+      connectionType: null, // 'usb', 'network', 'remote'
+      lastConnected: null
+    };
+  }
+
+  /**
+   * Update connection settings
+   * @param {Object} settings - Connection settings
+   * @returns {Object} Updated settings
+   */
+  updateSettings(settings) {
+    this.currentSettings = {
+      ...this._getDefaultSettings(),
+      ...settings,
+      // Ensure port is a number
+      remoteAdbPort: settings.remoteAdbPort ? 
+        parseInt(settings.remoteAdbPort, 10) : 5037,
+      adbPort: settings.adbPort ? parseInt(settings.adbPort, 10) : 5555
+    };
+    
+    // Update environment variables
+    const envVars = {
+      MIDSCENE_ADB_REMOTE_HOST: this.currentSettings.remoteAdbHost,
+      MIDSCENE_ADB_REMOTE_PORT: String(this.currentSettings.remoteAdbPort),
+      MIDSCENE_ADB_PATH: this.currentSettings.customAdbPath || ''
+    };
+    
+    Object.entries(envVars).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') {
+        process.env[key] = value;
+      } else {
+        delete process.env[key];
+      }
+    });
+    
+    console.log(`${this.logPrefix} Updated connection settings`, {
+      ...this.currentSettings,
+      customAdbPath: this.currentSettings.customAdbPath ? '***' : 'not set'
+    });
+    
+    return this.currentSettings;
+  }
+  
+  /**
+   * Get default connection settings
+   * @private
+   * @returns {Object} Default connection settings
+   */
+  _getDefaultSettings() {
+    const isProd = process.env.NODE_ENV === 'production' || process.env.DOCKER === 'true';
+    
+    return {
+      // Device connection settings
+      deviceIpAddress: process.env.ANDROID_DEVICE_IP || '',
+      adbPort: parseInt(process.env.ANDROID_ADB_PORT || '5555', 10),
+      
+      // Remote ADB settings
+      remoteAdbHost: process.env.MIDSCENE_ADB_REMOTE_HOST || '',
+      remoteAdbPort: parseInt(process.env.MIDSCENE_ADB_REMOTE_PORT || '5037', 10),
+      customAdbPath: process.env.MIDSCENE_ADB_PATH || '',
+      
+      // Connection preferences
+      useRemoteAdb: isProd, // Default to remote in production
+      autoReconnect: true,
+      connectionTimeout: 30000, // 30 seconds
+      
+      // Last used connection info
+      lastUsedConnection: 'usb',
+      lastConnectedAt: null,
+      
+      // Debug settings
+      debug: process.env.NODE_ENV !== 'production',
+      logLevel: process.env.LOG_LEVEL || (isProd ? 'warn' : 'debug')
+    };
   }
 
   /**
@@ -132,40 +210,149 @@ class AndroidControl {
    * @param {number} [port=5555] - ADB port (default: 5555)
    * @returns {Promise<Object>} Connection result
    */
-  async connectOverNetwork(ip, port = 5555) {
+  /**
+   * Connect to a device over network
+   * @param {string} ip - Device IP address
+   * @param {number} [port=5555] - ADB port (default: 5555)
+   * @param {Object} [settings] - Additional connection settings
+   * @returns {Promise<Object>} Connection result
+   */
+  async connectOverNetwork(ip, port = 5555, settings = {}) {
+    const startTime = Date.now();
+    const connectionId = `net-${Date.now()}`;
+    const connectionSettings = { 
+      ...this.currentSettings, 
+      ...settings,
+      deviceIpAddress: ip,
+      adbPort: port
+    };
+    
+    // Update connection state
+    this.connectionState = {
+      isConnecting: true,
+      lastError: null,
+      connectionType: settings.useRemoteAdb ? 'remote' : 'network',
+      connectionId,
+      startTime
+    };
+    
     try {
-      // First try to connect using ADB
-      if (!this.isDocker && process.env.NODE_ENV !== 'production') {
-        await execPromise(`adb connect ${ip}:${port}`);
+      // Validate inputs
+      if (!ip || typeof ip !== 'string') {
+        throw new Error('Invalid IP address');
       }
       
-      // Then get device info using Midscene
-      const devices = await getConnectedDevices();
-      const device = devices.find(d => d.udid.includes(ip));
-      
-      if (device) {
-        this.device = device;
-        return { 
-          success: true, 
-          device: await this.getDeviceDetails(device.udid) 
-        };
+      port = parseInt(port, 10) || 5555;
+      if (port < 1 || port > 65535) {
+        throw new Error('Invalid port number');
       }
       
-      return { 
-        success: false, 
-        error: 'Device not found after connection' 
+      // Update settings with provided values
+      this.updateSettings(connectionSettings);
+      
+      console.log(`${this.logPrefix} [${connectionId}] Connecting to ${ip}:${port}`, { 
+        useRemoteAdb: connectionSettings.useRemoteAdb,
+        remoteAdbHost: connectionSettings.remoteAdbHost || 'not set',
+        remoteAdbPort: connectionSettings.remoteAdbPort || 'default',
+        connectionType: this.connectionState.connectionType
+      });
+      
+      // For local development, try to connect using ADB directly
+      if (!connectionSettings.useRemoteAdb && !this.isDocker) {
+        await this._connectWithLocalAdb(ip, port, connectionSettings);
+      }
+      
+      // Get device info using Midscene
+      const devices = await this._getDevicesWithRetry(
+        connectionSettings.maxRetries || 3,
+        connectionSettings.retryDelay || 1000
+      );
+      
+      const deviceId = `${ip}:${port}`;
+      const device = devices.find(d => d.udid.includes(ip) || d.udid === deviceId);
+      
+      if (!device) {
+        throw new Error(`Device ${deviceId} not found in connected devices`);
+      }
+      
+      // Initialize device with Midscene
+      this.device = new AndroidDevice(device.udid, {
+        timeout: connectionSettings.connectionTimeout || 30000,
+        host: connectionSettings.remoteAdbHost,
+        port: connectionSettings.remoteAdbPort,
+        adbPath: connectionSettings.customAdbPath
+      });
+      
+      await this.device.connect();
+      
+      // Initialize agent
+      this.agent = new AndroidAgent(this.device, {
+        aiActionContext: this._getAiContext(connectionSettings)
+      });
+      
+      // Update connection state
+      this.connectionState = {
+        ...this.connectionState,
+        isConnecting: false,
+        isConnected: true,
+        lastConnected: new Date().toISOString(),
+        deviceId: device.udid
       };
+      
+      // Get device details
+      const deviceDetails = await this.getDeviceDetails(device.udid);
+      
+      console.log(`${this.logPrefix} [${connectionId}] Successfully connected to ${device.udid} in ${Date.now() - startTime}ms`);
+      
+      return { 
+        success: true, 
+        device: deviceDetails,
+        connectionType: this.connectionState.connectionType,
+        connectionTime: Date.now() - startTime,
+        settings: connectionSettings
+      };
+      
     } catch (error) {
-      console.error(`${this.logPrefix} Network connection failed:`, error);
+      const errorMessage = this._getErrorMessage(error);
+      console.error(`${this.logPrefix} [${connectionId}] Network connection failed:`, errorMessage);
+      
+      // Update connection state
+      this.connectionState = {
+        ...this.connectionState,
+        isConnecting: false,
+        isConnected: false,
+        lastError: errorMessage,
+        lastErrorTime: new Date().toISOString()
+      };
+      
+      // Clean up on error
+      try {
+        await this.disconnect();
+      } catch (cleanupError) {
+        console.warn(`${this.logPrefix} [${connectionId}] Error during cleanup:`, cleanupError.message);
+      }
+      
       return { 
         success: false, 
-        error: error.message 
+        error: errorMessage,
+        connectionType: this.connectionState.connectionType,
+        settings: connectionSettings,
+        stack: connectionSettings.debug ? error.stack : undefined
       };
     }
   }
 
   async getConnectedDevices() {
     try {
+      // Apply current settings if available
+      if (this.currentSettings) {
+        console.log(`${this.logPrefix} Using connection settings:`, {
+          useRemoteAdb: this.currentSettings.useRemoteAdb,
+          remoteAdbHost: this.currentSettings.remoteAdbHost,
+          remoteAdbPort: this.currentSettings.remoteAdbPort
+        });
+      }
+
       const devices = await getConnectedDevices();
       
       // If no devices found, return empty array instead of throwing
@@ -503,53 +690,197 @@ class AndroidControl {
    * Disconnect from the current device
    * @returns {Promise<Object>} Disconnect status
    */
+  /**
+   * Disconnect from the current device
+   * @returns {Promise<Object>} Disconnect result
+   */
   async disconnect() {
-    try {
-      console.log(`${this.logPrefix} Disconnecting from device...`);
-      
-      // Disconnect the device if connected
-      if (this.device) {
-        try {
-          await this.device.disconnect();
-        } catch (error) {
-          console.error(`${this.logPrefix} Error disconnecting device:`, error);
-          // Continue with cleanup even if device disconnect fails
-        }
-        this.device = null;
-      }
-
-      // Clean up the agent if it exists
-      if (this.agent) {
-        try {
-          await this.agent.disconnect();
-        } catch (error) {
-          console.error(`${this.logPrefix} Error disconnecting agent:`, error);
-          // Continue with cleanup even if agent disconnect fails
-        }
-        this.agent = null;
-      }
-
-      // Clear any active sessions
-      this.activeSessions.clear();
-
-      console.log(`${this.logPrefix} Successfully disconnected`);
-      
-      return {
-        success: true,
-        message: 'Successfully disconnected from device',
-        timestamp: new Date().toISOString()
+    const { device, connectionState } = this;
+    const connectionId = connectionState.connectionId || 'disconnect-' + Date.now();
+    
+    // If already disconnected
+    if (!device) {
+      return { 
+        success: true, 
+        message: 'No active device to disconnect',
+        connectionId
       };
+    }
+    
+    const deviceId = device.udid;
+    const connectionType = device.connectionType || 'usb';
+    const settings = device.connectionSettings || {};
+    
+    console.log(`${this.logPrefix} [${connectionId}] Disconnecting from ${connectionType} device: ${deviceId}`);
+    
+    try {
+      // For network devices, try to disconnect using ADB
+      if (connectionType === 'network' && deviceId.includes(':')) {
+        await this._disconnectNetworkDevice(deviceId, settings);
+      }
+      
+      // Close any active sessions
+      await this._closeActiveSessions();
+      
+      // Disconnect the device
+      if (typeof device.disconnect === 'function') {
+        await device.disconnect();
+      }
+      
+      // Clean up references
+      this.device = null;
+      this.agent = null;
+      
+      // Update connection state
+      this.connectionState = {
+        ...this.connectionState,
+        isConnected: false,
+        isConnecting: false,
+        lastDisconnected: new Date().toISOString()
+      };
+      
+      console.log(`${this.logPrefix} [${connectionId}] Successfully disconnected from ${deviceId}`);
+      
+      return { 
+        success: true, 
+        deviceId,
+        connectionType,
+        connectionId,
+        message: `Disconnected ${connectionType} device: ${deviceId}`
+      };
+      
     } catch (error) {
-      console.error(`${this.logPrefix} Error in disconnect:`, error);
-      throw {
-        success: false,
-        message: `Failed to disconnect: ${error.message}`,
-        error: error.message,
-        timestamp: new Date().toISOString()
+      const errorMessage = this._getErrorMessage(error);
+      console.error(`${this.logPrefix} [${connectionId}] Error during disconnection:`, errorMessage);
+      
+      // Update connection state
+      this.connectionState = {
+        ...this.connectionState,
+        isConnected: false,
+        isConnecting: false,
+        lastError: errorMessage,
+        lastErrorTime: new Date().toISOString()
+      };
+      
+      return { 
+        success: false, 
+        error: errorMessage,
+        connectionId,
+        stack: this.currentSettings.debug ? error.stack : undefined
       };
     }
   }
 
+  /**
+   * Connect to a device using local ADB
+   * @private
+   */
+  async _connectWithLocalAdb(ip, port, settings) {
+    const adbPath = settings.customAdbPath || 'adb';
+    const deviceId = `${ip}:${port}`;
+    
+    try {
+      console.log(`${this.logPrefix} [local-adb] Connecting to ${deviceId}...`);
+      
+      // Try to connect using ADB
+      const { stdout, stderr } = await execPromise(`${adbPath} connect ${deviceId}`);
+      
+      if (stderr && !stdout.includes('connected to')) {
+        throw new Error(stderr.trim() || 'Failed to connect to device');
+      }
+      
+      console.log(`${this.logPrefix} [local-adb] ${stdout.trim()}`);
+      
+    } catch (error) {
+      console.warn(`${this.logPrefix} [local-adb] ADB connect failed:`, error.message);
+      // Don't throw, we'll try with Midscene anyway
+    }
+  }
+  
+  /**
+   * Disconnect a network device using ADB
+   * @private
+   */
+  async _disconnectNetworkDevice(deviceId, settings) {
+    try {
+      const adbPath = settings.customAdbPath || 'adb';
+      console.log(`${this.logPrefix} Disconnecting network device: ${deviceId}`);
+      
+      const { stdout, stderr } = await execPromise(`${adbPath} disconnect ${deviceId}`);
+      
+      if (stderr && !stdout.includes('disconnected')) {
+        console.warn(`${this.logPrefix} ADB disconnect warning:`, stderr.trim());
+      }
+      
+      console.log(`${this.logPrefix} ${stdout.trim()}`);
+      
+    } catch (error) {
+      console.warn(`${this.logPrefix} Failed to disconnect device ${deviceId}:`, error.message);
+      // Don't throw, continue with other cleanup
+    }
+  }
+  
+  /**
+   * Close all active sessions
+   * @private
+   */
+  async _closeActiveSessions() {
+    const closePromises = [];
+    
+    for (const [id, session] of this.activeSessions) {
+      if (typeof session.close === 'function') {
+        closePromises.push(
+          session.close()
+            .then(() => {
+              this.activeSessions.delete(id);
+              console.log(`${this.logPrefix} Closed session: ${id}`);
+            })
+            .catch(error => {
+              console.error(`${this.logPrefix} Error closing session ${id}:`, error);
+            })
+        );
+      } else {
+        this.activeSessions.delete(id);
+      }
+    }
+    
+    await Promise.allSettled(closePromises);
+  }
+  
+  /**
+   * Get AI context for device operations
+   * @private
+   */
+  _getAiContext(settings) {
+    return `
+      Environment: ${this.isDocker ? 'Docker' : 'Local'}
+      Connection Type: ${settings.useRemoteAdb ? 'Remote ADB' : 'Direct'}
+      Remote ADB: ${settings.remoteAdbHost ? `${settings.remoteAdbHost}:${settings.remoteAdbPort}` : 'Not configured'}
+      
+      Instructions:
+      - If any location, permission, or user agreement popup appears, click agree
+      - If login page appears, close it unless explicitly told to log in
+      - Be efficient with interactions and minimize unnecessary steps
+      - Report any errors or unexpected behavior
+    `;
+  }
+  
+  /**
+   * Extract a clean error message from an error object
+   * @private
+   */
+  _getErrorMessage(error) {
+    if (!error) return 'Unknown error';
+    
+    // Handle different error formats
+    if (typeof error === 'string') return error;
+    if (error.message) return error.message;
+    if (error.error) return String(error.error);
+    
+    return 'An unknown error occurred';
+  }
+  
+  // ... (rest of the class remains the same)
   /**
    * Clean up resources
    */

@@ -29,7 +29,30 @@ const userSchema = new Schema({
   executionMode:    { type: String, enum: ['step-planning', 'action-planning'], default: 'step-planning' },
   maxSteps:         { type: Number, min: 1, max: 50, default: 10 },
   privacyMode:      { type: Boolean, default: false },
-  customUrls:       { type: [String], default: [] }
+  customUrls:       { type: [String], default: [] },
+  // ADB Configuration
+  adbConfig: {
+    // Local device connection (USB)
+    deviceIpAddress: { type: String, default: '' },  // For direct network device connection (when not using USB)
+    adbPort: { type: Number, default: 5555 },       // ADB port for network devices (default: 5555)
+    
+    // Remote ADB configuration (for production/remote debugging)
+    remoteAdbHost: { type: String, default: '' },   // Remote ADB server host
+    remoteAdbPort: { type: Number, default: 5037 },  // Remote ADB server port (default: 5037)
+    customAdbPath: { type: String, default: '' },   // Custom ADB binary path
+    
+    // Connection preferences
+    useRemoteAdb: { type: Boolean, default: false }, // Whether to use remote ADB
+    lastUsedConnection: { 
+      type: String, 
+      enum: ['usb', 'network', 'remote'], 
+      default: 'usb' 
+    },
+    
+    // Timestamps
+    lastConnected: { type: Date },
+    lastUpdated: { type: Date, default: Date.now }
+  }
 });
 
 userSchema.index({ email: 1 }, { unique: true });

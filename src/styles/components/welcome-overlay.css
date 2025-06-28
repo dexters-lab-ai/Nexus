@@ -5,15 +5,17 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(10px);
+  background: rgba(0, 0, 0, 0.8);
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 9999;
-  padding: 2rem;
+  z-index: 1000;
+  backdrop-filter: blur(5px);
+  padding: 20px;
+  box-sizing: border-box;
   opacity: 0;
   animation: fadeIn 0.3s forwards;
+  overflow-y: auto;
 }
 
 @media (max-width: 768px) {
@@ -30,14 +32,16 @@
 .welcome-content {
   background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
   border-radius: 16px;
-  width: 100%;
-  max-width: 900px;
-  max-height: 90vh;
+  padding: 2rem;
+  max-width: 1000px;
+  width: 90%;
+  max-height: 80vh;
   overflow-y: auto;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.1);
   position: relative;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: #e6e6e6;
+  margin: 2rem 0;
 }
 
 .welcome-header {
@@ -98,8 +102,8 @@
 
 .welcome-features {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
   margin: 2.5rem 0;
 }
 
@@ -137,18 +141,26 @@
 }
 
 .welcome-actions {
-  display: flex;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
-  margin: 2.5rem 0;
-  flex-wrap: wrap;
+  margin: 2rem 0 0 0;
+  width: 100%;
 }
 
-.primary-button,
-.secondary-button {
-  padding: 0.8rem 2rem;
+.welcome-actions button {
+  width: 100%;
+  padding: 0.8rem 1.5rem;
+  font-size: 1rem;
+  border-radius: 8px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
   border: none;
-  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.2s ease;
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
@@ -157,6 +169,23 @@
   align-items: center;
   justify-content: center;
   min-width: 180px;
+}
+
+.welcome-actions .tour-button {
+  background: #9d4dff;
+  color: white;
+}
+
+.welcome-actions .guide-button {
+  background: #2a2a4a;
+  color: #e0e0e0;
+  border: 1px solid #3a3a5a;
+}
+
+.welcome-actions .explore-button {
+  background: #1a1a2e;
+  color: #b3b3cc;
+  border: 1px solid #2a2a4a;
 }
 
 .primary-button {
@@ -184,18 +213,44 @@
 .welcome-tip {
   background: rgba(157, 77, 255, 0.1);
   border-left: 3px solid #9d4dff;
-  padding: 1rem;
-  border-radius: 0 8px 8px 0;
+  padding: 1.25rem;
+  border-radius: 0 12px 12px 0;
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
+  align-items: flex-start;
+  gap: 1rem;
   margin-top: 2rem;
 }
 
+.welcome-tip > span {
+  font-size: 1.5rem;
+  margin-top: 0.1rem;
+}
+
 .welcome-tip p {
-  margin: 0;
+  margin: 0 0 0.5rem 0;
   font-size: 0.95rem;
   color: #bbb;
+}
+
+.welcome-tip ul.example-commands {
+  margin: 0.5rem 0 0 0;
+  padding-left: 1.25rem;
+}
+
+.welcome-tip ul.example-commands li {
+  margin-bottom: 0.5rem;
+  color: #ddd;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.welcome-tip ul.example-commands li:last-child {
+  margin-bottom: 0;
+}
+
+.welcome-tip strong {
+  color: #fff;
+  font-weight: 600;
 }
 
 .welcome-tip span {

@@ -105,6 +105,7 @@ class GuideOverlay {
       <button class="tab-btn" data-tab="llm">LLM Engines</button>
       <button class="tab-btn" data-tab="advanced">Advanced Features</button>
       <button class="tab-btn" data-tab="tips">Tips & Tricks</button>
+      <button class="tab-btn" data-tab="devices">Device Connections</button>
     `;
     
     // Tabs content container
@@ -118,6 +119,7 @@ class GuideOverlay {
     const llmTab = this.createLLMTab();
     const advancedTab = this.createAdvancedTab();
     const tipsTab = this.createTipsTab();
+    const devicesTab = this.createDevicesTab();
     
     // Set active tab
     mainTab.classList.add('active');
@@ -129,6 +131,7 @@ class GuideOverlay {
     tabsContent.appendChild(llmTab);
     tabsContent.appendChild(advancedTab);
     tabsContent.appendChild(tipsTab);
+    tabsContent.appendChild(devicesTab);
     
     // Assemble content
     content.appendChild(header);
@@ -149,18 +152,23 @@ class GuideOverlay {
           <h3><span class="icon">🚀</span> Welcome to the Guidebook</h3>
         </div>
         <div class="section-content">
-          <p>O.P.E.R.A.T.O.R is your advanced autonomous agent with browser and computer use capabilities, powered by the Nexus Engine.</p>
+          <p>O.P.E.R.A.T.O.R is your advanced autonomous agent with browser, computer, and Android device automation capabilities, powered by the Nexus Engine.</p>
           
           <div class="guide-highlights">
             <div class="highlight-item">
               <i class="fas fa-robot"></i>
               <h4>Autonomous</h4>
-              <p>Advanced AI that can navigate and interact with any application or website</p>
+              <p>Advanced AI that can navigate and interact with any application, website, or Android device</p>
+            </div>
+            <div class="highlight-item">
+              <i class="fas fa-mobile-alt"></i>
+              <h4>Android Automation</h4>
+              <p>Control and automate Android devices via USB, WiFi, or remote ADB connections</p>
             </div>
             <div class="highlight-item">
               <i class="fas fa-tasks"></i>
               <h4>Task Automation</h4>
-              <p>Automate complex workflows across multiple platforms</p>
+              <p>Automate complex workflows across multiple platforms and devices</p>
             </div>
             <div class="highlight-item">
               <i class="fas fa-brain"></i>
@@ -193,6 +201,10 @@ class GuideOverlay {
             <li>
               <h4>Review and execute</h4>
               <p>O.P.E.R.A.T.O.R will analyze your request and execute the necessary steps.</p>
+            </li>
+            <li>
+              <h4>Automate Android devices</h4>
+              <p>Connect your Android device and automate tasks with our intuitive interface. <a href="#" class="tab-link" data-tab="devices">Set up now</a></p>
             </li>
             <li>
               <h4>Monitor and refine</h4>
@@ -682,6 +694,195 @@ tasks:
     return tab;
   }
   
+  createDevicesTab() {
+    const tab = document.createElement('div');
+    tab.className = 'guide-tab';
+    tab.dataset.tab = 'devices';
+    
+    tab.innerHTML = `
+      <div class="guide-section">
+        <h3>Android Device Connections</h3>
+        <p>Connect and automate Android devices with O.P.E.R.A.T.O.R's powerful device management features. Choose the connection method that best fits your needs.</p>
+        
+        <div class="connection-options">
+          <div class="connection-option">
+            <div class="connection-header usb">
+              <i class="fas fa-usb"></i>
+              <h4>USB Connection</h4>
+              <span class="connection-badge">Recommended</span>
+            </div>
+            <div class="connection-content">
+              <p><strong>Best for:</strong> Local development and debugging</p>
+              <p><strong>Speed:</strong> ⚡⚡⚡⚡⚡ (Fastest)</p>
+              <p><strong>Stability:</strong> ⭐⭐⭐⭐⭐ (Most stable)</p>
+              <button class="btn btn-outline connection-details-btn" data-connection="usb">Setup Guide</button>
+            </div>
+          </div>
+          
+          <div class="connection-option">
+            <div class="connection-header network">
+              <i class="fas fa-wifi"></i>
+              <h4>Network Connection</h4>
+            </div>
+            <div class="connection-content">
+              <p><strong>Best for:</strong> Wireless testing and multi-device setups</p>
+              <p><strong>Speed:</strong> ⚡⚡⚡ (Depends on network)</p>
+              <p><strong>Convenience:</strong> ⭐⭐⭐⭐⭐ (No cables needed)</p>
+              <button class="btn btn-outline connection-details-btn" data-connection="network">Setup Guide</button>
+            </div>
+          </div>
+          
+          <div class="connection-option">
+            <div class="connection-header remote">
+              <i class="fas fa-cloud"></i>
+              <h4>Remote ADB</h4>
+              <span class="connection-badge">Advanced</span>
+            </div>
+            <div class="connection-content">
+              <p><strong>Best for:</strong> Teams and CI/CD pipelines</p>
+              <p><strong>Flexibility:</strong> ⭐⭐⭐⭐⭐ (Access anywhere)</p>
+              <p><strong>Setup:</strong> ⚙️⚙️⚙️ (Advanced configuration)</p>
+              <button class="btn btn-outline connection-details-btn" data-connection="remote">Setup Guide</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="guide-section connection-details" id="usb-details">
+        <h4><i class="fas fa-usb"></i> USB Connection Setup</h4>
+        <div class="setup-steps">
+          <div class="setup-step">
+            <div class="step-number">1</div>
+            <div class="step-content">
+              <h5>Enable USB Debugging</h5>
+              <ol>
+                <li>Go to <strong>Settings</strong> > <strong>About Phone</strong></li>
+                <li>Tap <strong>Build Number</strong> 7 times to enable Developer Options</li>
+                <li>Go to <strong>System</strong> > <strong>Developer Options</strong></li>
+                <li>Enable <strong>USB Debugging</strong></li>
+              </ol>
+            </div>
+          </div>
+          <div class="setup-step">
+            <div class="step-number">2</div>
+            <div class="step-content">
+              <h5>Connect Your Device</h5>
+              <ol>
+                <li>Connect your Android device to your computer using a USB cable</li>
+                <li>On your device, tap <strong>Allow USB Debugging</strong> when prompted</li>
+                <li>In O.P.E.R.A.T.O.R, select <strong>USB</strong> as the connection type</li>
+                <li>Click <strong>Connect</strong> and wait for the connection to establish</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="guide-section connection-details" id="network-details">
+        <h4><i class="fas fa-wifi"></i> Network Connection Setup</h4>
+        <div class="setup-steps">
+          <div class="setup-step">
+            <div class="step-number">1</div>
+            <div class="step-content">
+              <h5>Initial USB Setup</h5>
+              <ol>
+                <li>First, connect your device via USB and enable USB debugging</li>
+                <li>Open a command prompt/terminal and run: <code>adb tcpip 5555</code></li>
+                <li>Note your device's IP address in <strong>Settings</strong> > <strong>About Phone</strong> > <strong>Status</strong></li>
+              </ol>
+            </div>
+          </div>
+          <div class="setup-step">
+            <div class="step-number">2</div>
+            <div class="step-content">
+              <h5>Connect Wirelessly</h5>
+              <ol>
+                <li>In O.P.E.R.A.T.O.R, select <strong>Network</strong> as the connection type</li>
+                <li>Enter your device's IP address (e.g., 192.168.1.100)</li>
+                <li>Port will default to 5555</li>
+                <li>Click <strong>Connect</strong> and wait for the connection to establish</li>
+                <li>You can now disconnect the USB cable</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="guide-section connection-details" id="remote-details">
+        <h4><i class="fas fa-cloud"></i> Remote ADB Setup</h4>
+        <div class="setup-steps">
+          <div class="setup-step">
+            <div class="step-number">1</div>
+            <div class="step-content">
+              <h5>Set Up ADB Server</h5>
+              <p>On the computer with your Android device connected:</p>
+              <ol>
+                <li>Open a command prompt/terminal as administrator</li>
+                <li>Navigate to your ADB directory (e.g., <code>cd C:\platform-tools</code>)</li>
+                <li>Start the ADB server in network mode: <code>adb -a -P 5037 nodaemon server</code></li>
+                <li>Note the computer's IP address</li>
+              </ol>
+            </div>
+          </div>
+          <div class="setup-step">
+            <div class="step-number">2</div>
+            <div class="step-content">
+              <h5>Configure Remote Connection</h5>
+              <ol>
+                <li>In O.P.E.R.A.T.O.R, select <strong>Remote ADB</strong> as the connection type</li>
+                <li>Enter the ADB server's IP address and port (default: 5037)</li>
+                <li>If needed, specify the path to ADB (e.g., <code>C:\platform-tools\adb.exe</code>)</li>
+                <li>Click <strong>Save Settings</strong> then <strong>Test Connection</strong></li>
+                <li>Once connected, you can manage devices as if they were connected locally</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="guide-section">
+        <h3>Troubleshooting</h3>
+        <div class="troubleshooting-grid">
+          <div class="troubleshooting-card">
+            <i class="fas fa-question-circle"></i>
+            <h5>Device Not Found</h5>
+            <ul>
+              <li>Check if USB debugging is enabled</li>
+              <li>Try a different USB cable/port</li>
+              <li>Run: <code>adb kill-server && adb start-server</code></li>
+            </ul>
+          </div>
+          <div class="troubleshooting-card">
+            <i class="fas fa-unlink"></i>
+            <h5>Connection Drops</h5>
+            <ul>
+              <li>Check WiFi/network stability</li>
+              <li>Ensure device IP hasn't changed</li>
+              <li>Verify port 5555 is open (network mode)</li>
+            </ul>
+          </div>
+          <div class="troubleshooting-card">
+            <i class="fas fa-exclamation-triangle"></i>
+            <h5>Authentication Issues</h5>
+            <ul>
+              <li>Revoke USB debugging authorizations</li>
+              <li>Reconnect and accept the RSA key</li>
+              <li>Check for conflicting ADB versions</li>
+            </ul>
+          </div>
+        </div>
+        
+        <div class="guide-cta">
+          <button class="btn btn-primary" id="reset-connection-guide">
+            <i class="fas fa-sync-alt"></i> Reset Connection Guide
+          </button>
+        </div>
+      </div>
+    `;
+    
+    return tab;
+  }
+  
   createTipsTab() {
     const tab = document.createElement('div');
     tab.className = 'guide-tab';
@@ -806,24 +1007,34 @@ tasks:
     });
     
     // Close button
-    const closeBtn = this.overlay.querySelector('.close-btn');
-    closeBtn.addEventListener('click', () => this.hide());
+    const closeBtn = this.overlay.querySelector('.guide-close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => this.hide());
+    }
     
     // Tab switching
-    const tabBtns = this.overlay.querySelectorAll('.tab-btn');
-    tabBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        this.switchTab(btn.dataset.tab);
+    const tabButtons = this.overlay.querySelectorAll('.tab-btn');
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => this.switchTab(btn.dataset.tab));
+    });
+
+    // Connection details toggles
+    const detailButtons = this.overlay.querySelectorAll('.connection-details-btn');
+    detailButtons.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.toggleConnectionDetails(btn.dataset.connection);
       });
     });
     
-    // Tab links within content
-    const tabLinkBtns = this.overlay.querySelectorAll('.tab-link-btn');
-    tabLinkBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        this.switchTab(btn.dataset.tab);
+    // Reset connection guide button
+    const resetBtn = this.overlay.querySelector('#reset-connection-guide');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.resetConnectionGuide();
       });
-    });
+    }
     
     // Video placeholder click
     const videoPlaceholder = this.overlay.querySelector('.video-placeholder');
@@ -889,6 +1100,57 @@ tasks:
     } else {
       this.show();
     }
+  }
+  
+  toggleConnectionDetails(connectionType) {
+    // Hide all connection details
+    const allDetails = this.overlay.querySelectorAll('.connection-details');
+    allDetails.forEach(detail => detail.classList.remove('active'));
+    
+    // Remove active class from all buttons
+    const allButtons = this.overlay.querySelectorAll('.connection-details-btn');
+    allButtons.forEach(btn => {
+      btn.classList.remove('active');
+      btn.innerHTML = btn.innerHTML.replace('Hide', 'Show');
+    });
+    
+    // If clicking the same button, don't show any details (toggle off)
+    const activeButton = this.overlay.querySelector(`.connection-details-btn[data-connection="${connectionType}"]`);
+    if (activeButton && activeButton.classList.contains('active')) {
+      return;
+    }
+    
+    // Show the selected connection details
+    const details = this.overlay.querySelector(`#${connectionType}-details`);
+    if (details) {
+      details.classList.add('active');
+      if (activeButton) {
+        activeButton.classList.add('active');
+        activeButton.innerHTML = activeButton.innerHTML.replace('Show', 'Hide');
+      }
+      
+      // Scroll to the details section
+      details.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+  
+  resetConnectionGuide() {
+    // Hide all connection details
+    const allDetails = this.overlay.querySelectorAll('.connection-details');
+    allDetails.forEach(detail => detail.classList.remove('active'));
+    
+    // Reset all buttons
+    const allButtons = this.overlay.querySelectorAll('.connection-details-btn');
+    allButtons.forEach(btn => {
+      btn.classList.remove('active');
+      btn.textContent = 'Setup Guide';
+    });
+    
+    // Scroll to top
+    this.overlay.querySelector('.guide-tabs-content').scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
   }
 }
 

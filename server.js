@@ -2749,6 +2749,41 @@ const errorHandler2 = (err, req, res, next) => {
 // ======================================
 // 10.1 ANDROID DEVICE ENDPOINTS
 // ======================================
+// In server.js, add these routes after your other API routes
+app.get('/api/user/settings/adb', requireAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('adbSettings');
+    res.json(user.adbSettings || {});
+  } catch (error) {
+    console.error('Error fetching ADB settings:', error);
+    res.status(500).json({ message: 'Error fetching ADB settings' });
+  }
+});
+
+app.post('/api/user/settings/adb', requireAuth, async (req, res) => {
+  try {
+    const { remoteAdbHost, remoteAdbPort, customAdbPath, networkSettings } = req.body;
+    
+    const update = {
+      'adbSettings.remoteAdbHost': remoteAdbHost,
+      'adbSettings.remoteAdbPort': remoteAdbPort,
+      'adbSettings.customAdbPath': customAdbPath,
+      'adbSettings.networkSettings': networkSettings,
+      updatedAt: Date.now()
+    };
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { $set: update },
+      { new: true }
+    ).select('adbSettings');
+
+    res.json(user.adbSettings);
+  } catch (error) {
+    console.error('Error saving ADB settings:', error);
+    res.status(500).json({ message: 'Error saving ADB settings' });
+  }
+});
 
 // ======================================
 // 10.1 ANDROID DEVICE ENDPOINTS

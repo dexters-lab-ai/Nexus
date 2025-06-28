@@ -1,9 +1,46 @@
-import { createElement } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { eventBus } from '../utils/events.js';
 import { motion, AnimatePresence } from 'framer-motion';
+import { eventBus } from '../utils/events';
+import { FiX, FiHelpCircle, FiPlay, FiCompass } from 'react-icons/fi';
+import '../styles/components/welcome-overlay.css';
+import TourGuide from './TourGuide';
+import { getGuideOverlay } from './GuideOverlay';
+import '../styles/components/tour-guide.css';
+
+
 
 const WelcomeOverlay = ({ onClose }) => {
+  const [showAppTour, setShowAppTour] = useState(false);
+  
+  // Initialize the app tour when showAppTour changes
+  useEffect(() => {
+    if (showAppTour) {
+      // Close the welcome overlay
+      onClose();
+      
+      // Small delay to ensure the overlay is fully closed
+      setTimeout(() => {
+        // Emit event to start the tour
+        eventBus.emit('startAppTour');
+      }, 300);
+    }
+  }, [showAppTour, onClose]);
+  
+  const handleOpenGuide = () => {
+    onClose();
+    setTimeout(() => {
+      const guide = getGuideOverlay();
+      if (guide && typeof guide.show === 'function') {
+        guide.show();
+      }
+    }, 300);
+  };
+  
+  const handleStartAppTour = () => {
+    setShowAppTour(true);
+  };
+  
   return (
     <AnimatePresence>
       <div className="welcome-overlay">
@@ -21,8 +58,7 @@ const WelcomeOverlay = ({ onClose }) => {
           
           <div className="welcome-body">
             <p className="welcome-intro">
-              Your AI-powered Browser & Computer Automation Assistant
-              <span className="coming-soon">Coming soon to Android & iOS</span>
+              Your AI-powered Automation Assistant for Web, Desktop & Android
             </p>
             
             <div className="welcome-features">
@@ -30,6 +66,12 @@ const WelcomeOverlay = ({ onClose }) => {
                 <div className="feature-icon">🤖</div>
                 <h3>AI-Powered Automation</h3>
                 <p>Automate repetitive tasks with natural language instructions</p>
+              </div>
+              
+              <div className="feature">
+                <div className="feature-icon">📱</div>
+                <h3>Android Device Control</h3>
+                <p>Automate and control Android devices via USB or network</p>
               </div>
               
               <div className="feature">
@@ -41,31 +83,41 @@ const WelcomeOverlay = ({ onClose }) => {
               <div className="feature">
                 <div className="feature-icon">⚡</div>
                 <h3>Smart Workflows</h3>
-                <p>Create complex workflows with simple commands</p>
+                <p>Create complex cross-device workflows with simple commands</p>
               </div>
             </div>
             
             <div className="welcome-actions">
               <button 
-                className="primary-button"
-                onClick={() => {
-                  eventBus.emit('command', { type: 'help' });
-                  onClose();
-                }}
+                className="tour-button"
+                onClick={handleStartAppTour}
               >
-                Get Started
+                <span>🚀</span> Take a Tour
               </button>
               <button 
-                className="secondary-button"
+                className="guide-button"
+                onClick={handleOpenGuide}
+              >
+                <span>📚</span> Open Guide
+              </button>
+              <button 
+                className="explore-button"
                 onClick={onClose}
               >
-                Explore on My Own
+                <span>🔍</span> Explore Myself
               </button>
             </div>
             
             <div className="welcome-tip">
               <span>💡</span>
-              <p>Try saying: "Open the BTC chart on coingecko, zoom out chart to 1Y, switch to candlestick chart view, predict price in 3 months" or "Show me what you can do"</p>
+              <div>
+                <p><strong>Try saying:</strong></p>
+                <ul className="example-commands">
+                  <li>"Open the BTC chart on coingecko, zoom out to 1Y, switch to candlestick view"</li>
+                  <li>"Connect to my Android device and take a screenshot"</li>
+                  <li>"Show me what you can do with Android automation"</li>
+                </ul>
+              </div>
             </div>
           </div>
         </motion.div>

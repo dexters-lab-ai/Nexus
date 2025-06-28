@@ -40,10 +40,36 @@ import * as settingsApi from './api/settings.js';
 // Maintain references to all initialized components
 let appComponents = null;
 
+// Import the tour initialization function
+let cleanupTour = null;
+
+// Initialize the app tour
+const initializeTour = async () => {
+  try {
+    // Dynamically import AppTour component to avoid circular dependencies
+    const { initializeTour: initTour } = await import('./components/AppTour');
+    cleanupTour = initTour();
+  } catch (error) {
+    console.error('Error initializing tour:', error);
+  }
+};
+
+// Cleanup function for the tour
+const cleanupAppTour = () => {
+  if (typeof cleanupTour === 'function') {
+    cleanupTour();
+    cleanupTour = null;
+  }
+};
+
 // Initialize app when ready
 const initializeApp = async () => {
   try {
     console.log('Initializing modern OPERATOR application...');
+    
+    // Listen for tour events
+    eventBus.on('startAppTour', initializeTour);
+    eventBus.on('cleanupTour', cleanupAppTour);
     
     // Show splash screen during initialization
     const splashScreen = document.getElementById('splash-screen');

@@ -208,8 +208,9 @@
   text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.12);
 }
 
-/* Network Connection Form Styles */
-.network-connection-form {
+/* Connection Form Styles */
+.network-connection-form,
+.remote-adb-settings {
   margin-bottom: 7px;
   padding: 7px;
   background: rgba(255, 255, 255, 0.03);
@@ -218,7 +219,9 @@
   color: rgba(255, 255, 255, 0.85);
 }
 
-.network-connection-form .ant-input {
+/* Input fields styling */
+.network-connection-form .ant-input,
+.remote-adb-settings .ant-input {
   height: 26px;
   padding: 2px 8px;
   font-size: 12px;
@@ -230,22 +233,47 @@
   transition: all 0.2s ease;
 }
 
-.network-connection-form .ant-input::placeholder {
+/* Placeholder text */
+.network-connection-form .ant-input::placeholder,
+.remote-adb-settings .ant-input::placeholder {
   color: rgba(255, 255, 255, 0.5) !important;
   opacity: 1;
 }
 
-.network-connection-form .ant-input:focus {
+/* Focus state */
+.network-connection-form .ant-input:focus,
+.remote-adb-settings .ant-input:focus {
   border-color: rgba(138, 43, 226, 0.6) !important;
   box-shadow: 0 0 0 2px rgba(138, 43, 226, 0.2) !important;
 }
 
-.network-connection-form .ant-input:hover {
+/* Hover state */
+.network-connection-form .ant-input:hover,
+.remote-adb-settings .ant-input:hover {
   border-color: rgba(138, 43, 226, 0.5) !important;
 }
 
-.network-connection-form .ant-input:first-child {
+/* Spacing between inputs */
+.network-connection-form .ant-input:first-child,
+.remote-adb-settings .ant-input:not(:last-child) {
   margin-bottom: 6px;
+}
+
+/* Form section headers */
+.remote-adb-settings h4 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Form labels */
+.remote-adb-settings .form-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .ant-btn-success:hover,

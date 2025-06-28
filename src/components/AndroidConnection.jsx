@@ -93,13 +93,24 @@ const AndroidConnection = ({ onClose, active = false }) => {
     showInstallModal: false,
     isInstalling: false,
     installProgress: [],
+    // Connection type state
+    connectionType: 'usb', // 'usb', 'network', or 'remote'
     // Network connection state
-    connectionType: 'usb', // 'usb' or 'network'
     networkSettings: {
       ip: '',
       port: '5555'
     },
-    showNetworkForm: false
+    // Remote ADB settings
+    remoteAdbSettings: {
+      host: '',
+      port: '5037',
+      customAdbPath: '',
+      useRemote: false
+    },
+    showNetworkForm: false,
+    showRemoteSettings: false,
+    testingConnection: false,
+    connectionTestResult: null
   });
 
   const isMounted = useRef(true);
@@ -267,15 +278,97 @@ const AndroidConnection = ({ onClose, active = false }) => {
     }
   }, []);
 
-  // Toggle between USB and network connection
-  const toggleConnectionType = useCallback(() => {
+  // Handle connection type change
+  const handleConnectionTypeChange = useCallback((type) => {
     updateState(prev => ({
       ...prev,
-      connectionType: prev.connectionType === 'usb' ? 'network' : 'usb',
-      showNetworkForm: prev.connectionType === 'usb',
+      connectionType: type,
+      showNetworkForm: type === 'network',
+      showRemoteSettings: type === 'remote',
       error: null
     }));
   }, []);
+
+  // Load saved ADB settings
+  const loadAdbSettings = useCallback(async () => {
+    try {
+      const settings = await api.user.getAdbSettings();
+      updateState(prev => ({
+        ...prev,
+        remoteAdbSettings: {
+          ...prev.remoteAdbSettings,
+          ...settings,
+          port: settings.port?.toString() || '5037'
+        }
+      }));
+    } catch (error) {
+      console.error('Failed to load ADB settings:', error);
+    }
+  }, []);
+
+  // Save ADB settings
+  const saveAdbSettings = useCallback(async () => {
+    try {
+      await api.user.updateAdbSettings({
+        ...state.remoteAdbSettings,
+        port: parseInt(state.remoteAdbSettings.port, 10) || 5037
+      });
+      notification.success({
+        message: 'Settings Saved',
+        description: 'ADB settings have been saved successfully.',
+        placement: 'bottomRight'
+      });
+    } catch (error) {
+      console.error('Failed to save ADB settings:', error);
+      notification.error({
+        message: 'Save Failed',
+        description: error.message || 'Failed to save ADB settings',
+        placement: 'bottomRight'
+      });
+    }
+  }, [state.remoteAdbSettings]);
+
+  // Test ADB connection
+  const testAdbConnection = useCallback(async () => {
+    try {
+      updateState(prev => ({ ...prev, testingConnection: true, connectionTestResult: null }));
+      
+      const result = await api.user.testAdbConnection({
+        remoteAdbHost: state.remoteAdbSettings.host,
+        remoteAdbPort: parseInt(state.remoteAdbSettings.port, 10) || 5037,
+        customAdbPath: state.remoteAdbSettings.customAdbPath
+      });
+      
+      updateState(prev => ({
+        ...prev,
+        connectionTestResult: result.success ? 'success' : 'error',
+        testingConnection: false
+      }));
+      
+      notification[result.success ? 'success' : 'error']({
+        message: result.success ? 'Connection Successful' : 'Connection Failed',
+        description: result.message || (result.success ? 'Successfully connected to ADB server.' : 'Failed to connect to ADB server.'),
+        placement: 'bottomRight'
+      });
+      
+      return result.success;
+    } catch (error) {
+      console.error('Connection test failed:', error);
+      updateState(prev => ({
+        ...prev,
+        connectionTestResult: 'error',
+        testingConnection: false
+      }));
+      
+      notification.error({
+        message: 'Connection Test Failed',
+        description: error.message || 'An error occurred while testing the connection',
+        placement: 'bottomRight'
+      });
+      
+      return false;
+    }
+  }, [state.remoteAdbSettings]);
 
   // Handle network settings change
   const handleNetworkSettingsChange = useCallback((field, value) => {
@@ -302,8 +395,20 @@ const AndroidConnection = ({ onClose, active = false }) => {
       }));
 
       let result;
+      let connectionType = state.connectionType;
       
-      if (state.connectionType === 'network') {
+      // For remote connections, first test the connection
+      if (connectionType === 'remote') {
+        const isConnected = await testAdbConnection();
+        if (!isConnected) {
+          updateState(prev => ({ ...prev, loading: false, status: STATUS.ERROR }));
+          return;
+        }
+        // Fall through to network connection with remote settings
+        connectionType = 'network';
+      }
+      
+      if (connectionType === 'network') {
         // Handle network connection
         const { ip, port = '5555' } = state.networkSettings;
         if (!ip) {
@@ -311,7 +416,15 @@ const AndroidConnection = ({ onClose, active = false }) => {
         }
         
         console.log(`Connecting to network device: ${ip}:${port}`);
-        result = await api.android.connectOverNetwork(ip, parseInt(port, 10));
+        
+        // Include remote ADB settings if using remote connection
+        const connectionOptions = state.connectionType === 'remote' ? {
+          remoteAdbHost: state.remoteAdbSettings.host,
+          remoteAdbPort: parseInt(state.remoteAdbSettings.port, 10) || 5037,
+          customAdbPath: state.remoteAdbSettings.customAdbPath
+        } : {};
+        
+        result = await api.android.connectOverNetwork(ip, parseInt(port, 10), connectionOptions);
       } else {
         // Handle USB connection
         const status = await api.android.getStatus();
@@ -1067,10 +1180,7 @@ const renderConnectionStatus = () => {
         <Button
           type={state.connectionType === 'usb' ? 'primary' : 'default'}
           icon={<UsbOutlined />}
-          onClick={() => updateState({ 
-            connectionType: 'usb',
-            showNetworkForm: false 
-          })}
+          onClick={() => handleConnectionTypeChange('usb')}
           size="small"
         >
           USB
@@ -1078,13 +1188,18 @@ const renderConnectionStatus = () => {
         <Button
           type={state.connectionType === 'network' ? 'primary' : 'default'}
           icon={<LinkOutlined />}
-          onClick={() => updateState({ 
-            connectionType: 'network',
-            showNetworkForm: true 
-          })}
+          onClick={() => handleConnectionTypeChange('network')}
           size="small"
         >
           Network
+        </Button>
+        <Button
+          type={state.connectionType === 'remote' ? 'primary' : 'default'}
+          icon={<SettingOutlined />}
+          onClick={() => handleConnectionTypeChange('remote')}
+          size="small"
+        >
+          Remote ADB
         </Button>
       </div>
       
@@ -1102,6 +1217,7 @@ const renderConnectionStatus = () => {
                 }
               })}
               className="network-connection-input"
+              style={{ marginBottom: 8 }}
             />
             <Input
               placeholder="Port (default: 5555)"
@@ -1109,11 +1225,99 @@ const renderConnectionStatus = () => {
               onChange={(e) => updateState({
                 networkSettings: {
                   ...state.networkSettings,
-                  port: e.target.value
+                  port: e.target.value.replace(/\D/g, '') // Numbers only
                 }
               })}
               className="network-connection-input"
             />
+          </div>
+        </div>
+      )}
+
+      {/* Remote ADB Settings */}
+      {state.connectionType === 'remote' && state.showRemoteSettings && (
+        <div className="remote-adb-settings">
+          <div style={{ marginBottom: 16 }}>
+            
+            <div style={{ marginBottom: 12, padding: '10px' }}>
+              <div className="form-label">ADB Server Host</div>
+              <Input
+                placeholder="e.g., 192.168.1.100 or adb.example.com"
+                value={state.remoteAdbSettings.host}
+                onChange={(e) => updateState({
+                  remoteAdbSettings: {
+                    ...state.remoteAdbSettings,
+                    host: e.target.value
+                  }
+                })}
+              />
+              
+              <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div className="form-label">ADB Server Port</div>
+                  <Input
+                    placeholder="5037"
+                    value={state.remoteAdbSettings.port}
+                    onChange={(e) => updateState({
+                      remoteAdbSettings: {
+                        ...state.remoteAdbSettings,
+                        port: e.target.value.replace(/\D/g, '') // Numbers only
+                      }
+                    })}
+                  />
+                </div>
+                <div style={{ flex: 2 }}>
+                  <div className="form-label">Custom ADB Path (optional)</div>
+                  <Input
+                    placeholder="e.g., /path/to/adb"
+                    value={state.remoteAdbSettings.customAdbPath}
+                    onChange={(e) => updateState({
+                      remoteAdbSettings: {
+                        ...state.remoteAdbSettings,
+                        customAdbPath: e.target.value
+                      }
+                    })}
+                  />
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                <Button
+                  type="primary"
+                  onClick={testAdbConnection}
+                  loading={state.testingConnection}
+                  icon={<LinkOutlined />}
+                  style={{ flex: 1 }}
+                >
+                  Test Connection
+                </Button>
+                <Button
+                  type="default"
+                  onClick={saveAdbSettings}
+                  icon={<CheckCircleOutlined />}
+                >
+                  Save Settings
+                </Button>
+              </div>
+              
+              {state.connectionTestResult && (
+                <div style={{
+                  marginTop: 12,
+                  padding: 8,
+                  background: state.connectionTestResult === 'success' 
+                    ? 'rgba(82, 196, 26, 0.15)' 
+                    : 'rgba(255, 77, 79, 0.15)',
+                  borderRadius: 4,
+                  textAlign: 'center',
+                  fontSize: 12,
+                  color: state.connectionTestResult === 'success' ? '#52c41a' : '#ff4d4f'
+                }}>
+                  {state.connectionTestResult === 'success' 
+                    ? '✓ Connection successful' 
+                    : '✗ Connection failed. Please check your settings.'}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

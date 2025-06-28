@@ -649,6 +649,36 @@ export const api = {
     }
   },
 
+  // User settings endpoints
+  user: {
+    /**
+     * Update user's ADB settings
+     * @param {Object} settings - ADB settings to update
+     * @returns {Promise<Object>} - Updated user settings
+     */
+    updateAdbSettings: async (settings) => {
+      return api.patch('/user/settings/adb', settings);
+    },
+
+    /**
+     * Get user's ADB settings
+     * @returns {Promise<Object>} - Current ADB settings
+     */
+    getAdbSettings: async () => {
+      const response = await api.get('/user/settings/adb');
+      return response?.adbConfig || {};
+    },
+
+    /**
+     * Test remote ADB connection
+     * @param {Object} settings - ADB settings to test
+     * @returns {Promise<{success: boolean, message: string}>} - Test result
+     */
+    testAdbConnection: async (settings) => {
+      return api.post('/user/settings/adb/test', settings);
+    }
+  },
+
   // Android endpoints - Backend proxy
   android: {
     /**
