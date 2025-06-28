@@ -391,7 +391,7 @@
 .sdk-tooltip {
   display: block;
   position: absolute;
-  bottom: calc(100% + 30px); /* Reduced gap */
+  bottom: calc(100%); /* Reduced gap */
   left: 50%;
   transform: translateX(-50%);
   width: 320px;
@@ -407,8 +407,6 @@
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   pointer-events: none;
   transform-origin: bottom center;
-  /* Create a larger invisible hit area */
-  margin-bottom: -15px;
 }
 
 /* Create a pseudo-element to bridge the gap between button and tooltip */
@@ -437,7 +435,7 @@
 .sdk-tooltip:hover {
   display: block;
   opacity: 1 !important;
-  transform: translateX(-50%) translateY(-2%) !important;
+  transform: translateX(-50%) translateY(0%) !important;
   pointer-events: auto !important;
 }
 
