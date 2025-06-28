@@ -79,10 +79,10 @@
         "tweakpane": "^4.0.3",
         "winston": "^3.11.0",
         "ws": "^8.18.2",
-        "zustand": "^5.0.3"
+        "zustand": "^5.0.3",
+        "@midscene/android": "^0.20.1"
     },
     "devDependencies": {
-        "@midscene/android": "^0.20.1",
         "@types/node": "^22.14.1",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
