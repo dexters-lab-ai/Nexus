@@ -40,8 +40,9 @@ RUN apt-get update && apt-get install -y \
     udev \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
-    # Create udev rules for Android devices
+    # Create directory for udev rules (permissions will be set at runtime)
     && mkdir -p /etc/udev/rules.d/ \
+    # Create the udev rules file with proper permissions
     && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0bb4", MODE="0666"' > /etc/udev/rules.d/51-android.rules \
     && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0e79", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
     && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0502", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
@@ -50,7 +51,6 @@ RUN apt-get update && apt-get install -y \
     && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0489", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
     && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="091e", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
     && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0bb4", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
     && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="12d1", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
     && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="24e3", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
     && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2116", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
@@ -73,8 +73,7 @@ RUN apt-get update && apt-get install -y \
     && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0fce", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
     && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0930", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
     && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="19d2", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && chmod a+rw /etc/udev/rules.d/51-android.rules \
-    && chmod -R a+rw /dev/bus/usb/
+    && chmod a+rw /etc/udev/rules.d/51-android.rules
 
 # Set Puppeteer environment variables
 # ADB and Android environment variables
@@ -386,6 +385,20 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo '  fi' >> /usr/local/bin/startup.sh && \
     echo 'echo "=== Environment Variables ==="' >> /usr/local/bin/startup.sh && \
     echo 'env | sort' >> /usr/local/bin/startup.sh && \
+    echo '' >> /usr/local/bin/startup.sh && \
+    echo '### USB Device Permissions ###' >> /usr/local/bin/startup.sh && \
+    echo 'echo "=== Setting up USB device permissions ==="' >> /usr/local/bin/startup.sh && \
+    echo 'if [ -d "/dev/bus/usb" ]; then' >> /usr/local/bin/startup.sh && \
+    echo '    echo "Setting permissions for USB devices..."' >> /usr/local/bin/startup.sh && \
+    echo '    chmod -R a+rw /dev/bus/usb/' >> /usr/local/bin/startup.sh && \
+    echo '    echo "Reloading udev rules..."' >> /usr/local/bin/startup.sh && \
+    echo '    udevadm control --reload-rules' >> /usr/local/bin/startup.sh && \
+    echo '    udevadm trigger' >> /usr/local/bin/startup.sh && \
+    echo '    echo "USB device permissions set"' >> /usr/local/bin/startup.sh && \
+    echo 'else' >> /usr/local/bin/startup.sh && \
+    echo '    echo "Warning: /dev/bus/usb/ not found. USB devices will not be accessible."' >> /usr/local/bin/startup.sh && \
+    echo '    echo "Make sure to run the container with: --device=/dev/bus/usb"' >> /usr/local/bin/startup.sh && \
+    echo 'fi' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
     echo '### Starting ADB Server ###' >> /usr/local/bin/startup.sh && \
     echo 'echo "=== Starting ADB Server ==="' >> /usr/local/bin/startup.sh && \
