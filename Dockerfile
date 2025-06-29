@@ -118,12 +118,14 @@ COPY package*.json ./
 # Clean up any existing node_modules and lock files
 RUN rm -rf node_modules package-lock.json pnpm-lock.yaml
 
-# Install all dependencies including devDependencies for build
-RUN echo "Installing dependencies with legacy peer deps..." && \
+# Install Vite globally and locally
+RUN echo "Installing Vite globally..." && \
+    npm install -g vite@6.3.2 && \
+    echo "Installing dependencies with legacy peer deps..." && \
     npm install --legacy-peer-deps --production=false && \
     echo "Installing Rollup and visualizer..." && \
     npm install @rollup/rollup-linux-x64-gnu rollup-plugin-visualizer@5.9.2 --save-dev --legacy-peer-deps && \
-    echo "Ensuring Vite is available..." && \
+    echo "Installing Vite locally..." && \
     npm install vite@6.3.2 --save-dev --legacy-peer-deps && \
     echo "Dependency installation complete"
 
@@ -150,6 +152,9 @@ FROM node:20.18.1-bullseye-slim AS development
 
 # Set working directory
 WORKDIR /usr/src/app
+
+# Add node_modules/.bin to PATH
+ENV PATH="/usr/src/app/node_modules/.bin:${PATH}"
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
