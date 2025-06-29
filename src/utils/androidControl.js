@@ -1,3 +1,11 @@
+// Set Android environment variables before requiring Midscene SDK
+process.env.ANDROID_HOME = process.env.ANDROID_HOME || '/opt/android-sdk';
+process.env.ANDROID_SDK_ROOT = process.env.ANDROID_SDK_ROOT || process.env.ANDROID_HOME;
+process.env.PATH = `${process.env.ANDROID_HOME}/platform-tools:${process.env.ANDROID_HOME}/cmdline-tools/latest/bin:${process.env.PATH}`;
+
+// Set Midscene-specific environment variables if not already set
+process.env.MIDSCENE_ADB_PATH = process.env.MIDSCENE_ADB_PATH || `${process.env.ANDROID_HOME}/platform-tools/adb`;
+
 import { 
   AndroidAgent, 
   AndroidDevice, 
