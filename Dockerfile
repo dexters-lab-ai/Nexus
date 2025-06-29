@@ -96,7 +96,7 @@ ENV CHROME_BIN=/usr/bin/chromium-browser \
     ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk \
     # Add Android SDK tools to PATH
-    PATH="${PATH}:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/build-tools/33.0.0" \
+    PATH="/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/build-tools/33.0.0:${PATH}" \
     # Set default ADB path
     MIDSCENE_ADB_PATH=/opt/android-sdk/platform-tools/adb \
     # ADB server settings (can be overridden via environment)
@@ -104,6 +104,7 @@ ENV CHROME_BIN=/usr/bin/chromium-browser \
     MIDSCENE_ADB_REMOTE_PORT=5037 \
     # ADB server settings
     ADB_SERVER_SOCKET=tcp:5037 \
+    ADB_VENDOR_KEYS=/home/node/.android/adbkey \
     # Java home for Android tools
     JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64 
 
