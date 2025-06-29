@@ -339,6 +339,16 @@ COPY --from=builder /usr/src/app/config ./config
 COPY --from=builder /usr/src/app/scripts ./scripts
 COPY --from=builder /usr/src/app/patches ./patches
 
+# Copy Android SDK from builder stage
+COPY --from=builder /opt/android-sdk /opt/android-sdk
+
+# Recreate symlinks
+RUN ln -sf /opt/android-sdk/platform-tools/adb /usr/local/bin/adb
+
+# Set proper permissions
+RUN chmod -R a+rw /opt/android-sdk && \
+    chmod +x /opt/android-sdk/platform-tools/adb
+
 # Copy and set up environment files
 COPY --from=builder /usr/src/app/.env* ./
 RUN if [ ! -f ".env" ] && [ -f ".env.production" ]; then \
