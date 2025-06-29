@@ -343,17 +343,25 @@ COPY --from=builder /usr/src/app/patches ./patches
 # Copy Android SDK from builder stage
 COPY --from=builder /opt/android-sdk /opt/android-sdk
 
-# Recreate symlinks
-RUN ln -sf /opt/android-sdk/platform-tools/adb /usr/local/bin/adb
-
-# Set proper permissions
-RUN chmod -R a+rw /opt/android-sdk && \
-    chmod +x /opt/android-sdk/platform-tools/adb
+# Recreate symlinks and set permissions
+RUN ln -sf /opt/android-sdk/platform-tools/adb /usr/local/bin/adb && \
+    chmod -R a+rw /opt/android-sdk && \
+    chmod +x /opt/android-sdk/platform-tools/adb && \
+    # Create profile.d script to set environment variables
+    mkdir -p /etc/profile.d && \
+    echo 'export ANDROID_HOME=/opt/android-sdk' > /etc/profile.d/android.sh && \
+    echo 'export ANDROID_SDK_ROOT=/opt/android-sdk' >> /etc/profile.d/android.sh && \
+    echo 'export PATH="/opt/android-sdk/platform-tools:/opt/android-sdk/cmdline-tools/latest/bin:$PATH"' >> /etc/profile.d/android.sh && \
+    chmod +x /etc/profile.d/android.sh
 
 # Copy and set up environment files
 COPY --from=builder /usr/src/app/.env* ./
 RUN if [ ! -f ".env" ] && [ -f ".env.production" ]; then \
-      cp .env.production .env; \
+        cp .env.production .env; \
+    fi && \
+    # Source .env file if it exists to set environment variables
+    if [ -f ".env" ]; then \
+        set -a && . ./.env && set +a; \
     fi
 
 # Create necessary runtime directories and set permissions
@@ -447,11 +455,16 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
     echo '### Android Environment Setup ###' >> /usr/local/bin/startup.sh && \
     echo 'echo "=== Verifying Android Environment ==="' >> /usr/local/bin/startup.sh && \
-    echo '# Export Android environment variables' >> /usr/local/bin/startup.sh && \
-    echo 'export ANDROID_HOME=/opt/android-sdk' >> /usr/local/bin/startup.sh && \
-    echo 'export ANDROID_SDK_ROOT=/opt/android-sdk' >> /usr/local/bin/startup.sh && \
-    echo 'export PATH="$PATH:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/build-tools/33.0.0"' >> /usr/local/bin/startup.sh && \
-    echo 'export MIDSCENE_ADB_PATH=/opt/android-sdk/platform-tools/adb' >> /usr/local/bin/startup.sh && \
+    echo '# Source environment variables' >> /usr/local/bin/startup.sh && \
+    echo 'if [ -f /etc/profile.d/android.sh ]; then' >> /usr/local/bin/startup.sh && \
+    echo '    . /etc/profile.d/android.sh' >> /usr/local/bin/startup.sh && \
+    echo 'else' >> /usr/local/bin/startup.sh && \
+    echo '    # Fallback if profile.d script is not available' >> /usr/local/bin/startup.sh && \
+    echo '    export ANDROID_HOME=/opt/android-sdk' >> /usr/local/bin/startup.sh && \
+    echo '    export ANDROID_SDK_ROOT=/opt/android-sdk' >> /usr/local/bin/startup.sh && \
+    echo '    export PATH="/opt/android-sdk/platform-tools:/opt/android-sdk/cmdline-tools/latest/bin:$PATH"' >> /usr/local/bin/startup.sh && \
+    echo '    export MIDSCENE_ADB_PATH=/opt/android-sdk/platform-tools/adb' >> /usr/local/bin/startup.sh && \
+    echo 'fi' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
     echo '# Debug info' >> /usr/local/bin/startup.sh && \
     echo 'echo "ANDROID_HOME: $ANDROID_HOME"' >> /usr/local/bin/startup.sh && \
@@ -467,6 +480,8 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo '    $MIDSCENE_ADB_PATH version' >> /usr/local/bin/startup.sh && \
     echo 'else' >> /usr/local/bin/startup.sh && \
     echo '    echo "ERROR: ADB not found at $MIDSCENE_ADB_PATH"' >> /usr/local/bin/startup.sh && \
+    echo '    echo "Trying to find ADB in PATH..."' >> /usr/local/bin/startup.sh && \
+    echo '    which adb || echo "ADB not found in PATH"' >> /usr/local/bin/startup.sh && \
     echo '    exit 1' >> /usr/local/bin/startup.sh && \
     echo 'fi' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
