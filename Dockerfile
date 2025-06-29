@@ -97,11 +97,7 @@ ENV CHROME_BIN=/usr/bin/chromium-browser \
     # ADB server settings
     ADB_SERVER_SOCKET=tcp:5037 \
     # Java home for Android tools
-    JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64 \
-    # Ensure these are available to Node.js process
-    NODE_ENV=production \
-    # Explicitly export Android SDK paths for Node.js
-    NODE_OPTIONS=--max-old-space-size=4096
+    JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64 
 
 # Create a profile.d script to ensure environment variables are loaded in all shells
 RUN echo 'export ANDROID_HOME=/usr/lib/android-sdk' > /etc/profile.d/android.sh && \
