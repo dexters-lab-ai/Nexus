@@ -158,13 +158,33 @@ FROM node:20.18.1-bullseye-slim AS development
 # Set working directory
 WORKDIR /usr/src/app
 
-# Install system dependencies
+# Install Android SDK and tools
 RUN apt-get update && apt-get install -y \
-    python3 \
-    make \
-    g++ \
-    git \
+    wget \
+    unzip \
+    openjdk-17-jdk \
+    android-sdk \
+    adb \
     && rm -rf /var/lib/apt/lists/*
+
+# Create Android SDK directory and set permissions
+RUN mkdir -p /opt/android-sdk && \
+    chmod -R 777 /opt/android-sdk
+
+# Copy Android environment setup script
+COPY scripts/setup-android-env.sh /usr/local/bin/setup-android-env
+RUN chmod +x /usr/local/bin/setup-android-env
+
+# Set Android environment variables
+ENV ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk \
+    PATH=$PATH:/opt/android-sdk/platform-tools/ \
+    PATH=$PATH:/opt/android-sdk/tools/ \
+    PATH=$PATH:/opt/android-sdk/tools/bin/ \
+    PATH=$PATH:/opt/android-sdk/emulator/
+
+# Run the Android environment setup
+RUN /usr/local/bin/setup-android-env
 
 # Set environment to development
 ENV NODE_ENV=development
@@ -352,21 +372,40 @@ RUN ln -sf /opt/android-sdk/platform-tools/adb /usr/local/bin/adb && \
     chmod -R a+rw /opt/android-sdk && \
     chmod +x /opt/android-sdk/platform-tools/adb
 
-# Set up environment variables in all possible locations
+# Create a dedicated environment setup script
 RUN mkdir -p /etc/profile.d && \
-    # Create profile.d script
-    echo 'export ANDROID_HOME=/opt/android-sdk' > /etc/profile.d/android.sh && \
-    echo 'export ANDROID_SDK_ROOT=/opt/android-sdk' >> /etc/profile.d/android.sh && \
-    echo 'export PATH="/opt/android-sdk/platform-tools:/opt/android-sdk/cmdline-tools/latest/bin:$PATH"' >> /etc/profile.d/android.sh && \
-    chmod +x /etc/profile.d/android.sh && \
+    # Create a comprehensive environment setup script
+    echo '#!/bin/sh' > /etc/profile.d/android-env.sh && \
+    echo '# Android SDK paths' >> /etc/profile.d/android-env.sh && \
+    echo 'export ANDROID_HOME=/opt/android-sdk' >> /etc/profile.d/android-env.sh && \
+    echo 'export ANDROID_SDK_ROOT=/opt/android-sdk' >> /etc/profile.d/android-env.sh && \
+    echo 'export PATH="/opt/android-sdk/platform-tools:/opt/android-sdk/cmdline-tools/latest/bin:$PATH"' >> /etc/profile.d/android-env.sh && \
+    echo 'export MIDSCENE_ADB_PATH=/opt/android-sdk/platform-tools/adb' >> /etc/profile.d/android-env.sh && \
+    echo 'export MIDSCENE_ADB_REMOTE_HOST=host.docker.internal' >> /etc/profile.d/android-env.sh && \
+    echo 'export MIDSCENE_ADB_REMOTE_PORT=5037' >> /etc/profile.d/android-env.sh && \
+    chmod +x /etc/profile.d/android-env.sh && \
+    # Create symlinks for backward compatibility
+    ln -sf /etc/profile.d/android-env.sh /etc/profile.d/android.sh && \
     # Set in .bashrc for interactive shells
-    echo 'export ANDROID_HOME=/opt/android-sdk' >> /root/.bashrc && \
-    echo 'export ANDROID_SDK_ROOT=/opt/android-sdk' >> /root/.bashrc && \
-    echo 'export PATH="/opt/android-sdk/platform-tools:/opt/android-sdk/cmdline-tools/latest/bin:$PATH"' >> /root/.bashrc && \
+    echo 'if [ -f /etc/profile.d/android-env.sh ]; then . /etc/profile.d/android-env.sh; fi' >> /root/.bashrc && \
     # Set in environment for all processes
     echo 'ANDROID_HOME=/opt/android-sdk' >> /etc/environment && \
     echo 'ANDROID_SDK_ROOT=/opt/android-sdk' >> /etc/environment && \
-    echo 'PATH="/opt/android-sdk/platform-tools:/opt/android-sdk/cmdline-tools/latest/bin:$PATH"' >> /etc/environment
+    echo 'PATH="/opt/android-sdk/platform-tools:/opt/android-sdk/cmdline-tools/latest/bin:$PATH"' >> /etc/environment && \
+    echo 'MIDSCENE_ADB_PATH=/opt/android-sdk/platform-tools/adb' >> /etc/environment && \
+    # Create a script to verify environment
+    echo '#!/bin/sh' > /usr/local/bin/verify-android-env && \
+    echo 'echo "=== Android Environment Variables ==="' >> /usr/local/bin/verify-android-env && \
+    echo 'echo "ANDROID_HOME: $ANDROID_HOME"' >> /usr/local/bin/verify-android-env && \
+    echo 'echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"' >> /usr/local/bin/verify-android-env && \
+    echo 'echo "PATH: $PATH"' >> /usr/local/bin/verify-android-env && \
+    echo 'echo "MIDSCENE_ADB_PATH: $MIDSCENE_ADB_PATH"' >> /usr/local/bin/verify-android-env && \
+    echo 'echo "MIDSCENE_ADB_REMOTE_HOST: $MIDSCENE_ADB_REMOTE_HOST"' >> /usr/local/bin/verify-android-env && \
+    echo 'echo "MIDSCENE_ADB_REMOTE_PORT: $MIDSCENE_ADB_REMOTE_PORT"' >> /usr/local/bin/verify-android-env && \
+    echo 'echo ""' >> /usr/local/bin/verify-android-env && \
+    echo 'echo "=== ADB Version ==="' >> /usr/local/bin/verify-android-env && \
+    echo 'command -v adb && adb version || echo "ADB not found in PATH"' >> /usr/local/bin/verify-android-env && \
+    chmod +x /usr/local/bin/verify-android-env
 
 # Copy and set up environment files
 COPY --from=builder /usr/src/app/.env* ./
@@ -570,22 +609,33 @@ USER node
 
 # Create a single wrapper script to ensure environment is loaded
 RUN echo '#!/bin/sh' > /usr/local/bin/start-nexus && \
-    echo '# Load environment variables' >> /usr/local/bin/start-nexus && \
-    echo 'set -a' >> /usr/local/bin/start-nexus && \
-    echo 'if [ -f "/etc/environment" ]; then . /etc/environment; fi' >> /usr/local/bin/start-nexus && \
-    echo 'if [ -f "/etc/profile.d/android.sh" ]; then . /etc/profile.d/android.sh; fi' >> /usr/local/bin/start-nexus && \
-    echo 'if [ -f "$HOME/.bashrc" ]; then . $HOME/.bashrc; fi' >> /usr/local/bin/start-nexus && \
-    echo 'set +a' >> /usr/local/bin/start-nexus && \
+    echo 'set -e' >> /usr/local/bin/start-nexus && \
+    echo '' >> /usr/local/bin/start-nexus && \
+    echo '# Source Android environment' >> /usr/local/bin/start-nexus && \
+    echo 'if [ -f "/etc/profile.d/android-env.sh" ]; then' >> /usr/local/bin/start-nexus && \
+    echo '    echo "[start-nexus] Sourcing /etc/profile.d/android-env.sh"' >> /usr/local/bin/start-nexus && \
+    echo '    . /etc/profile.d/android-env.sh' >> /usr/local/bin/start-nexus && \
+    echo 'fi' >> /usr/local/bin/start-nexus && \
     echo '' >> /usr/local/bin/start-nexus && \
     echo '# Debug output' >> /usr/local/bin/start-nexus && \
     echo 'echo "=== Environment Variables ==="' >> /usr/local/bin/start-nexus && \
-    echo 'env | grep -E "ANDROID|PATH"' >> /usr/local/bin/start-nexus && \
+    echo 'env | grep -E "ANDROID|PATH|MIDSCENE" | sort' >> /usr/local/bin/start-nexus && \
+    echo '' >> /usr/local/bin/start-nexus && \
+    echo '# Verify ADB is available' >> /usr/local/bin/start-nexus && \
+    echo 'if ! command -v adb >/dev/null 2>&1; then' >> /usr/local/bin/start-nexus && \
+    echo '    echo "ERROR: ADB not found in PATH"' >> /usr/local/bin/start-nexus && \
+    echo '    echo "Current PATH: $PATH"' >> /usr/local/bin/start-nexus && \
+    echo '    exit 1' >> /usr/local/bin/start-nexus && \
+    echo 'fi' >> /usr/local/bin/start-nexus && \
     echo '' >> /usr/local/bin/start-nexus && \
     echo '# Start the application' >> /usr/local/bin/start-nexus && \
     echo 'echo "=== Starting Application ==="' >> /usr/local/bin/start-nexus && \
     echo 'echo "Current directory: $(pwd)"' >> /usr/local/bin/start-nexus && \
+    echo 'echo "Node version: $(node --version)"' >> /usr/local/bin/start-nexus && \
+    echo 'echo "NPM version: $(npm --version)"' >> /usr/local/bin/start-nexus && \
+    echo 'echo "ADB version: $(adb version | head -n 1)"' >> /usr/local/bin/start-nexus && \
     echo 'echo "Running: node --max-old-space-size=4096 server.js $@"' >> /usr/local/bin/start-nexus && \
-    echo 'echo ""' >> /usr/local/bin/start-nexus && \
+    echo '' >> /usr/local/bin/start-nexus && \
     echo 'exec node --max-old-space-size=4096 server.js "$@"' >> /usr/local/bin/start-nexus && \
     chmod +x /usr/local/bin/start-nexus
 
