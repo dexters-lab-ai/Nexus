@@ -9,12 +9,8 @@ RUN apt-get update && apt-get install -y \
     make \
     g++ \
     chromium \
-    android-sdk \
-    android-sdk-platform-tools \
-    android-sdk-build-tools \
-    android-sdk-common \
-    android-tools-adb \
-    android-tools-fastboot \
+    wget \
+    unzip \
     openjdk-11-jdk \
     openjdk-11-jre \
     fonts-liberation \
@@ -45,6 +41,18 @@ RUN apt-get update && apt-get install -y \
     udev \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
+    # Install Android Command Line Tools
+    && mkdir -p /opt/android-sdk/cmdline-tools \
+    && wget -q https://dl.google.com/android/repository/commandlinetools-linux-9123335_latest.zip -O /tmp/cmdline-tools.zip \
+    && unzip -q /tmp/cmdline-tools.zip -d /opt/android-sdk/cmdline-tools \
+    && mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest \
+    && rm /tmp/cmdline-tools.zip \
+    # Accept licenses
+    && yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/opt/android-sdk --licenses \
+    # Install platform tools
+    && /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/opt/android-sdk "platform-tools" "platforms;android-33" "build-tools;33.0.0" \
+    # Create symlinks
+    && ln -s /opt/android-sdk/platform-tools/adb /usr/local/bin/adb \
     # Create directory for udev rules (permissions will be set at runtime)
     && mkdir -p /etc/udev/rules.d/ \
     # Create the udev rules file with proper permissions
@@ -85,12 +93,12 @@ RUN apt-get update && apt-get install -y \
 ENV CHROME_BIN=/usr/bin/chromium-browser \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     # Android SDK environment variables
-    ANDROID_HOME=/usr/lib/android-sdk \
-    ANDROID_SDK_ROOT=/usr/lib/android-sdk \
+    ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk \
     # Add Android SDK tools to PATH
-    PATH="${PATH}:/usr/lib/android-sdk/tools:/usr/lib/android-sdk/platform-tools:/usr/lib/android-sdk/build-tools" \
+    PATH="${PATH}:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/build-tools/33.0.0" \
     # Set default ADB path
-    MIDSCENE_ADB_PATH=/usr/bin/adb \
+    MIDSCENE_ADB_PATH=/opt/android-sdk/platform-tools/adb \
     # ADB server settings (can be overridden via environment)
     MIDSCENE_ADB_REMOTE_HOST=host.docker.internal \
     MIDSCENE_ADB_REMOTE_PORT=5037 \
@@ -428,6 +436,13 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
     echo '### Android Environment Setup ###' >> /usr/local/bin/startup.sh && \
     echo 'echo "=== Verifying Android Environment ==="' >> /usr/local/bin/startup.sh && \
+    echo '# Export Android environment variables' >> /usr/local/bin/startup.sh && \
+    echo 'export ANDROID_HOME=/opt/android-sdk' >> /usr/local/bin/startup.sh && \
+    echo 'export ANDROID_SDK_ROOT=/opt/android-sdk' >> /usr/local/bin/startup.sh && \
+    echo 'export PATH="$PATH:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/build-tools/33.0.0"' >> /usr/local/bin/startup.sh && \
+    echo 'export MIDSCENE_ADB_PATH=/opt/android-sdk/platform-tools/adb' >> /usr/local/bin/startup.sh && \
+    echo '' >> /usr/local/bin/startup.sh && \
+    echo '# Debug info' >> /usr/local/bin/startup.sh && \
     echo 'echo "ANDROID_HOME: $ANDROID_HOME"' >> /usr/local/bin/startup.sh && \
     echo 'echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"' >> /usr/local/bin/startup.sh && \
     echo 'echo "PATH: $PATH"' >> /usr/local/bin/startup.sh && \
@@ -435,10 +450,14 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo 'echo "MIDSCENE_ADB_REMOTE_HOST: $MIDSCENE_ADB_REMOTE_HOST"' >> /usr/local/bin/startup.sh && \
     echo 'echo "MIDSCENE_ADB_REMOTE_PORT: $MIDSCENE_ADB_REMOTE_PORT"' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
-    echo '# Create required Android SDK directories if they dont exist' >> /usr/local/bin/startup.sh && \
-    echo 'mkdir -p $ANDROID_HOME/platform-tools' >> /usr/local/bin/startup.sh && \
-    echo 'mkdir -p $ANDROID_HOME/build-tools' >> /usr/local/bin/startup.sh && \
-    echo 'mkdir -p $ANDROID_HOME/tools' >> /usr/local/bin/startup.sh && \
+    echo '# Verify ADB installation' >> /usr/local/bin/startup.sh && \
+    echo 'if [ -f "$MIDSCENE_ADB_PATH" ]; then' >> /usr/local/bin/startup.sh && \
+    echo '    echo "ADB found at: $MIDSCENE_ADB_PATH"' >> /usr/local/bin/startup.sh && \
+    echo '    $MIDSCENE_ADB_PATH version' >> /usr/local/bin/startup.sh && \
+    echo 'else' >> /usr/local/bin/startup.sh && \
+    echo '    echo "ERROR: ADB not found at $MIDSCENE_ADB_PATH"' >> /usr/local/bin/startup.sh && \
+    echo '    exit 1' >> /usr/local/bin/startup.sh && \
+    echo 'fi' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
     echo '### Starting ADB Server ###' >> /usr/local/bin/startup.sh && \
     echo 'echo "=== Starting ADB Server ==="' >> /usr/local/bin/startup.sh && \
