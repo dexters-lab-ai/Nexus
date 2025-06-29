@@ -426,10 +426,29 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo '    echo "Make sure to run the container with: --device=/dev/bus/usb"' >> /usr/local/bin/startup.sh && \
     echo 'fi' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
+    echo '### Android Environment Setup ###' >> /usr/local/bin/startup.sh && \
+    echo 'echo "=== Verifying Android Environment ==="' >> /usr/local/bin/startup.sh && \
+    echo 'echo "ANDROID_HOME: $ANDROID_HOME"' >> /usr/local/bin/startup.sh && \
+    echo 'echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"' >> /usr/local/bin/startup.sh && \
+    echo 'echo "PATH: $PATH"' >> /usr/local/bin/startup.sh && \
+    echo 'echo "MIDSCENE_ADB_PATH: $MIDSCENE_ADB_PATH"' >> /usr/local/bin/startup.sh && \
+    echo 'echo "MIDSCENE_ADB_REMOTE_HOST: $MIDSCENE_ADB_REMOTE_HOST"' >> /usr/local/bin/startup.sh && \
+    echo 'echo "MIDSCENE_ADB_REMOTE_PORT: $MIDSCENE_ADB_REMOTE_PORT"' >> /usr/local/bin/startup.sh && \
+    echo '' >> /usr/local/bin/startup.sh && \
+    echo '# Create required Android SDK directories if they dont exist' >> /usr/local/bin/startup.sh && \
+    echo 'mkdir -p $ANDROID_HOME/platform-tools' >> /usr/local/bin/startup.sh && \
+    echo 'mkdir -p $ANDROID_HOME/build-tools' >> /usr/local/bin/startup.sh && \
+    echo 'mkdir -p $ANDROID_HOME/tools' >> /usr/local/bin/startup.sh && \
+    echo '' >> /usr/local/bin/startup.sh && \
     echo '### Starting ADB Server ###' >> /usr/local/bin/startup.sh && \
     echo 'echo "=== Starting ADB Server ==="' >> /usr/local/bin/startup.sh && \
     echo 'if ! pgrep -x "adb" > /dev/null; then' >> /usr/local/bin/startup.sh && \
     echo '    echo "Starting ADB server..."' >> /usr/local/bin/startup.sh && \
+    echo '    # Ensure ADB is in the path' >> /usr/local/bin/startup.sh && \
+    echo '    export PATH="$PATH:$ANDROID_HOME/platform-tools"' >> /usr/local/bin/startup.sh && \
+    echo '    # Kill any existing ADB server' >> /usr/local/bin/startup.sh && \
+    echo '    adb kill-server 2>/dev/null || true' >> /usr/local/bin/startup.sh && \
+    echo '    # Start ADB server' >> /usr/local/bin/startup.sh && \
     echo '    adb -a -P 5037 server nodaemon &' >> /usr/local/bin/startup.sh && \
     echo '    sleep 2' >> /usr/local/bin/startup.sh && \
     echo '    echo "ADB server started"' >> /usr/local/bin/startup.sh && \
