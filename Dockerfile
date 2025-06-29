@@ -92,7 +92,7 @@ RUN apt-get update && apt-get install -y \
 # Android SDK and ADB environment variables
 ENV CHROME_BIN=/usr/bin/chromium-browser \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    # Android SDK environment variables - set in multiple places to ensure availability
+    # Android SDK environment variables
     ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk \
     # Add Android SDK tools to PATH
@@ -106,11 +106,7 @@ ENV CHROME_BIN=/usr/bin/chromium-browser \
     ADB_SERVER_SOCKET=tcp:5037 \
     ADB_VENDOR_KEYS=/home/node/.android/adbkey \
     # Java home for Android tools
-    JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64 \
-    # Force environment variables for all processes
-    ENV=/etc/environment \
-    # Ensure environment is loaded in all shells
-    BASH_ENV=/etc/profile.d/android.sh 
+    JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64 
 
 # Create a profile.d script to ensure environment variables are loaded in all shells
 RUN echo 'export ANDROID_HOME=/usr/lib/android-sdk' > /etc/profile.d/android.sh && \
@@ -158,33 +154,13 @@ FROM node:20.18.1-bullseye-slim AS development
 # Set working directory
 WORKDIR /usr/src/app
 
-# Install Android SDK and tools
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    wget \
-    unzip \
-    openjdk-17-jdk \
-    android-sdk \
-    adb \
+    python3 \
+    make \
+    g++ \
+    git \
     && rm -rf /var/lib/apt/lists/*
-
-# Create Android SDK directory and set permissions
-RUN mkdir -p /opt/android-sdk && \
-    chmod -R 777 /opt/android-sdk
-
-# Copy Android environment setup script
-COPY scripts/setup-android-env.sh /usr/local/bin/setup-android-env
-RUN chmod +x /usr/local/bin/setup-android-env
-
-# Set Android environment variables
-ENV ANDROID_HOME=/opt/android-sdk \
-    ANDROID_SDK_ROOT=/opt/android-sdk \
-    PATH=$PATH:/opt/android-sdk/platform-tools/ \
-    PATH=$PATH:/opt/android-sdk/tools/ \
-    PATH=$PATH:/opt/android-sdk/tools/bin/ \
-    PATH=$PATH:/opt/android-sdk/emulator/
-
-# Run the Android environment setup
-RUN /usr/local/bin/setup-android-env
 
 # Set environment to development
 ENV NODE_ENV=development
@@ -370,47 +346,22 @@ COPY --from=builder /opt/android-sdk /opt/android-sdk
 # Recreate symlinks and set permissions
 RUN ln -sf /opt/android-sdk/platform-tools/adb /usr/local/bin/adb && \
     chmod -R a+rw /opt/android-sdk && \
-    chmod +x /opt/android-sdk/platform-tools/adb
-
-# Create a dedicated environment setup script
-RUN mkdir -p /etc/profile.d && \
-    # Create a comprehensive environment setup script
-    echo '#!/bin/sh' > /etc/profile.d/android-env.sh && \
-    echo '# Android SDK paths' >> /etc/profile.d/android-env.sh && \
-    echo 'export ANDROID_HOME=/opt/android-sdk' >> /etc/profile.d/android-env.sh && \
-    echo 'export ANDROID_SDK_ROOT=/opt/android-sdk' >> /etc/profile.d/android-env.sh && \
-    echo 'export PATH="/opt/android-sdk/platform-tools:/opt/android-sdk/cmdline-tools/latest/bin:$PATH"' >> /etc/profile.d/android-env.sh && \
-    echo 'export MIDSCENE_ADB_PATH=/opt/android-sdk/platform-tools/adb' >> /etc/profile.d/android-env.sh && \
-    echo 'export MIDSCENE_ADB_REMOTE_HOST=host.docker.internal' >> /etc/profile.d/android-env.sh && \
-    echo 'export MIDSCENE_ADB_REMOTE_PORT=5037' >> /etc/profile.d/android-env.sh && \
-    chmod +x /etc/profile.d/android-env.sh && \
-    # Create symlinks for backward compatibility
-    ln -sf /etc/profile.d/android-env.sh /etc/profile.d/android.sh && \
-    # Set in .bashrc for interactive shells
-    echo 'if [ -f /etc/profile.d/android-env.sh ]; then . /etc/profile.d/android-env.sh; fi' >> /root/.bashrc && \
-    # Set in environment for all processes
-    echo 'ANDROID_HOME=/opt/android-sdk' >> /etc/environment && \
-    echo 'ANDROID_SDK_ROOT=/opt/android-sdk' >> /etc/environment && \
-    echo 'PATH="/opt/android-sdk/platform-tools:/opt/android-sdk/cmdline-tools/latest/bin:$PATH"' >> /etc/environment && \
-    echo 'MIDSCENE_ADB_PATH=/opt/android-sdk/platform-tools/adb' >> /etc/environment && \
-    # Create a script to verify environment
-    echo '#!/bin/sh' > /usr/local/bin/verify-android-env && \
-    echo 'echo "=== Android Environment Variables ==="' >> /usr/local/bin/verify-android-env && \
-    echo 'echo "ANDROID_HOME: $ANDROID_HOME"' >> /usr/local/bin/verify-android-env && \
-    echo 'echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"' >> /usr/local/bin/verify-android-env && \
-    echo 'echo "PATH: $PATH"' >> /usr/local/bin/verify-android-env && \
-    echo 'echo "MIDSCENE_ADB_PATH: $MIDSCENE_ADB_PATH"' >> /usr/local/bin/verify-android-env && \
-    echo 'echo "MIDSCENE_ADB_REMOTE_HOST: $MIDSCENE_ADB_REMOTE_HOST"' >> /usr/local/bin/verify-android-env && \
-    echo 'echo "MIDSCENE_ADB_REMOTE_PORT: $MIDSCENE_ADB_REMOTE_PORT"' >> /usr/local/bin/verify-android-env && \
-    echo 'echo ""' >> /usr/local/bin/verify-android-env && \
-    echo 'echo "=== ADB Version ==="' >> /usr/local/bin/verify-android-env && \
-    echo 'command -v adb && adb version || echo "ADB not found in PATH"' >> /usr/local/bin/verify-android-env && \
-    chmod +x /usr/local/bin/verify-android-env
+    chmod +x /opt/android-sdk/platform-tools/adb && \
+    # Create profile.d script to set environment variables
+    mkdir -p /etc/profile.d && \
+    echo 'export ANDROID_HOME=/opt/android-sdk' > /etc/profile.d/android.sh && \
+    echo 'export ANDROID_SDK_ROOT=/opt/android-sdk' >> /etc/profile.d/android.sh && \
+    echo 'export PATH="/opt/android-sdk/platform-tools:/opt/android-sdk/cmdline-tools/latest/bin:$PATH"' >> /etc/profile.d/android.sh && \
+    chmod +x /etc/profile.d/android.sh
 
 # Copy and set up environment files
 COPY --from=builder /usr/src/app/.env* ./
 RUN if [ ! -f ".env" ] && [ -f ".env.production" ]; then \
         cp .env.production .env; \
+    fi && \
+    # Source .env file if it exists to set environment variables
+    if [ -f ".env" ]; then \
+        set -a && . ./.env && set +a; \
     fi
 
 # Create necessary runtime directories and set permissions
@@ -581,6 +532,7 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo 'sleep 2' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
     echo '# Start the application' >> /usr/local/bin/startup.sh && \
+    echo 'echo ""' >> /usr/local/bin/startup.sh && \
     echo 'echo "=== Starting Application ==="' >> /usr/local/bin/startup.sh && \
     echo 'echo "Current directory: $(pwd)"' >> /usr/local/bin/startup.sh && \
     echo 'echo "Running: node --max-old-space-size=4096 server.js $@"' >> /usr/local/bin/startup.sh && \
@@ -607,40 +559,8 @@ ENV ADB_VENDOR_KEYS=/home/node/.android/adbkey
 # Switch to non-root user
 USER node
 
-# Create a single wrapper script to ensure environment is loaded
-RUN echo '#!/bin/sh' > /usr/local/bin/start-nexus && \
-    echo 'set -e' >> /usr/local/bin/start-nexus && \
-    echo '' >> /usr/local/bin/start-nexus && \
-    echo '# Source Android environment' >> /usr/local/bin/start-nexus && \
-    echo 'if [ -f "/etc/profile.d/android-env.sh" ]; then' >> /usr/local/bin/start-nexus && \
-    echo '    echo "[start-nexus] Sourcing /etc/profile.d/android-env.sh"' >> /usr/local/bin/start-nexus && \
-    echo '    . /etc/profile.d/android-env.sh' >> /usr/local/bin/start-nexus && \
-    echo 'fi' >> /usr/local/bin/start-nexus && \
-    echo '' >> /usr/local/bin/start-nexus && \
-    echo '# Debug output' >> /usr/local/bin/start-nexus && \
-    echo 'echo "=== Environment Variables ==="' >> /usr/local/bin/start-nexus && \
-    echo 'env | grep -E "ANDROID|PATH|MIDSCENE" | sort' >> /usr/local/bin/start-nexus && \
-    echo '' >> /usr/local/bin/start-nexus && \
-    echo '# Verify ADB is available' >> /usr/local/bin/start-nexus && \
-    echo 'if ! command -v adb >/dev/null 2>&1; then' >> /usr/local/bin/start-nexus && \
-    echo '    echo "ERROR: ADB not found in PATH"' >> /usr/local/bin/start-nexus && \
-    echo '    echo "Current PATH: $PATH"' >> /usr/local/bin/start-nexus && \
-    echo '    exit 1' >> /usr/local/bin/start-nexus && \
-    echo 'fi' >> /usr/local/bin/start-nexus && \
-    echo '' >> /usr/local/bin/start-nexus && \
-    echo '# Start the application' >> /usr/local/bin/start-nexus && \
-    echo 'echo "=== Starting Application ==="' >> /usr/local/bin/start-nexus && \
-    echo 'echo "Current directory: $(pwd)"' >> /usr/local/bin/start-nexus && \
-    echo 'echo "Node version: $(node --version)"' >> /usr/local/bin/start-nexus && \
-    echo 'echo "NPM version: $(npm --version)"' >> /usr/local/bin/start-nexus && \
-    echo 'echo "ADB version: $(adb version | head -n 1)"' >> /usr/local/bin/start-nexus && \
-    echo 'echo "Running: node --max-old-space-size=4096 server.js $@"' >> /usr/local/bin/start-nexus && \
-    echo '' >> /usr/local/bin/start-nexus && \
-    echo 'exec node --max-old-space-size=4096 server.js "$@"' >> /usr/local/bin/start-nexus && \
-    chmod +x /usr/local/bin/start-nexus
-
-# Start the application using the wrapper script
-CMD ["/usr/local/bin/start-nexus"]
+# Start the application using the startup script
+CMD ["/bin/sh", "/usr/local/bin/startup.sh"]
 
 # Production stage is the default target (last stage in the file) did this for DigitalOcean deployment
 # To build a specific stage, use: docker build --target <stage> -t <image> .
