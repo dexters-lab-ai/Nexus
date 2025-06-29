@@ -31,23 +31,55 @@ class AndroidControl {
    * @param {Object} settings - Connection settings
    * @returns {Object} Updated settings
    */
-  updateSettings(settings) {
-    this.currentSettings = {
+  /**
+   * Update connection settings and environment variables
+   * @param {Object} newSettings - New settings to apply
+   * @returns {Object} The updated settings
+   */
+  updateSettings(newSettings = {}) {
+    // Create a new settings object with defaults, current settings, and new settings
+    const settings = {
       ...this._getDefaultSettings(),
-      ...settings,
-      // Ensure port is a number
-      remoteAdbPort: settings.remoteAdbPort ? 
-        parseInt(settings.remoteAdbPort, 10) : 5037,
-      adbPort: settings.adbPort ? parseInt(settings.adbPort, 10) : 5555
+      ...this.currentSettings, // Keep any existing settings
+      ...newSettings, // Apply new settings
     };
-    
+
+    // Ensure ports are numbers
+    if (newSettings.remoteAdbPort !== undefined) {
+      settings.remoteAdbPort = parseInt(newSettings.remoteAdbPort, 10) || 5037;
+    }
+    if (newSettings.adbPort !== undefined) {
+      settings.adbPort = parseInt(newSettings.adbPort, 10) || 5555;
+    }
+
+    // Update current settings
+    this.currentSettings = settings;
+
     // Update environment variables
-    const envVars = {
-      MIDSCENE_ADB_REMOTE_HOST: this.currentSettings.remoteAdbHost,
-      MIDSCENE_ADB_REMOTE_PORT: String(this.currentSettings.remoteAdbPort),
-      MIDSCENE_ADB_PATH: this.currentSettings.customAdbPath || ''
-    };
+    this._updateEnvironmentVariables(settings);
     
+    console.log(`${this.logPrefix} Updated connection settings`, {
+      ...settings,
+      customAdbPath: settings.customAdbPath ? '***' + settings.customAdbPath.slice(-15) : 'not set',
+      remoteAdbPort: settings.remoteAdbPort,
+    });
+    
+    return settings;
+  }
+
+  /**
+   * Update environment variables based on current settings
+   * @private
+   * @param {Object} settings - Settings to use for environment variables
+   */
+  _updateEnvironmentVariables(settings) {
+    const envVars = {
+      MIDSCENE_ADB_PATH: settings.customAdbPath || '',
+      MIDSCENE_ADB_REMOTE_HOST: settings.remoteAdbHost,
+      MIDSCENE_ADB_REMOTE_PORT: settings.remoteAdbPort ? String(settings.remoteAdbPort) : undefined
+    };
+
+    // Update process.env with new values
     Object.entries(envVars).forEach(([key, value]) => {
       if (value !== undefined && value !== '') {
         process.env[key] = value;
@@ -55,13 +87,6 @@ class AndroidControl {
         delete process.env[key];
       }
     });
-    
-    console.log(`${this.logPrefix} Updated connection settings`, {
-      ...this.currentSettings,
-      customAdbPath: this.currentSettings.customAdbPath ? '***' : 'not set'
-    });
-    
-    return this.currentSettings;
   }
   
   /**
@@ -354,22 +379,10 @@ class AndroidControl {
 
   async getConnectedDevices() {
     try {
-      // Apply current settings if available
+      // Ensure we have the latest settings applied
       if (this.currentSettings) {
-        // Update environment variables with current settings
-        const envVars = {
-          MIDSCENE_ADB_PATH: this.currentSettings.customAdbPath,
-          MIDSCENE_ADB_REMOTE_HOST: this.currentSettings.remoteAdbHost,
-          MIDSCENE_ADB_REMOTE_PORT: String(this.currentSettings.remoteAdbPort)
-        };
-        
-        Object.entries(envVars).forEach(([key, value]) => {
-          if (value !== undefined && value !== '') {
-            process.env[key] = value;
-          } else {
-            delete process.env[key];
-          }
-        });
+        // This will update environment variables with current settings
+        this._updateEnvironmentVariables(this.currentSettings);
         
         console.log(`${this.logPrefix} Using connection settings:`, {
           useRemoteAdb: this.currentSettings.useRemoteAdb,
@@ -380,6 +393,10 @@ class AndroidControl {
           platform: this.currentSettings.platform,
           isWindows: this.currentSettings.isWindows
         });
+      } else {
+        console.warn(`${this.logPrefix} No connection settings found, using defaults`);
+        // Initialize with default settings if none exist
+        this.updateSettings({});
       }
 
       const devices = await getConnectedDevices();
@@ -939,6 +956,73 @@ class AndroidControl {
       id,
       ...session
     }));
+  }
+
+  /**
+   * Set the ADB host address
+   * @param {string} host - The ADB host address
+   */
+  setAdbHost(host) {
+    // Use updateSettings to ensure environment variables are properly updated
+    this.updateSettings({ remoteAdbHost: host });
+    console.log(`${this.logPrefix} Set ADB host to: ${host}`);
+  }
+
+  /**
+   * Set the ADB port
+   * @param {number|string} port - The ADB port number
+   */
+  setAdbPort(port) {
+    // Use updateSettings to ensure environment variables are properly updated
+    const portNum = typeof port === 'string' ? parseInt(port, 10) : port;
+    this.updateSettings({ remoteAdbPort: portNum });
+    console.log(`${this.logPrefix} Set ADB port to: ${portNum}`);
+  }
+
+  /**
+   * Set the custom ADB path
+   * @param {string} path - The path to the ADB executable
+   */
+  setAdbPath(path) {
+    // Use updateSettings to ensure environment variables are properly updated
+    this.updateSettings({ customAdbPath: path });
+    console.log(`${this.logPrefix} Set ADB path to: ${path || 'default'}`);
+  }
+
+  /**
+   * Test the ADB connection with current settings
+   * @returns {Promise<Object>} Connection test result
+   */
+  async testConnection() {
+    try {
+      console.log(`${this.logPrefix} Testing ADB connection...`);
+      
+      // Check if ADB is available
+      const adbStatus = await this.checkAdbStatus();
+      
+      if (!adbStatus.installed) {
+        throw new Error('ADB is not installed or not in PATH');
+      }
+      
+      // Try to get the list of devices
+      const devices = await this.getConnectedDevices();
+      
+      return {
+        success: true,
+        message: 'Successfully connected to ADB server',
+        version: adbStatus.version,
+        devices: Array.isArray(devices) ? devices : [],
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error(`${this.logPrefix} ADB connection test failed:`, error);
+      return {
+        success: false,
+        message: error.message || 'Failed to connect to ADB server',
+        error: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        timestamp: new Date().toISOString()
+      };
+    }
   }
 }
 

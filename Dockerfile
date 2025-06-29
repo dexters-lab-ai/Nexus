@@ -3,15 +3,20 @@ FROM node:20.18.1-bullseye-slim AS builder
 
 WORKDIR /usr/src/app
 
-# Install system dependencies including Chrome and ADB
+# Install system dependencies including Chrome and full Android SDK
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
     chromium \
+    android-sdk \
+    android-sdk-platform-tools \
+    android-sdk-build-tools \
+    android-sdk-common \
     android-tools-adb \
     android-tools-fastboot \
-    android-sdk-platform-tools-common \
+    openjdk-11-jdk \
+    openjdk-11-jre \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -76,20 +81,36 @@ RUN apt-get update && apt-get install -y \
     && chmod a+rw /etc/udev/rules.d/51-android.rules
 
 # Set Puppeteer environment variables
-# ADB and Android environment variables
+# Android SDK and ADB environment variables
 ENV CHROME_BIN=/usr/bin/chromium-browser \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    # ADB environment variables
-    ANDROID_HOME=/opt/android-sdk \
-    ANDROID_SDK_ROOT=/opt/android-sdk \
-    PATH="${PATH}:/opt/android-sdk/platform-tools" \
+    # Android SDK environment variables
+    ANDROID_HOME=/usr/lib/android-sdk \
+    ANDROID_SDK_ROOT=/usr/lib/android-sdk \
+    # Add Android SDK tools to PATH
+    PATH="${PATH}:/usr/lib/android-sdk/tools:/usr/lib/android-sdk/platform-tools:/usr/lib/android-sdk/build-tools" \
     # Set default ADB path
     MIDSCENE_ADB_PATH=/usr/bin/adb \
-    # Default ADB server settings (can be overridden)
+    # ADB server settings (can be overridden via environment)
     MIDSCENE_ADB_REMOTE_HOST=host.docker.internal \
     MIDSCENE_ADB_REMOTE_PORT=5037 \
-    # Enable ADB server in TCP/IP mode
-    ADB_SERVER_SOCKET=tcp:5037
+    # ADB server settings
+    ADB_SERVER_SOCKET=tcp:5037 \
+    # Java home for Android tools
+    JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64 \
+    # Ensure these are available to Node.js process
+    NODE_ENV=production \
+    # Explicitly export Android SDK paths for Node.js
+    NODE_OPTIONS=--max-old-space-size=4096
+
+# Create a profile.d script to ensure environment variables are loaded in all shells
+RUN echo 'export ANDROID_HOME=/usr/lib/android-sdk' > /etc/profile.d/android.sh && \
+    echo 'export ANDROID_SDK_ROOT=/usr/lib/android-sdk' >> /etc/profile.d/android.sh && \
+    echo 'export PATH="$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools"' >> /etc/profile.d/android.sh && \
+    chmod +x /etc/profile.d/android.sh
+
+# Source the profile to ensure environment variables are available in the current session
+RUN . /etc/profile.d/android.sh
 
 # Copy package files first for better layer caching
 COPY package*.json ./
@@ -345,6 +366,15 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo 'export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true' >> /usr/local/bin/startup.sh && \
     echo 'export NODE_ENV=production' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
+    echo '# Set Android SDK environment variables' >> /usr/local/bin/startup.sh && \
+    echo 'export ANDROID_HOME=/usr/lib/android-sdk' >> /usr/local/bin/startup.sh && \
+    echo 'export ANDROID_SDK_ROOT=/usr/lib/android-sdk' >> /usr/local/bin/startup.sh && \
+    echo 'export PATH="$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools"' >> /usr/local/bin/startup.sh && \
+    echo 'export MIDSCENE_ADB_PATH=/usr/bin/adb' >> /usr/local/bin/startup.sh && \
+    echo 'export MIDSCENE_ADB_REMOTE_HOST=host.docker.internal' >> /usr/local/bin/startup.sh && \
+    echo 'export MIDSCENE_ADB_REMOTE_PORT=5037' >> /usr/local/bin/startup.sh && \
+    echo 'export ADB_SERVER_SOCKET=tcp:5037' >> /usr/local/bin/startup.sh && \
+    echo '' >> /usr/local/bin/startup.sh && \
     echo '### Directory Setup ###' >> /usr/local/bin/startup.sh && \
     echo 'echo "[Startup] Creating and setting up directories..."' >> /usr/local/bin/startup.sh && \
     echo 'mkdir -p /tmp/chrome-user-data /tmp/chrome /home/node/.config/chromium/Default /home/node/.pki/nssdb' >> /usr/local/bin/startup.sh && \
@@ -455,7 +485,13 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
 RUN mkdir -p /home/node/.android && \
     touch /home/node/.android/adbkey /home/node/.android/adbkey.pub && \
     chmod 600 /home/node/.android/adbkey /home/node/.android/adbkey.pub && \
-    chown -R node:node /home/node/.android
+    chown -R node:node /home/node/.android && \
+    # Accept all Android SDK licenses
+    yes | /usr/bin/sdkmanager --licenses > /dev/null 2>&1 || true && \
+    # Create platform-tools directory if it doesn't exist
+    mkdir -p /usr/lib/android-sdk/platform-tools && \
+    # Ensure proper permissions for Android SDK
+    chown -R node:node /usr/lib/android-sdk
 
 # Set environment variable to point to the ADB key location
 ENV ADB_VENDOR_KEYS=/home/node/.android/adbkey

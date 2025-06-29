@@ -2760,17 +2760,20 @@ app.get('/api/user/settings/adb', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/user/settings/adb', requireAuth, async (req, res) => {
+// Update ADB settings (partial update)
+app.patch('/api/user/settings/adb', requireAuth, async (req, res) => {
   try {
     const { remoteAdbHost, remoteAdbPort, customAdbPath, networkSettings } = req.body;
     
     const update = {
-      'adbSettings.remoteAdbHost': remoteAdbHost,
-      'adbSettings.remoteAdbPort': remoteAdbPort,
-      'adbSettings.customAdbPath': customAdbPath,
-      'adbSettings.networkSettings': networkSettings,
       updatedAt: Date.now()
     };
+
+    // Only include fields that are provided in the request
+    if (remoteAdbHost !== undefined) update['adbSettings.remoteAdbHost'] = remoteAdbHost;
+    if (remoteAdbPort !== undefined) update['adbSettings.remoteAdbPort'] = remoteAdbPort;
+    if (customAdbPath !== undefined) update['adbSettings.customAdbPath'] = customAdbPath;
+    if (networkSettings !== undefined) update['adbSettings.networkSettings'] = networkSettings;
 
     const user = await User.findByIdAndUpdate(
       req.user.id,
@@ -2778,10 +2781,45 @@ app.post('/api/user/settings/adb', requireAuth, async (req, res) => {
       { new: true }
     ).select('adbSettings');
 
-    res.json(user.adbSettings);
+    res.json({
+      success: true,
+      message: 'ADB settings updated successfully',
+      settings: user.adbSettings
+    });
   } catch (error) {
-    console.error('Error saving ADB settings:', error);
-    res.status(500).json({ message: 'Error saving ADB settings' });
+    console.error('Error updating ADB settings:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || 'Failed to update ADB settings' 
+    });
+  }
+});
+
+// Test ADB connection with provided settings
+app.post('/api/android/test-connection', requireAuth, async (req, res) => {
+  try {
+    const { host, port, path } = req.body;
+    
+    // Update androidControl with the provided settings
+    if (host) androidControl.setAdbHost(host);
+    if (port) androidControl.setAdbPort(port);
+    if (path) androidControl.setAdbPath(path);
+    
+    // Test the connection
+    const result = await androidControl.testConnection();
+    
+    res.json({
+      success: true,
+      message: 'Successfully connected to ADB server',
+      ...result
+    });
+  } catch (error) {
+    console.error('ADB connection test failed:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to connect to ADB server',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
