@@ -118,11 +118,13 @@ COPY package*.json ./
 # Clean up any existing node_modules and lock files
 RUN rm -rf node_modules package-lock.json pnpm-lock.yaml
 
-# Install dependencies with legacy peer deps to handle React version conflicts
+# Install all dependencies including devDependencies for build
 RUN echo "Installing dependencies with legacy peer deps..." && \
-    npm install --legacy-peer-deps && \
+    npm install --legacy-peer-deps --production=false && \
     echo "Installing Rollup and visualizer..." && \
     npm install @rollup/rollup-linux-x64-gnu rollup-plugin-visualizer@5.9.2 --save-dev --legacy-peer-deps && \
+    echo "Ensuring Vite is available..." && \
+    npm install vite@6.3.2 --save-dev --legacy-peer-deps && \
     echo "Dependency installation complete"
 
 # Create necessary directories
