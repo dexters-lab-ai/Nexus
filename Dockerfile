@@ -451,14 +451,17 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     chmod +x /usr/local/bin/startup.sh && \
     chown node:node /usr/local/bin/startup.sh
 
+# Create directory for ADB keys and set permissions
+RUN mkdir -p /home/node/.android && \
+    touch /home/node/.android/adbkey /home/node/.android/adbkey.pub && \
+    chmod 600 /home/node/.android/adbkey /home/node/.android/adbkey.pub && \
+    chown -R node:node /home/node/.android
+
+# Set environment variable to point to the ADB key location
+ENV ADB_VENDOR_KEYS=/home/node/.android/adbkey
+
 # Switch to non-root user
 USER node
-
-# Create directory for ADB keys and set permissions
-RUN mkdir -p /root/.android && \
-    touch /root/.android/adbkey /root/.android/adbkey.pub && \
-    chmod 600 /root/.android/adbkey /root/.android/adbkey.pub && \
-    chown -R node:node /root/.android
 
 # Start the application using the startup script
 CMD ["/bin/sh", "/usr/local/bin/startup.sh"]
