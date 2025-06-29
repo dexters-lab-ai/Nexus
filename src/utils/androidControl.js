@@ -74,8 +74,6 @@ class AndroidControl {
    */
   _updateEnvironmentVariables(settings) {
     const envVars = {
-      ANDROID_HOME: '/opt/android-sdk',
-      ANDROID_SDK_ROOT: '/opt/android-sdk',
       MIDSCENE_ADB_PATH: 'C:\\platform-tools\\adb.exe',
       MIDSCENE_ADB_REMOTE_HOST: '192.168.137.1',
       MIDSCENE_ADB_REMOTE_PORT: '5037'
