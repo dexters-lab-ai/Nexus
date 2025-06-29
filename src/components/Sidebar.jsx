@@ -205,7 +205,7 @@ export default function Sidebar(props = {}) {
   tooltip.innerHTML = `
     <div class="sdk-tooltip-content">
       <h3>Nexus SDK</h3>
-      <p>Build browser automation agents with the latest version of our O.P.E.R.A.T.O.R Nexus SDK by clicking this widget. The installer will takeover.</p>
+      <p>Build browser automation agents with the latest version of our O.P.E.R.A.T.O.R Nexus SDK by clicking this widget.</p>
       
       <h4>Installation Options</h4>
       <div class="sdk-option">

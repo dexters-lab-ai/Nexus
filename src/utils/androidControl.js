@@ -71,16 +71,22 @@ class AndroidControl {
    */
   _getDefaultSettings() {
     const isProd = process.env.NODE_ENV === 'production' || process.env.DOCKER === 'true';
+    const isWindows = process.platform === 'win32';
+    
+    // Default ADB path based on platform
+    const defaultAdbPath = isWindows 
+      ? 'C:\\program-tools\\adb.exe'  // Default Windows path
+      : '/usr/bin/adb';                 // Default Linux/macOS path
     
     return {
       // Device connection settings
       deviceIpAddress: process.env.ANDROID_DEVICE_IP || '',
       adbPort: parseInt(process.env.ANDROID_ADB_PORT || '5555', 10),
       
-      // Remote ADB settings
+      // Remote ADB settings - these take precedence over environment variables when set via updateSettings()
       remoteAdbHost: process.env.MIDSCENE_ADB_REMOTE_HOST || '',
       remoteAdbPort: parseInt(process.env.MIDSCENE_ADB_REMOTE_PORT || '5037', 10),
-      customAdbPath: process.env.MIDSCENE_ADB_PATH || '',
+      customAdbPath: process.env.MIDSCENE_ADB_PATH || defaultAdbPath,
       
       // Connection preferences
       useRemoteAdb: isProd, // Default to remote in production
@@ -93,7 +99,11 @@ class AndroidControl {
       
       // Debug settings
       debug: process.env.NODE_ENV !== 'production',
-      logLevel: process.env.LOG_LEVEL || (isProd ? 'warn' : 'debug')
+      logLevel: process.env.LOG_LEVEL || (isProd ? 'warn' : 'debug'),
+      
+      // Platform info
+      platform: process.platform,
+      isWindows
     };
   }
 
@@ -346,10 +356,29 @@ class AndroidControl {
     try {
       // Apply current settings if available
       if (this.currentSettings) {
+        // Update environment variables with current settings
+        const envVars = {
+          MIDSCENE_ADB_PATH: this.currentSettings.customAdbPath,
+          MIDSCENE_ADB_REMOTE_HOST: this.currentSettings.remoteAdbHost,
+          MIDSCENE_ADB_REMOTE_PORT: String(this.currentSettings.remoteAdbPort)
+        };
+        
+        Object.entries(envVars).forEach(([key, value]) => {
+          if (value !== undefined && value !== '') {
+            process.env[key] = value;
+          } else {
+            delete process.env[key];
+          }
+        });
+        
         console.log(`${this.logPrefix} Using connection settings:`, {
           useRemoteAdb: this.currentSettings.useRemoteAdb,
           remoteAdbHost: this.currentSettings.remoteAdbHost,
-          remoteAdbPort: this.currentSettings.remoteAdbPort
+          remoteAdbPort: this.currentSettings.remoteAdbPort,
+          customAdbPath: this.currentSettings.customAdbPath ? 
+            '***' + this.currentSettings.customAdbPath.slice(-15) : 'not set',
+          platform: this.currentSettings.platform,
+          isWindows: this.currentSettings.isWindows
         });
       }
 

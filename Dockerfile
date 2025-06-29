@@ -3,12 +3,15 @@ FROM node:20.18.1-bullseye-slim AS builder
 
 WORKDIR /usr/src/app
 
-# Install system dependencies including Chrome
+# Install system dependencies including Chrome and ADB
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
     chromium \
+    android-tools-adb \
+    android-tools-fastboot \
+    android-sdk-platform-tools-common \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -34,12 +37,60 @@ RUN apt-get update && apt-get install -y \
     libxfixes3 \
     libxrandr2 \
     xdg-utils \
+    udev \
     --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    # Create udev rules for Android devices
+    && mkdir -p /etc/udev/rules.d/ \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0bb4", MODE="0666"' > /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0e79", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0502", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0b05", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="413c", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0489", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="091e", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0bb4", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="12d1", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="24e3", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2116", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0482", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="17ef", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="1004", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="22b8", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0409", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2080", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0955", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2257", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="10a9", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="1d4d", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0471", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="04da", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="05c6", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="04e8", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="04dd", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0fce", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0930", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="19d2", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
+    && chmod a+rw /etc/udev/rules.d/51-android.rules \
+    && chmod -R a+rw /dev/bus/usb/
 
 # Set Puppeteer environment variables
-ENV CHROME_BIN=/usr/bin/chromium-browser
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+# ADB and Android environment variables
+ENV CHROME_BIN=/usr/bin/chromium-browser \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    # ADB environment variables
+    ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk \
+    PATH="${PATH}:/opt/android-sdk/platform-tools" \
+    # Set default ADB path
+    MIDSCENE_ADB_PATH=/usr/bin/adb \
+    # Default ADB server settings (can be overridden)
+    MIDSCENE_ADB_REMOTE_HOST=host.docker.internal \
+    MIDSCENE_ADB_REMOTE_PORT=5037 \
+    # Enable ADB server in TCP/IP mode
+    ADB_SERVER_SOCKET=tcp:5037
 
 # Copy package files first for better layer caching
 COPY package*.json ./
@@ -333,8 +384,23 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
     echo '    xdpyinfo -display :99 2>&1 || echo "Failed to get display info"' >> /usr/local/bin/startup.sh && \
     echo '    exit 1' >> /usr/local/bin/startup.sh && \
     echo '  fi' >> /usr/local/bin/startup.sh && \
-    echo '  sleep 1' >> /usr/local/bin/startup.sh && \
-    echo 'done' >> /usr/local/bin/startup.sh && \
+    echo 'echo "=== Environment Variables ==="' >> /usr/local/bin/startup.sh && \
+    echo 'env | sort' >> /usr/local/bin/startup.sh && \
+    echo '' >> /usr/local/bin/startup.sh && \
+    echo '### Starting ADB Server ###' >> /usr/local/bin/startup.sh && \
+    echo 'echo "=== Starting ADB Server ==="' >> /usr/local/bin/startup.sh && \
+    echo 'if ! pgrep -x "adb" > /dev/null; then' >> /usr/local/bin/startup.sh && \
+    echo '    echo "Starting ADB server..."' >> /usr/local/bin/startup.sh && \
+    echo '    adb -a -P 5037 server nodaemon &' >> /usr/local/bin/startup.sh && \
+    echo '    sleep 2' >> /usr/local/bin/startup.sh && \
+    echo '    echo "ADB server started"' >> /usr/local/bin/startup.sh && \
+    echo 'else' >> /usr/local/bin/startup.sh && \
+    echo '    echo "ADB server already running"' >> /usr/local/bin/startup.sh && \
+    echo 'fi' >> /usr/local/bin/startup.sh && \
+    echo '' >> /usr/local/bin/startup.sh && \
+    echo '### ADB Devices ###' >> /usr/local/bin/startup.sh && \
+    echo 'echo "=== ADB Devices ==="' >> /usr/local/bin/startup.sh && \
+    echo 'adb devices -l' >> /usr/local/bin/startup.sh && \
     echo '' >> /usr/local/bin/startup.sh && \
     echo '### System Information ###' >> /usr/local/bin/startup.sh && \
     echo 'echo ""' >> /usr/local/bin/startup.sh && \
@@ -374,6 +440,12 @@ RUN echo '#!/bin/bash' > /usr/local/bin/startup.sh && \
 
 # Switch to non-root user
 USER node
+
+# Create directory for ADB keys and set permissions
+RUN mkdir -p /root/.android && \
+    touch /root/.android/adbkey /root/.android/adbkey.pub && \
+    chmod 600 /root/.android/adbkey /root/.android/adbkey.pub && \
+    chown -R node:node /root/.android
 
 # Start the application using the startup script
 CMD ["/bin/sh", "/usr/local/bin/startup.sh"]
