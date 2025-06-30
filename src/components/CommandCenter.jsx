@@ -1580,6 +1580,10 @@ export function CommandCenter(props = {}) {
         } else {
           // No thought bubble found, log the error
           console.warn(`[planLog] Could not find any THINKING card to update for task ${tid}`);
+          // Create a thought bubble for this task if it doesn't exist yet
+          // This ensures we have somewhere to display the planLog messages
+          thoughtMsg = createOrUpdateThoughtBubble(tid, message);
+          console.log(`[planLog] Created new thought bubble for task ${tid}`);
         }  
           
         // Proceed with updating if we have a container

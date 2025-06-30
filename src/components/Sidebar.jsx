@@ -210,18 +210,18 @@ export default function Sidebar(props = {}) {
       <h4>Installation Options</h4>
       <div class="sdk-option">
         <code>npm install @coming-soon/sdk</code>
-        <p>Install the complete fullstack O.P.E.R.A.T.O.R app to your computer</p>
+        <p>Deploy the complete O.P.E.R.A.T.O.R fullstack application</p>
       </div>
       <div class="sdk-option">
-        <code>npm install @coming-soon/sdk-server</code>
-        <p>Install the server only, run it on port 3420, and build your own UI</p>
+        <code>npm run setup</code>
+        <p>Quickly set up the fullstack environment with a single command</p>
       </div>
       
-      <h4>Key Features</h4>
+      <h4>Fullstack Features</h4>
       <ul class="sdk-features">
-        <li><i class="fas fa-check-circle"></i> Complete fullstack agent with server + UI</li>
-        <li><i class="fas fa-check-circle"></i> View and modify the latest automation code</li>
-        <li><i class="fas fa-check-circle"></i> Self-hosted solution for maximum security</li>
+        <li><i class="fas fa-check-circle"></i> Complete fullstack solution with integrated UI</li>
+        <li><i class="fas fa-check-circle"></i> Real-time automation and monitoring</li>
+        <li><i class="fas fa-check-circle"></i> Self-hosted and fully customizable for maximum security</li>
         <li><i class="fas fa-check-circle"></i> Optimized for local execution with minimal resource usage</li>
       </ul>
       

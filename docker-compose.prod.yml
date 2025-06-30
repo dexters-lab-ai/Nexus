@@ -46,13 +46,7 @@ services:
     # Port mappings
     ports:
       - "3420:3420"  # Backend API
-      - "5037:5037"  # ADB server port
-      - "5554-5585:5554-5585"  # ADB port range for devices
       # Frontend should be served separately (e.g., via Nginx or CDN)
-    # Device and USB access
-    devices:
-      - "/dev/bus/usb:/dev/bus/usb"  # USB devices
-    privileged: true  # Required for USB access
     # Volumes for persistent data
     volumes:
       - ./nexus_run:/usr/src/app/nexus_run

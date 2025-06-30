@@ -115,7 +115,7 @@ eventBus.once('initialize-application', async () => {
       const WebSocketManager = (await import('./utils/WebSocketManager.js')).default;
       
       // Set up WebSocket connection with retry logic
-      const maxRetries = 3;
+      const maxRetries = 7;
       let retryCount = 0;
       let lastError = null;
       

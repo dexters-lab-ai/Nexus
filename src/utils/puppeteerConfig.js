@@ -22,23 +22,26 @@ async function getPuppeteerLaunchOptions() {
   const launchOptions = {
     headless: isProduction ? 'new' : false,
     ignoreHTTPSErrors: true,
-    defaultViewport: { width: 1280, height: 720, deviceScaleFactor: 1 },
+    // Single source of truth for viewport size - 1280x1024 provides good balance of detail and performance
+    defaultViewport: { 
+      width: 1280, 
+      height: 1024, 
+      deviceScaleFactor: 1 
+    },
     args: [
+      // Core stability flags
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--headless=new',
+      
+      // Window and display settings
+      '--window-size=1280,1024',
+      '--no-first-run',
       
       // Performance optimizations
       '--disable-extensions',
-      '--window-size=1280,720',
-      '--disable-gpu',
       '--disable-software-rasterizer',
       '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      
-      // Disable unnecessary features
       '--disable-background-networking',
       '--disable-background-timer-throttling',
       '--disable-backgrounding-occluded-windows',
@@ -57,33 +60,33 @@ async function getPuppeteerLaunchOptions() {
       '--password-store=basic',
       '--use-mock-keychain',
       '--mute-audio',
-      '--safebrowsing-disable-auto-update',
-      '--single-process',
-      '--disable-webgl',
-      '--disable-threaded-animation',
-      '--disable-threaded-scrolling',
-      '--disable-in-process-stack-traces',
-      '--disable-logging',
-      '--output=/dev/null',
-      '--disable-3d-apis',
-      '--disable-d3d11',
-      '--disable-d3d12',
-      '--disable-direct-composition',
-      '--disable-direct-dwrite',
       
-      // Security
-      '--disable-features=AudioServiceOutOfProcess,TranslateUI,Translate,ImprovedCookieControls,' +
-      'LazyFrameLoading,GlobalMediaControls,MediaRouter,NetworkService,OutOfBlinkCors,' +
-      'OutOfProcessPdf,OverlayScrollbar,PasswordGeneration,RendererCodeIntegrity,' +
-      'SpareRendererForSitePerProcess,TopChromeTouchUi,VizDisplayCompositor,IsolateOrigins,site-per-process',
-      '--disable-site-isolation-trials',
-      '--disable-web-security',
-      '--disable-blink-features=AutomationControlled',
+      // Graphics handling - simplified and consistent
+      ...(isProduction ? [
+        '--disable-gpu',
+        '--disable-3d-apis',
+        '--disable-d3d11',
+        '--disable-d3d12',
+        '--disable-webgl',
+        '--disable-software-rasterizer'
+      ] : [
+        '--enable-gpu',
+        '--enable-webgl',
+        '--use-gl=desktop',
+        '--enable-accelerated-2d-canvas',
+        '--window-position=0,0'
+      ]),
       
-      // Window settings
-      '--window-position=0,0',
-      '--start-maximized',
-      '--hide-scrollbars'
+      // Feature flags - simplified and consistent
+      '--disable-features=' + (isProduction 
+        ? 'AudioServiceOutOfProcess,TranslateUI,Translate,ImprovedCookieControls,' +
+          'LazyFrameLoading,GlobalMediaControls,MediaRouter,NetworkService,OutOfBlinkCors,' +
+          'OutOfProcessPdf,OverlayScrollbar,PasswordGeneration,RendererCodeIntegrity,' +
+          'SpareRendererForSitePerProcess,TopChromeTouchUi,VizDisplayCompositor,site-per-process'
+        : 'TranslateUI,Translate,ImprovedCookieControls,MediaRouter,NetworkService'),
+      
+      // Security - more conservative settings
+      '--disable-blink-features=AutomationControlled'
     ]
   };
   

@@ -309,45 +309,35 @@ const AndroidConnection = ({ onClose, active = false }) => {
   // Save ADB settings
   const saveAdbSettings = useCallback(async () => {
     try {
-      const response = await api.patch('/user/settings/adb', {
-        remoteAdbHost: state.remoteAdbSettings.host,
-        remoteAdbPort: parseInt(state.remoteAdbSettings.port, 10) || 5037,
-        customAdbPath: state.remoteAdbSettings.customAdbPath,
-        networkSettings: state.networkSettings
+      await api.user.updateAdbSettings({
+        ...state.remoteAdbSettings,
+        port: parseInt(state.remoteAdbSettings.port, 10) || 5037
       });
-      
       notification.success({
         message: 'Settings Saved',
-        description: response.data?.message || 'ADB settings have been saved successfully.',
+        description: 'ADB settings have been saved successfully.',
         placement: 'bottomRight'
       });
-      
-      // Refresh the device list after saving settings
-      if (state.connectionType === 'usb') {
-        fetchDevices();
-      }
     } catch (error) {
       console.error('Failed to save ADB settings:', error);
       notification.error({
         message: 'Save Failed',
-        description: error.response?.data?.message || error.message || 'Failed to save ADB settings',
+        description: error.message || 'Failed to save ADB settings',
         placement: 'bottomRight'
       });
     }
-  }, [state.remoteAdbSettings, state.connectionType, state.networkSettings]);
+  }, [state.remoteAdbSettings]);
 
   // Test ADB connection
   const testAdbConnection = useCallback(async () => {
     try {
       updateState(prev => ({ ...prev, testingConnection: true, connectionTestResult: null }));
       
-      const response = await api.post('/android/test-connection', {
-        host: state.remoteAdbSettings.host,
-        port: parseInt(state.remoteAdbSettings.port, 10) || 5037,
-        path: state.remoteAdbSettings.customAdbPath
+      const result = await api.user.testAdbConnection({
+        remoteAdbHost: state.remoteAdbSettings.host,
+        remoteAdbPort: parseInt(state.remoteAdbSettings.port, 10) || 5037,
+        customAdbPath: state.remoteAdbSettings.customAdbPath
       });
-      
-      const result = response.data;
       
       updateState(prev => ({
         ...prev,

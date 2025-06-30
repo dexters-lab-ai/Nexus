@@ -352,9 +352,13 @@ export async function editMidsceneReport(reportPath) {
       if (insideTitle) {
         // Skip writing the original title text since we already wrote our custom title
         return;
-      } else if (text.includes('Report - Midscene.js')) {
-        // Replace any dynamic title text that might be set by React
-        writeStream.write(text.replace('Report - Midscene.js', 'Report - Nexus'));
+      } else if (text.includes('Midscene')) {
+        // Replace any Midscene references with Nexus
+        writeStream.write(text
+          .replace(/Report - Midscene(\.js)?/g, 'Report - Nexus')
+          .replace(/Midscene(\.js)? Report/g, 'Nexus Report')
+          .replace(/Midscene/g, 'Nexus')
+        );
         return;
       }
       writeStream.write(text);
@@ -367,11 +371,31 @@ export async function editMidsceneReport(reportPath) {
       } else if (name === 'script' && insideScript) {
         // Try to parse & patch the JSON dump
         try {
+          // First clean up the JSON string
           let jsonStr = scriptContent.trim();
-          if (!jsonStr.endsWith('}')) {
-            jsonStr += '"}]}'; // attempt to close truncated JSON
+          
+          // Fix common JSON issues
+          if (!jsonStr.endsWith('}') && !jsonStr.endsWith(']')) {
+            // Try to properly close the JSON structure
+            const openBraces = (jsonStr.match(/\{/g) || []).length;
+            const closeBraces = (jsonStr.match(/\}/g) || []).length;
+            const openBrackets = (jsonStr.match(/\[/g) || []).length;
+            const closeBrackets = (jsonMsg.match(/\]/g) || []).length;
+            
+            // Add missing closing brackets/braces
+            while (openBraces > closeBraces) { jsonStr += '}'; }
+            while (openBrackets > closeBrackets) { jsonStr += ']'; }
+            
+            // If still not properly closed, add a minimal valid structure
+            if (!jsonStr.endsWith('}') && !jsonStr.endsWith(']')) {
+              jsonStr = jsonStr.replace(/,\s*$/, '') + '}'; // Remove trailing comma and close
+            }
           }
+          
+          // Parse the JSON
           const data = JSON.parse(jsonStr);
+          
+          // Update the data structure
           if (Array.isArray(data.executions)) {
             data.executions.forEach(exec => { 
               exec.sdkVersion = APP_VERSION;
@@ -379,10 +403,21 @@ export async function editMidsceneReport(reportPath) {
               if (exec.engine) {
                 exec.engineInfo = exec.engine;
               }
+              
+              // Update any Midscene references in the execution data
+              if (exec.name) exec.name = exec.name.replace(/Midscene/g, 'Nexus');
+              if (exec.title) exec.title = exec.title.replace(/Midscene/g, 'Nexus');
+              // Add any other fields that might contain Midscene references
             });
           }
+          
+          // Set the group name and ensure no Midscene references
           data.groupName = 'O.P.E.R.A.T.O.R – Sentinel Report';
-          writeStream.write(JSON.stringify(data));
+          if (data.name) data.name = data.name.replace(/Midscene/g, 'Nexus');
+          if (data.title) data.title = data.title.replace(/Midscene/g, 'Nexus');
+          
+          // Stringify with proper formatting
+          writeStream.write(JSON.stringify(data, null, 2));
 
         } catch (err) {
           console.error('[NexusReportEditor] JSON parse error, writing raw dump:', err);

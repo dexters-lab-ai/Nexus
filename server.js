@@ -24,6 +24,9 @@ import puppeteerExtra from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { PuppeteerAgent } from '@midscene/web/puppeteer';
 import { getPuppeteerLaunchOptions, getDebugLaunchOptions } from './src/utils/puppeteerConfig.js';
+import pcControl from './src/utils/pcControl.js';
+import androidControl from './src/utils/androidControl.js';
+import androidConfig from './src/config/androidControlConfig.js';
 import OpenAI from 'openai';
 import { AbortError } from 'p-retry';
 import jwt from 'jsonwebtoken';
@@ -1524,7 +1527,6 @@ async function startApp() {
 // ======================================
 
 import authRoutes from './src/routes/auth.js';
-import androidControl from './src/utils/androidControl.js';
 import taskRoutes from './src/routes/tasks.js';
 import billingRoutes from './src/routes/billing.js';
 import yamlMapsRoutes from './src/routes/yaml-maps.js';
@@ -2760,20 +2762,17 @@ app.get('/api/user/settings/adb', requireAuth, async (req, res) => {
   }
 });
 
-// Update ADB settings (partial update)
-app.patch('/api/user/settings/adb', requireAuth, async (req, res) => {
+app.post('/api/user/settings/adb', requireAuth, async (req, res) => {
   try {
     const { remoteAdbHost, remoteAdbPort, customAdbPath, networkSettings } = req.body;
     
     const update = {
+      'adbSettings.remoteAdbHost': remoteAdbHost,
+      'adbSettings.remoteAdbPort': remoteAdbPort,
+      'adbSettings.customAdbPath': customAdbPath,
+      'adbSettings.networkSettings': networkSettings,
       updatedAt: Date.now()
     };
-
-    // Only include fields that are provided in the request
-    if (remoteAdbHost !== undefined) update['adbSettings.remoteAdbHost'] = remoteAdbHost;
-    if (remoteAdbPort !== undefined) update['adbSettings.remoteAdbPort'] = remoteAdbPort;
-    if (customAdbPath !== undefined) update['adbSettings.customAdbPath'] = customAdbPath;
-    if (networkSettings !== undefined) update['adbSettings.networkSettings'] = networkSettings;
 
     const user = await User.findByIdAndUpdate(
       req.user.id,
@@ -2781,45 +2780,10 @@ app.patch('/api/user/settings/adb', requireAuth, async (req, res) => {
       { new: true }
     ).select('adbSettings');
 
-    res.json({
-      success: true,
-      message: 'ADB settings updated successfully',
-      settings: user.adbSettings
-    });
+    res.json(user.adbSettings);
   } catch (error) {
-    console.error('Error updating ADB settings:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: error.message || 'Failed to update ADB settings' 
-    });
-  }
-});
-
-// Test ADB connection with provided settings
-app.post('/api/android/test-connection', requireAuth, async (req, res) => {
-  try {
-    const { host, port, path } = req.body;
-    
-    // Update androidControl with the provided settings
-    if (host) androidControl.setAdbHost(host);
-    if (port) androidControl.setAdbPort(port);
-    if (path) androidControl.setAdbPath(path);
-    
-    // Test the connection
-    const result = await androidControl.testConnection();
-    
-    res.json({
-      success: true,
-      message: 'Successfully connected to ADB server',
-      ...result
-    });
-  } catch (error) {
-    console.error('ADB connection test failed:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to connect to ADB server',
-      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    console.error('Error saving ADB settings:', error);
+    res.status(500).json({ message: 'Error saving ADB settings' });
   }
 });
 
@@ -4333,11 +4297,31 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
 
     return finalResult;
   } catch (error) {
-    console.error(`[TaskCompletion] Error:`, error);
+    console.error(`[TaskCompletion] Error in task completion for task ${taskId}:`, error);
+    
+    // Send error notification
+    sendWebSocketUpdate(userId, {
+      event: 'taskError',
+      taskId: taskId.toString(),
+      error: `Error generating reports: ${error.message}`,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Also send taskComplete with error status
+    sendWebSocketUpdate(userId, {
+      event: 'taskComplete',
+      taskId: taskId.toString(),
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Create error report file
     const errorReportFile = `error-report-${Date.now()}.html`;
     const errorReportPath = path.join(REPORT_DIR, errorReportFile);
+    const errorReportUrl = `/external-report/${path.basename(errorReportPath)}`;
     
-    // Create a proper HTML error report rather than just a string
+    // Create a proper HTML error report
     const errorHtml = `
     <!DOCTYPE html>
     <html>
@@ -4419,22 +4403,6 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
       }
     }
     // Return a minimal error result with no raw page content
-    const errorResult = {
-      success: false,
-      taskId,
-      raw: { pageText: null, url: null },
-      aiPrepared: { summary: null },
-      screenshot: errorScreenshot,
-      steps: [], // Don't save any steps data on error
-      landingReportUrl: errorLandingReportUrl,
-      nexusReportUrl: `/nexus_run/report/${errorReportFile}`,
-      runReport: errorRunReport,
-      intermediateResults: [], // Explicitly empty intermediateResults 
-      error: error.message,
-      // Always provide a reportUrl for error compatibility using the external-report endpoint
-      reportUrl: `/external-report/${errorReportFile}`
-    };
-    
     // Log the error result structure for debugging
     console.log(`[TaskCompletion] Returning error result structure:`, JSON.stringify({
       success: errorResult.success,
@@ -4970,7 +4938,14 @@ class PlanStep {
  * 
  * Note: This is NOT used for browser automation, which is handled by setupNexusEnvironment().
  */
-async function getUserOpenAiClient(userId) {
+/**
+ * Get an OpenAI client for this user with configurable timeout
+ * @param {string} userId - The user ID
+ * @param {Object} [options] - Configuration options
+ * @param {number} [options.timeout=30000] - Request timeout in milliseconds (default: 30000)
+ * @returns {Promise<OpenAI>} Configured OpenAI client
+ */
+async function getUserOpenAiClient(userId, options = {}) {
   // Define standard default keys for different providers
   const DEFAULT_KEYS = {
     'openai': process.env.DEFAULT_GPT4O_KEY || '',
@@ -5123,11 +5098,19 @@ async function getUserOpenAiClient(userId) {
   );
   
   // Create client with appropriate configuration and metadata
-  return new OpenAI({ 
+  const clientConfig = {
     apiKey, 
     baseURL,
-    defaultQuery: { usingDefaultKey, keySource, engine: preferredModel, provider }
-  });
+    timeout: options.timeout || 30000, // Default 30s timeout
+    defaultQuery: { 
+      usingDefaultKey, 
+      keySource, 
+      engine: preferredModel, 
+      provider 
+    }
+  };
+
+  return new OpenAI(clientConfig);
 }
 
 
@@ -5546,7 +5529,6 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       if (!page || page.isClosed()) {
         logAction("Page is invalid or closed, creating a new one");
         page = await browser.newPage();
-        await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
         agent = new PuppeteerAgent(page);
         activeBrowsers.set(taskId, { browser, agent, page, release, closed: false, hasReleased: false });
       }
@@ -5605,10 +5587,6 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       message: `Executing: ${command}`,
       log: actionLog
     });
-
-    // Set viewport.
-    await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
-    logAction("Set viewport to 1280x720");
 
     // Execute action (only for non-navigation commands).
     logAction(`Executing action: "${command}"`);
@@ -5804,7 +5782,6 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       if (!page || page.isClosed()) {
         logQuery("Page is invalid or closed, creating a new one");
         page = await browser.newPage();
-        await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
         agent = new PuppeteerAgent(page);
         activeBrowsers.set(taskId, { browser, agent, page, release, closed: false, hasReleased: false });
       }
@@ -5882,9 +5859,6 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       message: `Querying: ${query}`,
       log: actionLog
     });
-    
-    await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
-    logQuery("Set viewport to 1280x720");
     
     logQuery(`Executing query: "${query}"`);
     // Perform extraction only once.
@@ -6092,8 +6066,8 @@ async function openaiClassifyPrompt(prompt, userId) {
   let client;
   
   try {
-    // Get the appropriate OpenAI client for chat classification
-    client = await getUserOpenAiClient(userId, true);
+    // Get the appropriate OpenAI client with a 10s timeout for classification
+    client = await getUserOpenAiClient(userId, { timeout: 10000 });
     
     // Use a small, fast model for classification to save tokens
     const resp = await client.chat.completions.create({
@@ -6109,8 +6083,7 @@ async function openaiClassifyPrompt(prompt, userId) {
         { role: 'user', content: prompt }
       ],
       temperature: 0,
-      max_tokens: 5,
-      timeout: 10000 // 10 second timeout
+      max_tokens: 5
     });
     
     // Estimate token usage (approximate calculation)
@@ -6181,7 +6154,6 @@ async function openaiClassifyPrompt(prompt, userId) {
  * @param {string} url - Starting URL
  * @param {string} engine - Engine to use for this task (optional)
  */
-
 // Import YAML map processing utilities
 import { processYamlMapTask, extractYamlMapIdFromPrompt } from './src/utils/yamlProcessor.js';
 
@@ -6197,6 +6169,12 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
   }).save();
   console.log(`[ProcessTask] Starting ${taskId}: "${prompt}"`);
   
+  // Check for Android control commands (e.g., 'android open twitter', 'android like tweets')
+  const androidCommandMatch = prompt.match(/^android\s+(.+)$/i);
+  
+  // Check for PC control commands (e.g., 'pc search files', 'pc open camera', 'pc media play')
+  const pcCommandMatch = !androidCommandMatch && prompt.match(/^pc\s+(search|open|media|system)\s+(.+)$/i);
+  
   // Check if the prompt contains a YAML map reference or if it was attached via the UI
   let yamlMapId = extractYamlMapIdFromPrompt(prompt);
   
@@ -6211,6 +6189,370 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
     }
   }
   
+  // Handle PC control commands
+  if (pcCommandMatch) {
+    const [_, action, params] = pcCommandMatch;
+    console.log(`[ProcessTask] Detected PC control command: ${action} ${params}`);
+    
+    // Input validation
+    if (!action || !params) {
+      throw new Error('Invalid PC control command format. Expected format: pc <action> <params>');
+    }
+    
+    // Check if the action is allowed
+    const allowedActions = ['search', 'open', 'media', 'system'];
+    const normalizedAction = action.toLowerCase();
+    if (!allowedActions.includes(normalizedAction)) {
+      throw new Error(`Invalid PC control action. Allowed actions: ${allowedActions.join(', ')}`);
+    }
+    
+    // Apply rate limiting
+    const commandType = normalizedAction === 'system' ? 'system' : 'default';
+    if (!pcControlRateLimit.canExecute(userId, commandType)) {
+      const timeLeft = pcControlRateLimit.getTimeUntilNext(userId, commandType);
+      throw new Error(`Rate limit exceeded. Please wait ${timeLeft.toFixed(1)} seconds before executing another ${commandType} command.`);
+    }
+    
+    // Log the command execution attempt
+    console.log(`[PC Control] User ${userId} executing command: ${normalizedAction} ${params}`);
+    
+    try {
+      let result;
+      const normalizedAction = action.toLowerCase();
+      
+      // Log the start of command processing
+      console.log(`[PC Control] [${taskId}] Starting ${normalizedAction} command with params: ${params}`);
+      
+      // Handle different PC control actions
+      switch (normalizedAction) {
+        case 'search':
+          result = await pcControl.searchFiles(params);
+          break;
+          
+        case 'open':
+          if (params.toLowerCase().includes('camera')) {
+            result = await pcControl.openCamera();
+          } else {
+            result = { success: false, error: `Unsupported open command: ${params}` };
+          }
+          break;
+          
+        case 'media':
+          const mediaAction = params.toLowerCase().trim();
+          if (['play', 'pause', 'next', 'previous', 'volumeup', 'volumedown', 'mute', 'unmute'].includes(mediaAction)) {
+            result = await pcControl.mediaControl(mediaAction);
+          } else {
+            result = { success: false, error: `Unsupported media action: ${mediaAction}` };
+          }
+          break;
+          
+        case 'system':
+          const systemAction = params.toLowerCase().trim();
+          if (['lock', 'sleep', 'restart', 'shutdown', 'logoff'].includes(systemAction)) {
+            result = await pcControl.systemCommand(systemAction);
+          } else {
+            result = { success: false, error: `Unsupported system command: ${systemAction}` };
+          }
+          break;
+          
+        default:
+          result = { success: false, error: `Unknown PC control action: ${action}` };
+      }
+      
+      // Format the result for the task completion
+      const success = result.success !== false; // Handle both undefined and true as success
+      const message = result.message || (success ? 'PC control command executed successfully' : result.error || 'Unknown error');
+      
+      // Log the result
+      console.log(`[PC Control] [${taskId}] Command ${normalizedAction} completed with ${success ? 'success' : 'error'}:`, 
+        success ? message : result.error || 'Unknown error'
+      );
+      
+      try {
+        // Save the task completion
+        await saveTaskCompletionMessages(
+          userId,
+          taskId,
+          prompt,
+          JSON.stringify({
+            ...result,
+            timestamp: new Date().toISOString(),
+            command: normalizedAction,
+            params
+          }, null, 2),
+          message,
+          { 
+            pcControl: true, 
+            action: normalizedAction, 
+            params, 
+            success,
+            timestamp: new Date().toISOString()
+          }
+        );
+        
+        // Clean up any resources
+        await pcControl.cleanup();
+        
+        // Log successful cleanup
+        console.log(`[PC Control] [${taskId}] Resources cleaned up successfully`);
+        
+        return {
+          success,
+          message,
+          result: {
+            ...result,
+            command: normalizedAction,
+            params,
+            timestamp: new Date().toISOString()
+          },
+          taskId
+        };
+        
+      } catch (saveError) {
+        console.error(`[PC Control] [${taskId}] Error saving task completion:`, saveError);
+        // Re-throw with additional context
+        throw new Error(`Failed to save task completion: ${saveError.message}`);
+      }
+      
+    } catch (error) {
+      console.error(`[ProcessTask] Error executing PC control command:`, error);
+      
+      // Save error to task
+      await saveTaskCompletionMessages(
+        userId,
+        taskId,
+        prompt,
+        error.stack || error.message || 'Unknown error',
+        `Failed to execute PC control command: ${error.message}`,
+        { 
+          pcControl: true, 
+          error: true, 
+          action: pcCommandMatch[1], 
+          params: pcCommandMatch[2] 
+        }
+      );
+      
+      // Clean up any resources
+      await pcControl.cleanup().catch(cleanupError => {
+        console.error('[ProcessTask] Error during PC control cleanup:', cleanupError);
+      });
+      
+      throw error;
+    }
+  }
+  
+  // Handle Android control commands
+  if (androidCommandMatch) {
+    const [_, command] = androidCommandMatch;
+    console.log(`[ProcessTask] Detected Android command: ${command}`);
+    
+    // Input validation
+    if (!command) {
+      throw new Error('Invalid Android command format. Expected format: android <command>');
+    }
+    
+    // Initialize result object with metadata
+    const startTime = new Date();
+    const executionId = `android-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`;
+    
+    try {
+      // Update task status
+      await updateTaskInDatabase(taskId, {
+        status: 'executing',
+        startedAt: new Date(),
+        executionType: 'android',
+        executionId
+      });
+
+      // Connect to Android device if not already connected
+      if (!androidControl.device) {
+        console.log(`[AndroidControl] [${taskId}] Connecting to Android device...`);
+        await sendWebSocketUpdate(userId, {
+          type: 'status',
+          taskId,
+          status: 'connecting',
+          message: 'Connecting to Android device...',
+          timestamp: new Date().toISOString()
+        });
+        
+        await androidControl.connect(androidConfig.defaultDeviceUdid);
+      }
+      
+      // Execute the command with progress updates
+      await sendWebSocketUpdate(userId, {
+        type: 'status',
+        taskId,
+        status: 'executing',
+        message: `Executing Android command: ${command}`,
+        timestamp: new Date().toISOString()
+      });
+      
+      const result = await androidControl.executeAction(command, {
+        timeout: androidConfig.defaultCommandTimeout,
+        sessionId: taskId,
+        userId,
+        taskId,
+        onProgress: (progress) => {
+          sendWebSocketUpdate(userId, {
+            type: 'progress',
+            taskId,
+            progress,
+            timestamp: new Date().toISOString()
+          });
+        }
+      });
+      
+      // Calculate execution time
+      const endTime = new Date();
+      const executionTime = endTime - startTime;
+      
+      // Format the response with enhanced details
+      const response = {
+        success: true,
+        executionId,
+        command,
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        executionTime: `${executionTime}ms`,
+        result: result,
+        taskId,
+        metadata: {
+          device: androidControl.device?.id || 'unknown',
+          sdkVersion: androidControl.sdkVersion || 'unknown',
+          commandType: typeof command === 'string' ? 'direct' : 'script'
+        }
+      };
+      
+      // Generate a user-friendly success message
+      const successMessage = typeof command === 'string' 
+        ? `Successfully executed Android command: ${command}`
+        : 'Android automation script executed successfully';
+      
+      // Format the result for display
+      let formattedResult = '';
+      try {
+        if (typeof result === 'object' && result !== null) {
+          formattedResult = JSON.stringify(result, null, 2);
+        } else {
+          formattedResult = String(result);
+        }
+      } catch (e) {
+        console.error(`[AndroidControl] [${taskId}] Error formatting result:`, e);
+        formattedResult = 'Result available (unable to format)';
+      }
+      
+      // Save the task completion with enhanced metadata
+      const completionMeta = {
+        androidControl: true,
+        command: typeof command === 'string' ? command : 'script',
+        success: true,
+        executionTime,
+        deviceId: androidControl.device?.id,
+        sdkVersion: androidControl.sdkVersion,
+        screenshots: result?.screenshots?.length || 0,
+        logs: result?.logs?.length || 0,
+        timestamp: new Date().toISOString()
+      };
+      
+      await saveTaskCompletionMessages(
+        userId,
+        taskId,
+        prompt,
+        formattedResult,
+        successMessage,
+        completionMeta
+      );
+      
+      // Send final update
+      await sendWebSocketUpdate(userId, {
+        type: 'complete',
+        taskId,
+        status: 'completed',
+        message: successMessage,
+        result: response,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Update task status in database
+      await updateTaskInDatabase(taskId, {
+        status: 'completed',
+        completedAt: new Date(),
+        executionTime,
+        result: response
+      });
+      
+      return response;
+      
+    } catch (error) {
+      console.error(`[AndroidControl] [${taskId}] Error executing command:`, error);
+      const errorTime = new Date();
+      const executionTime = errorTime - startTime;
+      
+      // Format error details
+      const errorDetails = {
+        message: error.message,
+        stack: error.stack,
+        command,
+        executionTime: `${executionTime}ms`,
+        timestamp: errorTime.toISOString()
+      };
+      
+      // Send error update
+      await sendWebSocketUpdate(userId, {
+        type: 'error',
+        taskId,
+        status: 'failed',
+        message: `Android command failed: ${error.message}`,
+        error: errorDetails,
+        timestamp: errorTime.toISOString()
+      });
+      
+      // Save error to task with enhanced metadata
+      const errorMeta = {
+        androidControl: true,
+        error: true,
+        command: typeof command === 'string' ? command : 'script',
+        executionTime,
+        deviceId: androidControl.device?.id,
+        sdkVersion: androidControl.sdkVersion,
+        errorDetails: {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+          code: error.code
+        },
+        timestamp: errorTime.toISOString()
+      };
+      
+      await saveTaskCompletionMessages(
+        userId,
+        taskId,
+        prompt,
+        error.stack || error.message || 'Unknown error',
+        `Failed to execute Android command: ${error.message}`,
+        errorMeta
+      );
+      
+      // Update task status in database
+      await updateTaskInDatabase(taskId, {
+        status: 'failed',
+        completedAt: errorTime,
+        executionTime,
+        error: errorDetails
+      });
+      
+      // Clean up resources
+      try {
+        await androidControl.cleanup();
+      } catch (cleanupError) {
+        console.error(`[AndroidControl] [${taskId}] Error during cleanup:`, cleanupError);
+      }
+      
+      throw error;
+    }
+  }
+  
+  // Handle YAML map tasks
   if (yamlMapId) {
     console.log(`[ProcessTask] Detected YAML map reference: ${yamlMapId}`);
     await Task.updateOne({ _id: taskId }, { $set: { yamlMapId, status: 'executing' } });
@@ -7255,16 +7597,29 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
   } catch (error) {
     console.error(`[ProcessTask] Error in task ${taskId}:`, error);
     plan.log(`Error encountered: ${error.message}`, { stack: error.stack });
+    
+    // Send both error and completion events
     sendWebSocketUpdate(userId, {
       event: 'taskError',
       taskId,
       error: error.message,
       log: plan.planLog.slice(-10)
     });
+    
+    // Send taskComplete event with error status
+    sendWebSocketUpdate(userId, {
+      event: 'taskComplete',
+      taskId: taskId.toString(),
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+    
     await Task.updateOne(
       { _id: taskId },
       { $set: { status: 'error', error: error.message, endTime: new Date() } }
     );
+    
     // --- Save error message as assistant message to both ChatHistory and Message ---
     let taskChatHistory = await ChatHistory.findOne({ userId });
     if (!taskChatHistory) taskChatHistory = new ChatHistory({ userId, messages: [] });

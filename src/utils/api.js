@@ -657,7 +657,7 @@ export const api = {
      * @returns {Promise<Object>} - Updated user settings
      */
     updateAdbSettings: async (settings) => {
-      return patch('/api/user/settings/adb', settings);
+      return api.patch('/user/settings/adb', settings);
     },
 
     /**

@@ -6,6 +6,10 @@ import {
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { v4 as uuidv4 } from 'uuid';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
 const execPromise = promisify(exec);
 
@@ -24,13 +28,1057 @@ class AndroidControl {
       connectionType: null, // 'usb', 'network', 'remote'
       lastConnected: null
     };
+    
+    // Enhanced reporting state
+    this.reporting = {
+      currentRunId: null,           // Unique ID for the current automation run
+      runDir: null,                 // Base directory for run artifacts
+      reportDir: null,              // Directory for report files
+      screenshotsDir: null,         // Directory for screenshots
+      screenshots: [],              // Array of screenshot metadata
+      actionLog: [],                // Detailed action log
+      startTime: null,              // When the run started
+      endTime: null,                // When the run completed
+      currentStep: 0,               // Current step number
+      status: 'idle',               // 'idle' | 'running' | 'completed' | 'failed'
+      error: null,                  // Error object if run failed
+      deviceInfo: null,             // Device information
+      commandHistory: [],           // History of commands executed
+      performanceMetrics: {         // Performance tracking
+        totalTime: 0,
+        avgStepTime: 0,
+        stepsCompleted: 0
+      }
+    };
   }
 
   /**
-   * Update connection settings
-   * @param {Object} settings - Connection settings
-   * @returns {Object} Updated settings
+   * Initialize a new reporting session
+   * @param {string} runId - Unique ID for this run
+   * @param {string} [baseDir='midscene_run'] - Base directory for storing reports
+   * @returns {Promise<Object>} - Object containing report paths
    */
+  async initReporting(runId, baseDir = 'midscene_run') {
+    // Create the base android runs directory if it doesn't exist
+    const androidRunsDir = path.join(baseDir, 'android');
+    const runDir = path.join(androidRunsDir, runId);
+    const screenshotsDir = path.join(runDir, 'screenshots');
+    
+    // Create necessary directories with proper permissions
+    await fs.promises.mkdir(androidRunsDir, { recursive: true, mode: 0o755 });
+    await fs.promises.mkdir(runDir, { recursive: true, mode: 0o755 });
+    await fs.promises.mkdir(screenshotsDir, { recursive: true, mode: 0o755 });
+    
+    // Define report paths
+    const reportPaths = {
+      baseDir,
+      androidRunsDir,
+      runDir,
+      screenshotsDir,
+      initialReport: path.join(runDir, 'report.html'),
+      finalReport: path.join(runDir, 'nexus_report.html'),
+      get screenshotBaseUrl() {
+        return `/api/android/screenshots/${runId}`;
+      },
+      get reportUrl() {
+        return `/api/android/reports/${runId}`;
+      }
+    };
+    
+    // Initialize reporting state
+    this.reporting = {
+      ...this.reporting,
+      currentRunId: runId,
+      ...reportPaths,
+      screenshots: [],
+      actionLog: [],
+      startTime: new Date(),
+      endTime: null,
+      currentStep: 0,
+      status: 'running',
+      error: null,
+      deviceInfo: this.device ? await this.getDeviceInfo() : null,
+      commandHistory: [],
+      performanceMetrics: {
+        totalTime: 0,
+        avgStepTime: 0,
+        stepsCompleted: 0
+      }
+    };
+    
+    // Log initialization
+    this._logAction('reporting_initialized', { 
+      runId, 
+      baseDir,
+      reportPaths
+    });
+    
+    return reportPaths;
+  }
+
+  /**
+   * Log an action to the report
+   * @param {string} action - Action name/type
+   * @param {Object} data - Action data
+   * @param {string} [level=info] - Log level (info, warning, error)
+   */
+  _logAction(action, data = {}, level = 'info') {
+    const timestamp = new Date();
+    const logEntry = {
+      timestamp,
+      action,
+      data,
+      level,
+      step: this.reporting.currentStep
+    };
+    
+    this.reporting.actionLog.push(logEntry);
+    
+    // Also log to console in development
+    if (process.env.NODE_ENV !== 'production') {
+      const logFn = console[level] || console.log;
+      logFn(`[${timestamp.toISOString()}] [${level.toUpperCase()}] ${action}`, data);
+    }
+    
+    return logEntry;
+  }
+
+  /**
+   * Capture a screenshot and save it to the run directory
+   * @param {string} name - Name for the screenshot (will be used in filename)
+   * @param {Object} [metadata] - Additional metadata to store with the screenshot
+   * @returns {Promise<Object>} - Screenshot metadata including path and URL
+   */
+  async captureScreenshot(name = 'screenshot', metadata = {}) {
+    if (!this.device || this.reporting.status !== 'running') {
+      throw new Error('Cannot capture screenshot: No active device or reporting session');
+    }
+    
+    // Ensure screenshots directory exists
+    await fs.promises.mkdir(this.reporting.screenshotsDir, { recursive: true, mode: 0o755 });
+    
+    // Sanitize the name for filename safety
+    const safeName = name.replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `screenshot_${safeName}_${timestamp}.png`;
+    const filePath = path.join(this.reporting.screenshotsDir, filename);
+    
+    try {
+      // Take screenshot using Midscene SDK
+      this._logAction('capturing_screenshot', { name, step: this.reporting.currentStep });
+      const screenshotBuffer = await this.device.takeScreenshot();
+      
+      // Save to file with error handling for filesystem operations
+      try {
+        await fs.promises.writeFile(filePath, screenshotBuffer);
+      } catch (fsError) {
+        // If write fails, try one more time after ensuring directory exists
+        await fs.promises.mkdir(path.dirname(filePath), { recursive: true, mode: 0o755 });
+        await fs.promises.writeFile(filePath, screenshotBuffer);
+      }
+      
+      // Create metadata entry with enhanced information
+      const screenshotInfo = {
+        id: uuidv4(),
+        name,
+        filename,
+        path: filePath,
+        // Use the URL pattern that matches our API endpoint
+        url: `${this.reporting.screenshotBaseUrl}/${filename}`,
+        timestamp: new Date(),
+        step: this.reporting.currentStep,
+        metadata: {
+          deviceInfo: this.reporting.deviceInfo,
+          ...metadata
+        },
+        // Add relative paths for easier access in reports
+        relativePath: path.relative(this.reporting.runDir, filePath),
+        webPath: `/midscene_run/android/${this.reporting.currentRunId}/screenshots/${filename}`
+      };
+      
+      // Add to screenshots array and maintain a reasonable limit
+      this.reporting.screenshots.push(screenshotInfo);
+      if (this.reporting.screenshots.length > 100) {
+        // Remove oldest screenshot if we exceed the limit
+        const oldest = this.reporting.screenshots.shift();
+        try {
+          await fs.promises.unlink(oldest.path).catch(() => {});
+        } catch (e) {
+          // Ignore errors when cleaning up old screenshots
+        }
+      }
+      
+      // Update the last screenshot reference for quick access
+      this.reporting.lastScreenshot = screenshotInfo;
+      
+      // Log the successful capture
+      this._logAction('screenshot_captured', { 
+        screenshotId: screenshotInfo.id,
+        name,
+        step: this.reporting.currentStep,
+        path: screenshotInfo.relativePath,
+        size: screenshotBuffer.length
+      });
+      
+      return screenshotInfo;
+      
+    } catch (error) {
+      const errorInfo = { 
+        error: error.message, 
+        name,
+        step: this.reporting.currentStep,
+        stack: error.stack,
+        filePath
+      };
+      
+      this._logAction('screenshot_failed', errorInfo, 'error');
+      
+      // Rethrow with more context
+      const err = new Error(`Failed to capture screenshot: ${error.message}`);
+      err.originalError = error;
+      err.details = { name, step: this.reporting.currentStep };
+      throw err;
+    }
+  }
+
+  /**
+   * Get detailed device information
+   * @returns {Promise<Object>} Device information
+   */
+  async getDeviceInfo() {
+    if (!this.device) {
+      return null;
+    }
+    
+    try {
+      // Basic device info
+      const info = {
+        id: await this.device.getSerial(),
+        model: await this.device.getModel(),
+        manufacturer: await this.device.getManufacturer(),
+        sdkVersion: await this.device.getSdkVersion(),
+        androidVersion: await this.device.getAndroidVersion(),
+        resolution: await this.device.getDisplayInfo(),
+        // Add more device properties as needed
+        timestamp: new Date()
+      };
+      
+      // Store in reporting state
+      this.reporting.deviceInfo = info;
+      
+      return info;
+      
+    } catch (error) {
+      this._logAction('device_info_failed', { error: error.message }, 'error');
+      return null;
+    }
+  }
+
+  /**
+   * Generate an HTML report for the current run
+   * @param {Object} [options] - Report generation options
+   * @param {boolean} [options.isFinal=false] - Whether this is the final report
+   * @returns {Promise<Object>} Report metadata including path and URL
+   */
+  async generateReport(options = {}) {
+    const { isFinal = false } = options;
+    
+    if (!this.reporting.currentRunId) {
+      throw new Error('No active reporting session');
+    }
+    
+    try {
+      // Calculate performance metrics
+      const endTime = this.reporting.endTime || new Date();
+      const totalTime = endTime - this.reporting.startTime;
+      const stepsCompleted = this.reporting.performanceMetrics.stepsCompleted || 0;
+      const avgStepTime = stepsCompleted > 0 
+        ? totalTime / stepsCompleted 
+        : 0;
+      
+      // Prepare report data
+      const reportData = {
+        runId: this.reporting.currentRunId,
+        startTime: this.reporting.startTime,
+        endTime: endTime,
+        status: isFinal ? 'completed' : this.reporting.status,
+        deviceInfo: this.reporting.deviceInfo,
+        actionLog: [...this.reporting.actionLog], // Create a copy of the log
+        screenshots: [...this.reporting.screenshots], // Create a copy of screenshots
+        commandHistory: [...this.reporting.commandHistory], // Create a copy of command history
+        performanceMetrics: {
+          totalTime,
+          avgStepTime,
+          stepsCompleted,
+          memoryUsage: process.memoryUsage()
+        },
+        // Add replay functionality for final report
+        canReplay: isFinal,
+        replayUrl: isFinal ? `/api/android/replay/${this.reporting.currentRunId}` : null,
+        // Add reference to the final report URL
+        finalReportUrl: isFinal ? null : `/midscene_run/android/${this.reporting.currentRunId}/nexus_report.html`
+      };
+      
+      // Generate HTML content
+      const reportHtml = await this._generateHtmlReport(reportData);
+      
+      // Determine the output path based on whether this is the final report
+      const outputPath = isFinal ? this.reporting.finalReport : this.reporting.initialReport;
+      
+      // Ensure the directory exists
+      await fs.promises.mkdir(path.dirname(outputPath), { recursive: true, mode: 0o755 });
+      
+      // Write the report file
+      await fs.promises.writeFile(outputPath, reportHtml);
+      
+      // If this is the final report, update the status and end time
+      if (isFinal) {
+        this.reporting.status = 'completed';
+        this.reporting.endTime = endTime;
+      }
+      
+      // Prepare report info with both filesystem and web-accessible paths
+      const reportInfo = {
+        path: outputPath,
+        // For initial reports, use the direct file path
+        // For final reports, use the API endpoint
+        url: isFinal 
+          ? `/api/android/reports/${this.reporting.currentRunId}`
+          : `/midscene_run/android/${this.reporting.currentRunId}/report.html`,
+        timestamp: new Date(),
+        runId: this.reporting.currentRunId,
+        isFinal,
+        // Include the final report path for reference
+        finalReportPath: this.reporting.finalReport,
+        finalReportUrl: `/midscene_run/android/${this.reporting.currentRunId}/nexus_report.html`
+      };
+      
+      // Log the report generation
+      this._logAction(
+        isFinal ? 'final_report_generated' : 'initial_report_generated', 
+        { 
+          path: outputPath,
+          url: reportInfo.url,
+          isFinal
+        }
+      );
+      
+      return reportInfo;
+      
+    } catch (error) {
+      const errorInfo = {
+        error: error.message,
+        stack: error.stack,
+        isFinal,
+        runId: this.reporting.currentRunId
+      };
+      
+      this._logAction('report_generation_failed', errorInfo, 'error');
+      
+      // Rethrow with more context
+      const err = new Error(
+        `Failed to generate ${isFinal ? 'final' : 'initial'} report: ${error.message}`
+      );
+      err.originalError = error;
+      err.details = errorInfo;
+      throw err;
+    }
+  }
+  
+  /**
+   * Generate the final report after processing is complete
+   * This should be called after all automation steps are done
+   * @returns {Promise<Object>} Final report metadata
+   */
+  async finalizeReport() {
+    try {
+      // Ensure we have the latest device info
+      if (this.device) {
+        this.reporting.deviceInfo = await this.getDeviceInfo();
+      }
+      
+      // Generate the final report
+      const finalReport = await this.generateReport({ isFinal: true });
+      
+      // Log completion
+      this._logAction('report_finalized', {
+        runId: this.reporting.currentRunId,
+        reportPath: finalReport.path,
+        reportUrl: finalReport.url,
+        duration: finalReport.timestamp - this.reporting.startTime,
+        steps: this.reporting.performanceMetrics.stepsCompleted,
+        screenshots: this.reporting.screenshots.length
+      });
+      
+      return finalReport;
+      
+    } catch (error) {
+      const errorInfo = {
+        error: error.message,
+        stack: error.stack,
+        runId: this.reporting.currentRunId
+      };
+      
+      this._logAction('report_finalization_failed', errorInfo, 'error');
+      
+      // Rethrow with more context
+      const err = new Error(`Failed to finalize report: ${error.message}`);
+      err.originalError = error;
+      err.details = errorInfo;
+      throw err;
+    }
+  }
+
+  /**
+   * Generate HTML report content
+   * @private
+   * @param {Object} reportData - Report data
+   * @returns {Promise<string>} HTML content
+   */
+  async _generateHtmlReport(reportData) {
+    const { runId, status, startTime, endTime, deviceInfo, actionLog = [], screenshots = [], commandHistory = [], performanceMetrics = {} } = reportData;
+    const isFinal = status === 'completed';
+    const duration = performanceMetrics.totalTime ? (performanceMetrics.totalTime / 1000).toFixed(2) + 's' : 'N/A';
+    const startTimeFormatted = startTime ? new Date(startTime).toLocaleString() : 'N/A';
+    const endTimeFormatted = endTime ? new Date(endTime).toLocaleString() : 'In Progress';
+    
+    // Extract device info for display
+    const deviceInfoDisplay = deviceInfo ? {
+      'Model': deviceInfo.model || 'Unknown',
+      'Brand': deviceInfo.brand || 'Unknown',
+      'Android Version': deviceInfo.androidVersion || deviceInfo.version || 'Unknown',
+      'SDK Version': deviceInfo.sdkVersion || 'Unknown',
+      'CPU': deviceInfo.cpuAbi || deviceInfo.cpu || 'Unknown',
+      'Resolution': deviceInfo.resolution || 'Unknown',
+      'Serial': deviceInfo.serial || deviceInfo.udid || 'Unknown',
+      'Manufacturer': deviceInfo.manufacturer || 'Unknown'
+    } : {};
+
+    // Generate the HTML head with styles
+    const htmlHead = `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Android Automation Report - ${runId}</title>
+        <!-- Bootstrap 5 CSS -->
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <!-- Font Awesome for icons -->
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <style>
+          :root {
+            --primary-color: #4e73df;
+            --success-color: #1cc88a;
+            --danger-color: #e74a3b;
+            --warning-color: #f6c23e;
+            --info-color: #36b9cc;
+            --dark-color: #5a5c69;
+            --light-color: #f8f9fc;
+            --border-color: #e3e6f0;
+          }
+          
+          body {
+            font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f8f9fc;
+            color: #5a5c69;
+            line-height: 1.6;
+          }
+          
+          .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 250px;
+            padding: 20px;
+            background-color: #fff;
+            box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+            overflow-y: auto;
+            z-index: 1000;
+          }
+          
+          .main-content {
+            margin-left: 250px;
+            padding: 20px 30px;
+          }
+          
+          .card {
+            border: none;
+            border-radius: 0.35rem;
+            box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.1);
+            margin-bottom: 1.5rem;
+          }
+          
+          .card-header {
+            background-color: #fff;
+            border-bottom: 1px solid rgba(0,0,0,.125);
+            padding: 1rem 1.25rem;
+          }
+          
+          .log-entry {
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.5rem;
+            border-left: 3px solid #ddd;
+            background-color: #fff;
+            border-radius: 0.25rem;
+            transition: all 0.2s;
+          }
+          
+          .log-entry:hover {
+            transform: translateX(5px);
+            box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
+          }
+          
+          .log-entry.log-info { border-left-color: var(--info-color); }
+          .log-entry.log-warning { border-left-color: var(--warning-color); }
+          .log-entry.log-error { border-left-color: var(--danger-color); }
+          .log-entry.log-success { border-left-color: var(--success-color); }
+          
+          .screenshot-thumbnail {
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin-bottom: 1rem;
+            border: 1px solid #e3e6f0;
+            border-radius: 0.35rem;
+            overflow: hidden;
+          }
+          
+          .screenshot-thumbnail:hover {
+            transform: scale(1.02);
+            box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.15);
+          }
+          
+          .screenshot-thumbnail img {
+            width: 100%;
+            height: auto;
+            display: block;
+          }
+          
+          .screenshot-caption {
+            padding: 0.5rem;
+            background-color: #f8f9fc;
+            font-size: 0.85rem;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+          
+          .command-item {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #e3e6f0;
+            font-family: 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+            font-size: 0.9rem;
+          }
+          
+          .command-item:last-child {
+            border-bottom: none;
+          }
+          
+          .command-timestamp {
+            color: #6c757d;
+            font-size: 0.8rem;
+            margin-right: 0.5rem;
+          }
+          
+          .badge {
+            font-weight: 500;
+            padding: 0.35em 0.65em;
+          }
+          
+          .nav-link {
+            color: #5a5c69;
+            font-weight: 600;
+            padding: 0.5rem 1rem;
+            border-radius: 0.25rem;
+          }
+          
+          .nav-link.active {
+            color: var(--primary-color);
+            background-color: rgba(78, 115, 223, 0.1);
+          }
+          
+          .nav-link:hover {
+            color: var(--primary-color);
+          }
+          
+          .tab-content {
+            padding: 1.5rem 0;
+          }
+          
+          .device-info-table th {
+            width: 30%;
+          }
+          
+          @media (max-width: 768px) {
+            .sidebar {
+              width: 100%;
+              position: static;
+              height: auto;
+              margin-bottom: 1rem;
+              box-shadow: none;
+            }
+            
+            .main-content {
+              margin-left: 0;
+              padding: 15px;
+            }
+          }
+        </style>
+      </head>
+    `;
+
+    // Generate the sidebar HTML
+    const sidebarHtml = `
+      <div class="sidebar">
+        <div class="d-flex flex-column h-100">
+          <div class="mb-4">
+            <h4 class="mb-3">
+              <i class="fas fa-robot me-2"></i>Android Automation
+            </h4>
+            
+            <div class="card bg-light mb-3">
+              <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="fw-bold small">Run ID:</span>
+                  <span class="text-muted small">${runId.substring(0, 8)}...</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="fw-bold small">Status:</span>
+                  <span class="badge bg-${status === 'completed' ? 'success' : status === 'failed' ? 'danger' : 'warning'} text-uppercase">
+                    ${status}
+                  </span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="fw-bold small">Duration:</span>
+                  <span class="text-muted small">${duration}</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                  <span class="fw-bold small">Started:</span>
+                  <span class="text-muted small">${startTimeFormatted}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div class="d-grid gap-2">
+              <button id="printReport" class="btn btn-outline-primary btn-sm mb-2">
+                <i class="fas fa-print me-1"></i> Print Report
+              </button>
+              <button id="exportJson" class="btn btn-outline-secondary btn-sm mb-3">
+                <i class="fas fa-file-export me-1"></i> Export JSON
+              </button>
+            </div>
+            
+            <div class="nav flex-column nav-pills" id="reportTabs" role="tablist">
+              <a class="nav-link active" id="overview-tab" data-bs-toggle="pill" href="#overview" role="tab">
+                <i class="fas fa-home me-2"></i>Overview
+              </a>
+              <a class="nav-link" id="screenshots-tab" data-bs-toggle="pill" href="#screenshots" role="tab">
+                <i class="fas fa-camera me-2"></i>Screenshots (${screenshots.length})
+              </a>
+              <a class="nav-link" id="logs-tab" data-bs-toggle="pill" href="#logs" role="tab">
+                <i class="fas fa-list me-2"></i>Action Log (${actionLog.length})
+              </a>
+              <a class="nav-link" id="commands-tab" data-bs-toggle="pill" href="#commands" role="tab">
+                <i class="fas fa-terminal me-2"></i>Commands (${commandHistory.length})
+              </a>
+              <a class="nav-link" id="device-tab" data-bs-toggle="pill" href="#device" role="tab">
+                <i class="fas fa-mobile-alt me-2"></i>Device Info
+              </a>
+            </div>
+          </div>
+          
+          <div class="mt-auto pt-3 border-top">
+            <div class="d-flex justify-content-between align-items-center small text-muted">
+              <span>Generated by Nexus</span>
+              <span>v${process.env.npm_package_version || '1.0.0'}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Generate the main content HTML
+    const mainContentHtml = `
+      <div class="main-content">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h1 class="h3 mb-0">Automation Report</h1>
+          <div>
+            <span class="badge bg-${status === 'completed' ? 'success' : status === 'failed' ? 'danger' : 'warning'} me-2">
+              ${status.toUpperCase()}
+            </span>
+            <span class="text-muted small">${runId}</span>
+          </div>
+        </div>
+        
+        <div class="tab-content" id="reportTabContent">
+          <!-- Overview Tab -->
+          <div class="tab-pane fade show active" id="overview" role="tabpanel" aria-labelledby="overview-tab">
+            <div class="row">
+              <div class="col-md-8">
+                <div class="card mb-4">
+                  <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Test Summary</h5>
+                    <span class="badge bg-primary">${new Date().toLocaleDateString()}</span>
+                  </div>
+                  <div class="card-body">
+                    <div class="row mb-4">
+                      <div class="col-md-4 text-center">
+                        <div class="display-5 fw-bold text-primary">${performanceMetrics.stepsCompleted || 0}</div>
+                        <div class="text-muted">Steps</div>
+                      </div>
+                      <div class="col-md-4 text-center">
+                        <div class="display-5 fw-bold text-success">${screenshots.length}</div>
+                        <div class="text-muted">Screenshots</div>
+                      </div>
+                      <div class="col-md-4 text-center">
+                        <div class="display-5 fw-bold text-info">${duration}</div>
+                        <div class="text-muted">Duration</div>
+                      </div>
+                    </div>
+                    
+                    ${status === 'failed' ? `
+                      <div class="alert alert-danger">
+                        <h5><i class="fas fa-exclamation-triangle me-2"></i>Test Failed</h5>
+                        <p class="mb-0">${reportData.error?.message || 'An unknown error occurred during test execution.'}</p>
+                      </div>
+                    ` : ''}
+                    
+                    <h5 class="mt-4 mb-3">Timeline</h5>
+                    <div class="timeline">
+                      <div class="timeline-item">
+                        <div class="timeline-badge bg-success"><i class="fas fa-play"></i></div>
+                        <div class="timeline-content">
+                          <h6>Test Started</h6>
+                          <p class="text-muted small mb-0">${startTimeFormatted}</p>
+                        </div>
+                      </div>
+                      
+                      ${isFinal ? `
+                        <div class="timeline-item">
+                          <div class="timeline-badge ${status === 'completed' ? 'bg-success' : 'bg-danger'}">
+                            <i class="fas ${status === 'completed' ? 'fa-check' : 'fa-times'}"></i>
+                          </div>
+                          <div class="timeline-content">
+                            <h6>Test ${status === 'completed' ? 'Completed' : 'Failed'}</h6>
+                            <p class="text-muted small mb-0">${endTimeFormatted}</p>
+                            ${status === 'failed' ? `<p class="mb-0 small text-danger">${reportData.error?.message || 'Unknown error'}</p>` : ''}
+                          </div>
+                        </div>
+                      ` : ''}
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="card mb-4">
+                  <div class="card-header">
+                    <h5 class="mb-0">Recent Activity</h5>
+                  </div>
+                  <div class="card-body p-0">
+                    ${actionLog.slice(-5).reverse().map(log => `
+                      <div class="log-entry log-${log.level || 'info'} border-0 rounded-0 border-bottom">
+                        <div class="d-flex justify-content-between align-items-center">
+                          <strong>${log.action}</strong>
+                          <small class="text-muted">${new Date(log.timestamp).toLocaleTimeString()}</small>
+                        </div>
+                        ${log.data ? `<pre class="mt-2 mb-0 small">${JSON.stringify(log.data, null, 2)}</pre>` : ''}
+                      </div>
+                    `).join('')}
+                    ${actionLog.length === 0 ? '<p class="p-3 mb-0 text-muted text-center">No activity logged yet</p>' : ''}
+                  </div>
+                </div>
+              </div>
+              
+              <div class="col-md-4">
+                <div class="card mb-4">
+                  <div class="card-header">
+                    <h5 class="mb-0">Device Information</h5>
+                  </div>
+                  <div class="card-body">
+                    ${deviceInfo ? `
+                      <div class="text-center mb-3">
+                        <i class="fas fa-mobile-alt fa-4x text-primary mb-2"></i>
+                        <h5>${deviceInfo.model || 'Android Device'}</h5>
+                        <p class="text-muted mb-0">${deviceInfo.manufacturer || 'Unknown Manufacturer'}</p>
+                      </div>
+                      <table class="table table-sm">
+                        <tbody>
+                          ${Object.entries(deviceInfoDisplay).map(([key, value]) => `
+                            <tr>
+                              <th class="text-muted">${key}</th>
+                              <td class="text-end">${value}</td>
+                            </tr>
+                          `).join('')}
+                        </tbody>
+                      </table>
+                    ` : '<p class="text-muted text-center mb-0">No device information available</p>'}
+                  </div>
+                </div>
+                
+                <div class="card">
+                  <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Quick Stats</h5>
+                    <i class="fas fa-chart-pie text-primary"></i>
+                  </div>
+                  <div class="card-body">
+                    <div class="mb-3">
+                      <div class="d-flex justify-content-between mb-1">
+                        <span>Test Progress</span>
+                        <span>${isFinal ? '100%' : 'In Progress'}</span>
+                      </div>
+                      <div class="progress" style="height: 10px;">
+                        <div class="progress-bar bg-primary" role="progressbar" 
+                             style="width: ${isFinal ? 100 : 50}%" 
+                             aria-valuenow="${isFinal ? 100 : 50}" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div class="list-group list-group-flush">
+                      <div class="list-group-item d-flex justify-content-between align-items-center px-0 border-0">
+                        <span><i class="fas fa-camera text-primary me-2"></i> Screenshots</span>
+                        <span class="badge bg-primary rounded-pill">${screenshots.length}</span>
+                      </div>
+                      <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <span><i class="fas fa-list text-success me-2"></i> Log Entries</span>
+                        <span class="badge bg-success rounded-pill">${actionLog.length}</span>
+                      </div>
+                      <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <span><i class="fas fa-terminal text-info me-2"></i> Commands</span>
+                        <span class="badge bg-info rounded-pill">${commandHistory.length}</span>
+                      </div>
+                      <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <span><i class="fas fa-clock text-warning me-2"></i> Duration</span>
+                        <span class="badge bg-warning text-dark rounded-pill">${duration}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Screenshots Tab -->
+          <div class="tab-pane fade" id="screenshots" role="tabpanel" aria-labelledby="screenshots-tab">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+              <h5 class="mb-0">Captured Screenshots</h5>
+              <div class="text-muted small">${screenshots.length} total</div>
+            </div>
+            
+            ${screenshots.length > 0 ? `
+              <div class="row g-4">
+                ${screenshots.map((screenshot, index) => `
+                  <div class="col-md-4 col-lg-3">
+                    <div class="screenshot-thumbnail" data-bs-toggle="modal" data-bs-target="#screenshotModal" data-src="${screenshot.url || '#'}" data-title="Screenshot ${index + 1}">
+                      <img src="${screenshot.thumbnailUrl || screenshot.url || '#'}" alt="Screenshot ${index + 1}" class="img-fluid">
+                      <div class="screenshot-caption">
+                        ${screenshot.name || `Screenshot ${index + 1}`}
+                      </div>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            ` : `
+              <div class="text-center py-5">
+                <i class="fas fa-camera fa-4x text-muted mb-3"></i>
+                <h5>No Screenshots Captured</h5>
+                <p class="text-muted">No screenshots were taken during this test run.</p>
+              </div>
+            `}
+          </div>
+          
+          <!-- Logs Tab -->
+          <div class="tab-pane fade" id="logs" role="tabpanel" aria-labelledby="logs-tab">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+              <h5 class="mb-0">Action Log</h5>
+              <div class="text-muted small">${actionLog.length} entries</div>
+            </div>
+            
+            <div class="card">
+              <div class="card-body p-0">
+                ${actionLog.length > 0 ? `
+                  ${actionLog.map(log => `
+                    <div class="log-entry log-${log.level || 'info'}">
+                      <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                          <strong>${log.action}</strong>
+                          <div class="text-muted small">${new Date(log.timestamp).toLocaleString()}</div>
+                        </div>
+                        <span class="badge bg-${log.level === 'error' ? 'danger' : log.level === 'warn' ? 'warning' : 'info'}">
+                          ${log.level || 'info'}
+                        </span>
+                      </div>
+                      ${log.data ? `
+                        <div class="mt-2">
+                          <button class="btn btn-sm btn-outline-secondary toggle-details" type="button" data-bs-toggle="collapse" data-bs-target="#log-details-${log.timestamp}">
+                            Toggle Details <i class="fas fa-chevron-down"></i>
+                          </button>
+                          <div class="collapse mt-2" id="log-details-${log.timestamp}">
+                            <pre class="bg-light p-2 rounded small mb-0">${JSON.stringify(log.data, null, 2)}</pre>
+                          </div>
+                        </div>
+                      ` : ''}
+                    </div>
+                  `).join('')}
+                ` : `
+                  <div class="text-center p-5">
+                    <i class="fas fa-clipboard-list fa-3x text-muted mb-3"></i>
+                    <h5>No Log Entries</h5>
+                    <p class="text-muted">No log entries were recorded during this test run.</p>
+                  </div>
+                `}
+              </div>
+            </div>
+          </div>
+          
+          <!-- Commands Tab -->
+          <div class="tab-pane fade" id="commands" role="tabpanel" aria-labelledby="commands-tab">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+              <h5 class="mb-0">Command History</h5>
+              <div class="text-muted small">${commandHistory.length} commands executed</div>
+            </div>
+            
+            <div class="card">
+              <div class="card-body p-0">
+                ${commandHistory.length > 0 ? `
+                  ${commandHistory.map((cmd, index) => `
+                    <div class="command-item">
+                      <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                          <span class="command-timestamp">${new Date(cmd.timestamp).toLocaleTimeString()}</span>
+                          <code>${cmd.command}</code>
+                        </div>
+                        <span class="badge bg-${cmd.success ? 'success' : 'danger'}">
+                          ${cmd.success ? 'Success' : 'Failed'}
+                        </span>
+                      </div>
+                      ${cmd.output ? `
+                        <div class="mt-2">
+                          <button class="btn btn-sm btn-outline-secondary toggle-output" type="button" data-bs-toggle="collapse" data-bs-target="#cmd-output-${index}">
+                            Toggle Output <i class="fas fa-chevron-down"></i>
+                          </button>
+                          <div class="collapse mt-2" id="cmd-output-${index}">
+                            <pre class="bg-light p-2 rounded small mb-0">${cmd.output}</pre>
+                          </div>
+                        </div>
+                      ` : ''}
+                    </div>
+                  `).join('')}
+                ` : `
+                  <div class="text-center p-5">
+                    <i class="fas fa-terminal fa-3x text-muted mb-3"></i>
+                    <h5>No Commands Executed</h5>
+                    <p class="text-muted">No commands were executed during this test run.</p>
+                  </div>
+                `}
+              </div>
+            </div>
+          </div>
+          
+          <!-- Device Info Tab -->
+          <div class="tab-pane fade" id="device" role="tabpanel" aria-labelledby="device-tab">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+              <h5 class="mb-0">Device Information</h5>
+              <button id="refreshDeviceInfo" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-sync-alt me-1"></i> Refresh
+              </button>
+            </div>
+            
+            <div class="row">
+              <div class="col-md-6">
+                <div class="card mb-4">
+                  <div class="card-header">
+                    <h5 class="mb-0">Device Details</h5>
+                  </div>
+                  <div class="card-body">
+                    ${deviceInfo ? `
+                      <table class="table table-sm device-info-table">
+                        <tbody>
+                          ${Object.entries(deviceInfoDisplay).map(([key, value]) => `
+                            <tr>
+                              <th class="text-muted">${key}</th>
+                              <td>${value || 'N/A'}</td>
+                            </tr>
+                          `).join('')}
+                        </tbody>
+                      </table>
+                    ` : `
+                      <div class="text-center py-4">
+                        <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
+                        <h5>No Device Information</h5>
+                        <p class="text-muted">No device information is available for this test run.</p>
+                      </div>
+                    `}
+                  </div>
+                </div>
+              </div>
+              
+              <div class="col-md-6">
+                <div class="card">
+                  <div class="card-header">
+                    <h5 class="mb-0">System Properties</h5>
+                  </div>
+                  <div class="card-body">
+                    ${deviceInfo?.properties ? `
+                      <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                          <thead>
+                            <tr>
+                              <th>Property</th>
+                              <th>Value</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${Object.entries(deviceInfo.properties).map(([key, value]) => `
+                              <tr>
+                                <td class="text-muted">${key}</td>
+                                <td><code>${value || ''}</code></td>
+                              </tr>
+                            `).join('')}
+                          </tbody>
+                        </table>
+                      </div>
+                    ` : `
+                      <div class="text-center py-4">
+                        <i class="fas fa-info-circle fa-3x text-info mb-3"></i>
+                        <h5>No System Properties</h5>
+                        <p class="text-muted">No system properties are available for this device.</p>
+                      </div>
+                    `}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Screenshot Modal -->
+        <div class="modal fade" id="screenshotModal" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title" id="screenshotModalLabel">Screenshot</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body text-center">
+                <img id="screenshotFull" src="" alt="Full size screenshot" class="img-fluid">
+              </div>
+              <div class="modal-footer">
+                <a id="downloadScreenshot" href="#" class="btn btn-outline-primary" download>
+                  <i class="fas fa-download me-1"></i> Download
+                </a>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   /**
    * Update connection settings and environment variables
    * @param {Object} newSettings - New settings to apply
@@ -74,9 +1122,11 @@ class AndroidControl {
    */
   _updateEnvironmentVariables(settings) {
     const envVars = {
-      MIDSCENE_ADB_PATH: 'C:\\platform-tools\\adb.exe',
-      MIDSCENE_ADB_REMOTE_HOST: '192.168.137.1',
-      MIDSCENE_ADB_REMOTE_PORT: '5037'
+      ANDROID_HOME: settings.ANDROID_HOME || (process.platform === 'win32' ? 'C:\\platform-tools' : '/opt/android-sdk'),
+      ANDROID_SDK_ROOT: settings.ANDROID_SDK_ROOT || (process.platform === 'win32' ? 'C:\\platform-tools' : '/opt/android-sdk'),
+      MIDSCENE_ADB_PATH: settings.customAdbPath || (process.platform === 'win32' ? 'C:\\platform-tools\\adb.exe' : '/usr/bin/adb'),
+      MIDSCENE_ADB_REMOTE_HOST: settings.remoteAdbHost || '',
+      MIDSCENE_ADB_REMOTE_PORT: settings.remoteAdbPort?.toString() || '5037'
     };
 
     // Update process.env with new values
@@ -607,10 +1657,79 @@ class AndroidControl {
   }
 
   /**
-   * Execute an AI-powered action on the device
+   * Capture a screenshot from the connected device
+   * @param {string} runId - The current run ID
+   * @param {string} stepName - Name or description of the current step
+   * @returns {Promise<{path: string, url: string}>} Screenshot details
+   */
+  async captureScreenshot(runId, stepName = '') {
+    if (!this.device) {
+      throw new Error('Not connected to any Android device. Call connect() first.');
+    }
+
+    try {
+      // Create screenshots directory if it doesn't exist
+      const screenshotsDir = path.join(this.reporting.runDir, 'screenshots');
+      if (!fs.existsSync(screenshotsDir)) {
+        fs.mkdirSync(screenshotsDir, { recursive: true });
+      }
+
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const safeStepName = (stepName || 'screenshot').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      const filename = `screenshot-${safeStepName}-${timestamp}.png`;
+      const filePath = path.join(screenshotsDir, filename);
+      
+      // Take screenshot
+      await this.device.screenshot({ path: filePath });
+      
+      // Generate web-accessible URL
+      const screenshotUrl = `/android-reports/${runId}/screenshots/${filename}`;
+      
+      // Add to screenshots array
+      this.reporting.screenshots.push({
+        path: filePath,
+        url: screenshotUrl,
+        step: this.reporting.currentStep,
+        stepName,
+        timestamp: new Date().toISOString()
+      });
+
+      return { path: filePath, url: screenshotUrl };
+    } catch (error) {
+      console.error('Error capturing screenshot:', error);
+      throw new Error(`Failed to capture screenshot: ${error.message}`);
+    }
+  }
+
+  /**
+   * Log an action to the execution log
+   * @param {string} message - Action description
+   * @param {Object} [data] - Additional data to log
+   * @param {string} [level=info] - Log level (info, warn, error, debug)
+   */
+  logAction(message, data = {}, level = 'info') {
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      step: this.reporting.currentStep,
+      message,
+      level,
+      data
+    };
+
+    this.reporting.actionLog.push(logEntry);
+    console[level] ? console[level](`[AndroidControl] [${level.toUpperCase()}]`, message, data) : 
+                    console.log(`[AndroidControl] [${level.toUpperCase()}]`, message, data);
+  }
+
+
+  /**
+   * Execute an AI-powered action on the device with comprehensive reporting
    * @param {string} instruction - Natural language instruction
    * @param {Object} [options] - Additional options
-   * @returns {Promise<Object>} Execution result
+   * @param {string} [options.runId] - The current run ID for reporting
+   * @param {string} [options.baseDir] - Base directory for reports
+   * @returns {Promise<Object>} Execution result with report data
    */
   async executeAction(instruction, options = {}) {
     if (!this.agent) {
@@ -619,16 +1738,25 @@ class AndroidControl {
 
     const sessionId = options.sessionId || uuidv4();
     const timeout = options.timeout || 30000; // 30 seconds default timeout
+    const runId = options.runId || `android-${Date.now()}`;
+    const baseDir = options.baseDir || path.join(process.cwd(), 'android-reports');
+
+    // Initialize reporting if not already done
+    if (!this.reporting.runDir) {
+      this.initReporting(runId, baseDir);
+    }
+
+    // Increment step counter
+    this.reporting.currentStep++;
+    const currentStep = this.reporting.currentStep;
+    
+    // Log the action
+    this.logAction(`Executing action: ${instruction}`, { step: currentStep });
 
     try {
-      console.log(`[AndroidControl] [${sessionId}] Executing: ${instruction}`);
+      // Take initial screenshot
+      const beforeScreenshot = await this.captureScreenshot(runId, `before-${currentStep}`);
       
-      // Store session
-      this.activeSessions.set(sessionId, {
-        startTime: new Date(),
-        status: 'executing'
-      });
-
       // Execute the action with timeout
       const result = await Promise.race([
         this.agent.aiAction(instruction),
@@ -637,35 +1765,63 @@ class AndroidControl {
         )
       ]);
 
-      // Update session
-      this.activeSessions.set(sessionId, {
-        ...this.activeSessions.get(sessionId),
-        endTime: new Date(),
-        status: 'completed',
-        success: true
-      });
+      // Take after screenshot
+      const afterScreenshot = await this.captureScreenshot(runId, `after-${currentStep}`);
+      
+      // Log success
+      this.logAction('Action executed successfully', { 
+        step: currentStep,
+        result: result,
+        screenshots: { before: beforeScreenshot.url, after: afterScreenshot.url }
+      }, 'info');
+
+      // Generate report
+      const { reportPath, reportUrl } = await this.generateReport();
 
       return {
         success: true,
         message: 'Action executed successfully',
         sessionId,
+        runId,
+        reportPath,
+        reportUrl,
+        screenshots: {
+          before: beforeScreenshot,
+          after: afterScreenshot
+        },
         result
       };
     } catch (error) {
-      console.error(`[AndroidControl] [${sessionId}] Error executing action:`, error);
+      // Capture error screenshot
+      const errorScreenshot = await this.captureScreenshot(runId, `error-${currentStep}`);
       
-      // Update session with error
-      if (this.activeSessions.has(sessionId)) {
-        this.activeSessions.set(sessionId, {
-          ...this.activeSessions.get(sessionId),
-          endTime: new Date(),
-          status: 'failed',
-          error: error.message,
-          success: false
-        });
+      // Log error
+      this.logAction(`Action failed: ${error.message}`, { 
+        step: currentStep,
+        error: error.stack || error.message,
+        screenshot: errorScreenshot.url
+      }, 'error');
+
+      // Generate error report
+      let reportPath, reportUrl;
+      try {
+        const report = await this.generateReport();
+        reportPath = report.reportPath;
+        reportUrl = report.reportUrl;
+      } catch (reportError) {
+        console.error('Failed to generate error report:', reportError);
       }
 
-      throw new Error(`Failed to execute action: ${error.message}`);
+      throw new Error({
+        success: false,
+        message: `Failed to execute action: ${error.message}`,
+        sessionId,
+        runId,
+        reportPath,
+        reportUrl,
+        screenshot: errorScreenshot,
+        error: error.stack || error.message
+      });
     }
   }
 
