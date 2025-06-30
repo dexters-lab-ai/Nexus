@@ -355,8 +355,8 @@ export async function editMidsceneReport(reportPath) {
       } else if (text.includes('Midscene')) {
         // Replace any Midscene references with Nexus
         writeStream.write(text
-          .replace(/Report - Midscene(\.js)?/g, 'Report - Nexus')
-          .replace(/Midscene(\.js)? Report/g, 'Nexus Report')
+          .replace(/Report - Midscene(\.js)?/g, 'O.P.E.R.A.T.O.R – Sentinel Report')
+          .replace(/Midscene(\.js)? Report/g, 'O.P.E.R.A.T.O.R – Sentinel Report')
           .replace(/Midscene/g, 'Nexus')
         );
         return;
