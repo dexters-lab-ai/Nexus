@@ -666,31 +666,66 @@ class YamlMapEditor {
     return result;
   }
   
-  // Apply basic syntax highlighting to YAML content
+  // Apply enhanced syntax highlighting to YAML content
   applyYamlSyntaxHighlighting(yamlText) {
     if (!yamlText) return '';
     
-    // First add indentation guides
-    let processedText = this.addIndentationGuides(yamlText);
+    // Split into lines and process each one
+    const lines = yamlText.split('\n');
+    let inFlowBlock = false;
+    let result = '';
     
-    // Create a highlighted version with spans
-    const highlighted = processedText
-      // Highlight keys (words followed by colon)
-      .replace(/(\s*)([\w-]+):/g, '$1<span class="yaml-key">$2</span>:')
-      // Highlight values after colon
-      .replace(/: (.+)$/gm, ': <span class="yaml-value">$1</span>')
-      // Highlight task definitions
-      .replace(/(\s*)- name:/g, '$1- <span class="yaml-task">name</span>:')
-      // Highlight flow definitions
-      .replace(/(\s*)flow:/g, '$1<span class="yaml-flow">flow</span>:')
-      // Highlight quoted strings
-      .replace(/['"][^'"]*['"](?!<\/span>)/g, '<span class="yaml-string">$&</span>')
-      // Highlight special commands (ai, aiQuery, etc)
-      .replace(/- (ai|aiQuery|sleep):/g, '- <span class="yaml-command">$1</span>:')
-      // Convert newlines to <br> for HTML display
-      .replace(/\n/g, '<br>');
+    lines.forEach((line, index) => {
+      let processedLine = line;
       
-    return highlighted;
+      // Handle indentation
+      const indentMatch = line.match(/^(\s*)/);
+      const indent = indentMatch ? indentMatch[1] : '';
+      const content = line.trim();
+      
+      // Skip empty lines
+      if (!content) {
+        result += '<br>';
+        return;
+      }
+      
+      // Highlight YAML keys (words followed by colon not in strings)
+      processedLine = processedLine.replace(/(^|\s)([a-zA-Z0-9_-]+):/g, 
+        (match, space, key) => `${space}<span class="yaml-key">${key}</span>:`);
+      
+      // Highlight YAML list items
+      processedLine = processedLine.replace(/^(\s*)-(?=\s|$)/gm, 
+        '<span class="yaml-list">$1-</span>');
+      
+      // Highlight strings (quoted and unquoted values)
+      processedLine = processedLine.replace(/:\s*(['"]?)([^'"\n{}:]+?)(['"]?)(?=\s*$|\s*#|\s*\n|\s*\{)/g, 
+        (match, openQuote, value, closeQuote) => {
+          if (value.trim()) {
+            return `: ${openQuote}<span class="yaml-value">${value}</span>${closeQuote}`;
+          }
+          return match;
+        });
+      
+      // Highlight numbers
+      processedLine = processedLine.replace(/:\s*(\d+)(?=\s*$|\s*#|\s*\n)/g, 
+        ': <span class="yaml-number">$1</span>');
+      
+      // Highlight booleans and null
+      processedLine = processedLine.replace(/:\s*(true|false|null)(?=\s*$|\s*#|\s*\n)/gi, 
+        (match, value) => `: <span class="yaml-boolean">${value}</span>`);
+      
+      // Special handling for flow blocks
+      if (content.includes('flow:')) {
+        inFlowBlock = true;
+      } else if (content === '') {
+        inFlowBlock = false;
+      }
+      
+      // Add line with CSS-based line numbers
+      result += `<div class="yaml-line">${processedLine}</div>`;
+    });
+    
+    return `<div class="yaml-code-block">${result}</div>`;
   }
   
   // Render the YAML preview with syntax highlighting
@@ -898,9 +933,12 @@ class YamlMapEditor {
                 >${exampleYaml}</textarea>
               </div>
 
-              <!-- Preview Section -->  
+              <!-- Preview Section with Copy Button -->  
               <div class="yaml-editor-code-header preview-header">
                 <span class="code-header-title">Preview</span>
+                <button type="button" class="copy-preview-btn" title="Copy to clipboard">
+                  <i class="far fa-copy"></i>
+                </button>
               </div>
               <div class="yaml-editor-preview"></div>
               
@@ -950,32 +988,77 @@ class YamlMapEditor {
     style.id = 'yaml-editor-styles';
     style.textContent = `
       /* YAML Syntax Highlighting */
-      .yaml-key { color: var(--accent); font-weight: bold; }
-      .yaml-value { color: #e6db74; }
-      .yaml-string { color: #4ddb66; }
-      .yaml-task { color: #66d9e8; font-weight: bold; }
-      .yaml-flow { color: #ff79c6; font-weight: bold; }
-      .yaml-command { color: #ffb86c; font-weight: bold; }
-      .indent-guide {
-        display: inline-block;
-        width: 10px;
-        height: 1em;
-        border-left: 1px solid rgba(255, 255, 255, 0.1);
-        margin-right: 4px;
-        vertical-align: middle;
+      .yaml-key { color: #61affe; font-weight: 500; }
+      .yaml-value { color: #e0e0e0; }
+      .yaml-string { color: #98c379; }
+      .yaml-number { color: #d19a66; }
+      .yaml-boolean { color: #c678dd; font-style: italic; }
+      .yaml-null { color: #c678dd; font-style: italic; }
+      .yaml-list { color: #e06c75; }
+      .yaml-line { 
+        counter-increment: line;
+        position: relative;
+        padding-left: 40px;
+      }
+      
+      .yaml-line::before {
+        content: counter(line);
+        position: absolute;
+        left: 0;
+        color: #6b7280;
+        user-select: none;
+        text-align: right;
+        width: 30px;
+        opacity: 0.7;
+      }
+      .yaml-line {
+        min-height: 1.5em;
+        white-space: pre;
+        font-family: 'Fira Code', 'Consolas', monospace;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .yaml-line:hover {
+        background-color: rgba(255, 255, 255, 0.03);
+      }
+      .yaml-code-block {
+        display: block;
+        padding: 8px 0;
+        margin: 0;
+        overflow-x: auto;
+        counter-reset: line;
+      }
+      .yaml-content {
+        white-space: pre;
+        tab-size: 2;
       }
       .yaml-editor-preview { 
-        background: rgba(20, 30, 50, 0.8); 
-        padding: 12px; 
+        padding: 12px 0; 
         border-radius: 0 0 6px 6px;
         font-family: 'Fira Code', 'Consolas', monospace;
-        line-height: 1.4;
-        font-size: 14px;
+        line-height: 1.5;
+        font-size: 13px;
         color: #f8f8f2;
         overflow: auto;
-        max-height: 170px;
+        max-height: 200px;
         border: 1px solid rgba(255, 255, 255, 0.1);
         border-top: none;
+        position: relative;
+      }
+      .yaml-editor-preview::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      .yaml-editor-preview::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.1);
+        border-radius: 4px;
+      }
+      .yaml-editor-preview::-webkit-scrollbar-thumb {
+        background: rgba(120, 120, 150, 0.4);
+        border-radius: 4px;
+      }
+      .yaml-editor-preview::-webkit-scrollbar-thumb:hover {
+        background: rgba(150, 150, 180, 0.6);
       }
       
       .preview-header {
@@ -1238,6 +1321,42 @@ class YamlMapEditor {
         padding: 30px;
         text-align: center;
       }
+      
+      .copy-preview-btn {
+        background: none;
+        border: none;
+        color: rgba(255, 255, 255, 0.6);
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 4px;
+        margin-left: 8px;
+        transition: all 0.2s;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+      }
+      
+      .copy-preview-btn:hover {
+        color: #61affe;
+        background: rgba(97, 175, 254, 0.1);
+      }
+      
+      .copy-preview-btn:active {
+        transform: translateY(1px);
+      }
+      
+      .copy-preview-btn i {
+        font-size: 14px;
+      }
+      
+      .preview-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -1462,6 +1581,30 @@ class YamlMapEditor {
             this.insertYamlCommand(command);
           }
         });
+      });
+    }
+    
+    // Copy preview button
+    const copyPreviewBtn = this.modalContainer.querySelector('.copy-preview-btn');
+    if (copyPreviewBtn) {
+      copyPreviewBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(this.formData.yaml);
+          // Show feedback
+          const icon = copyPreviewBtn.querySelector('i');
+          const originalIcon = icon.className;
+          icon.className = 'fas fa-check';
+          copyPreviewBtn.setAttribute('title', 'Copied!');
+          
+          // Reset after 2 seconds
+          setTimeout(() => {
+            icon.className = originalIcon;
+            copyPreviewBtn.setAttribute('title', 'Copy to clipboard');
+          }, 2000);
+        } catch (err) {
+          console.error('Failed to copy YAML to clipboard:', err);
+          alert('Failed to copy YAML to clipboard. Please try again.');
+        }
       });
     }
   }

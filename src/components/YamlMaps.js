@@ -357,10 +357,36 @@ class YamlMaps {
   openEditor(mapId = null) {
     console.log(`Opening YAML editor for map: ${mapId || 'new'}`);
     try {
+      // Clear the selected map ID to prevent viewer from showing
+      this.selectedMapId = null;
+      
+      // Clear the detail view
+      const detailEl = this.container?.querySelector('.yaml-map-detail');
+      if (detailEl) {
+        detailEl.innerHTML = '';
+      }
+      
+      // Define the onClose handler to restore the viewer when editor is closed
+      const onEditorClose = (savedMap) => {
+        console.log('YAML editor closed');
+        if (savedMap && mapId) {
+          // If a map was saved, update our local copy
+          const index = this.yamlMaps.findIndex(m => m._id === mapId);
+          if (index !== -1) {
+            this.yamlMaps[index] = savedMap;
+          }
+          // Show the updated map in the viewer
+          this.selectMap(mapId);
+        } else if (mapId) {
+          // If no changes were saved but we were editing an existing map, show it in the viewer
+          this.selectMap(mapId);
+        }
+      };
+      
       // First try directly with the imported YamlMapEditor
       if (typeof YamlMapEditor !== 'undefined') {
         console.log('Using global YamlMapEditor.open()');
-        const editor = YamlMapEditor.open(mapId);
+        const editor = YamlMapEditor.open(mapId, { onClose: onEditorClose });
         if (!editor) {
           throw new Error('Failed to initialize editor');
         }
@@ -377,7 +403,7 @@ class YamlMaps {
           
         if (EditorComponent && typeof EditorComponent.open === 'function') {
           console.log('Using found YamlMapEditor component');
-          const editor = EditorComponent.open(mapId);
+          const editor = EditorComponent.open(mapId, { onClose: onEditorClose });
           if (!editor) {
             throw new Error('Editor initialized but returned null');
           }

@@ -26,13 +26,70 @@ class YamlMapViewer {
   formatYaml(yamlContent) {
     if (!yamlContent) return '';
     
-    return yamlContent
-      .replace(/tasks:/g, '<span style="color: #61affe;">tasks:</span>')
-      .replace(/name:/g, '<span style="color: #f8ac30;">name:</span>')
-      .replace(/flow:/g, '<span style="color: #49cc90;">flow:</span>')
-      .replace(/- ai:/g, '<span style="color: #e83e8c;">- ai:</span>')
-      .replace(/- aiQuery:/g, '<span style="color: #e83e8c;">- aiQuery:</span>')
-      .replace(/- sleep:/g, '<span style="color: #9012fe;">- sleep:</span>');
+    // Split into lines and process each one
+    const lines = yamlContent.split('\n');
+    let inFlowBlock = false;
+    let indentLevel = 0;
+    
+    const processedLines = lines.map(line => {
+      // Handle indentation
+      const match = line.match(/^(\s*)/);
+      const indent = match ? match[1] : '';
+      const content = line.trim();
+      
+      // Determine indentation level (2 spaces per level)
+      const newIndentLevel = Math.floor(indent.length / 2);
+      const isIndentIncrease = newIndentLevel > indentLevel;
+      indentLevel = newIndentLevel;
+      
+      // Skip empty lines
+      if (!content) return line;
+      
+      // Highlight YAML keys
+      let highlighted = line;
+      
+      // Highlight YAML keys (words followed by colon not in strings)
+      highlighted = highlighted.replace(/(^|\s)([a-zA-Z0-9_-]+):/g, 
+        (match, space, key) => `${space}<span class="yaml-key">${key}</span>:`);
+      
+      // Highlight YAML list items
+      highlighted = highlighted.replace(/^(\s*)-(?=\s|$)/gm, 
+        '<span class="yaml-list">$1-</span>');
+      
+      // Highlight strings (quoted and unquoted values)
+      highlighted = highlighted.replace(/:\s*(['"]?)([^'"\n{}:]+?)(['"]?)(?=\s*$|\s*#|\s*\n|\s*\{)/g, 
+        (match, openQuote, value, closeQuote) => {
+          if (value.trim()) {
+            return `: ${openQuote}<span class="yaml-value">${value}</span>${closeQuote}`;
+          }
+          return match;
+        });
+      
+      // Highlight numbers
+      highlighted = highlighted.replace(/:\s*(\d+)(?=\s*$|\s*#|\s*\n)/g, 
+        ': <span class="yaml-number">$1</span>');
+      
+      // Highlight booleans and null
+      highlighted = highlighted.replace(/:\s*(true|false|null)(?=\s*$|\s*#|\s*\n)/gi, 
+        (match, value) => `: <span class="yaml-boolean">${value}</span>`);
+      
+      // Special handling for flow blocks
+      if (content.includes('flow:')) {
+        inFlowBlock = true;
+      } else if (content === '') {
+        inFlowBlock = false;
+      }
+      
+      // Add line number
+      const lineNumber = lines.indexOf(line) + 1;
+      return `<div class="yaml-line">
+        <span class="yaml-line-number">${lineNumber}</span>
+        <span class="yaml-content">${highlighted}</span>
+      </div>`;
+    });
+    
+    // Wrap in a code block with proper classes
+    return `<div class="yaml-code-block">${processedLines.join('\n')}</div>`;
   }
 
   // Handle using the YAML map

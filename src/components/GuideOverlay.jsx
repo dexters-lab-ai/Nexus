@@ -661,33 +661,43 @@ tasks:
       </div>
       
       <div class="guide-section">
-        <h3>Export and Sharing</h3>
-        <p>Share your O.P.E.R.A.T.O.R results and task outputs in various formats:</p>
+        <h3>Reports & Sharing</h3>
+        <p>O.P.E.R.A.T.O.R generates detailed reports for every automation task, allowing you to review, analyze, and share the results.</p>
         
         <div class="export-options-grid">
           <div class="export-option">
-            <i class="fas fa-file-pdf"></i>
-            <h4>PDF Reports</h4>
-            <p>Export comprehensive reports with all task details, steps, and results.</p>
+            <i class="fas fa-file-alt"></i>
+            <h4>Landing Report</h4>
+            <p>A concise summary of your automation task with key screenshots from each step. Includes a link to the full Nexus Report for detailed analysis.</p>
           </div>
           <div class="export-option">
             <i class="fas fa-file-code"></i>
-            <h4>Code Files</h4>
-            <p>Extract and save generated code with proper formatting and syntax highlighting.</p>
+            <h4>Nexus Report</h4>
+            <p>A comprehensive replay of the entire automation process, generated in real-time by the Agent. Shows the complete decision-making process and actions taken.</p>
           </div>
           <div class="export-option">
-            <i class="fas fa-file-alt"></i>
-            <h4>Text Content</h4>
-            <p>Copy or export text content for use in other applications.</p>
+            <i class="fas fa-download"></i>
+            <h4>Offline Access</h4>
+            <p>Both report types can be downloaded as self-contained HTML files, allowing you to replay and analyze the automation on any device without an internet connection.</p>
           </div>
           <div class="export-option">
-            <i class="fas fa-share-alt"></i>
-            <h4>Direct Sharing</h4>
-            <p>Share task results via email or direct links to collaborative workspaces.</p>
+            <i class="fas fa-share-nodes"></i>
+            <h4>YAML Maps</h4>
+            <p>Share your automation workflows with the community as YAML files. Explore and reuse maps created by other users in the shared library.</p>
           </div>
         </div>
         
-        <p class="note"><i class="fas fa-info-circle"></i> Access export options from the task menu in the Message Timeline or from detailed views in the History section.</p>
+        <div class="guide-subsection" style="margin-top: 20px;">
+          <h4>Sharing YAML Maps</h4>
+          <p>Create and share your automation workflows with the O.P.E.R.A.T.O.R community:</p>
+          <ol>
+            <li>After completing a successful automation, save it as a YAML map from the task menu</li>
+            <li>Add a clear name, description, and tags to help others find your map</li>
+            <li>Share your map with the community via the sidebar's shared library</li>
+            <li>Browse and import maps shared by other users to speed up your workflow</li>
+          </ol>
+          <p class="note"><i class="fas fa-info-circle"></i> All reports include interactive elements that let you replay the automation steps and examine the Agent's decision-making process.</p>
+        </div>
       </div>
     `;
     
@@ -702,6 +712,22 @@ tasks:
     tab.innerHTML = `
       <div class="guide-section">
         <h3>Android Device Connections</h3>
+        <div class="device-connection-notice">
+          <div class="notice-header">
+            <i class="fas fa-rocket"></i>
+            <span>For Best Results</span>
+          </div>
+          <div class="notice-content">
+            <strong>Local Fullstack App Required</strong>
+            <p>To see the browser in real-time controlled by the AI Agent and to control Android devices via USB or Network connection, please download and run the fullstack app locally.</p>
+            <ol>
+              <li>Download the fullstack app from the sidebar link</li>
+              <li>Install Node.js 18 or later</li>
+              <li>Run <code>npm install</code> to install dependencies</li>
+              <li>Start the app with <code>npm run dev</code></li>
+            </ol>
+          </div>
+        </div>
         <p>Connect and automate Android devices with O.P.E.R.A.T.O.R's powerful device management features. Choose the connection method that best fits your needs.</p>
         
         <div class="connection-options">
@@ -779,6 +805,16 @@ tasks:
       </div>
       
       <div class="guide-section connection-details" id="network-details">
+        <div class="device-connection-notice warning" style="margin-top: 20px;">
+          <div class="notice-header">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span>Docker Limitation</span>
+          </div>
+          <div class="notice-content">
+            <p>When running in a Docker container, network ADB connections may not work due to network namespace isolation.</p>
+            <p><strong>Recommendation:</strong> For development and testing, run the app directly on your host machine.</p>
+          </div>
+        </div>
         <h4><i class="fas fa-wifi"></i> Network Connection Setup</h4>
         <div class="setup-steps">
           <div class="setup-step">
