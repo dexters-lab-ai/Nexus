@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import '../../styles/components/yaml-map-viewer.css';
 
 /**
  * YAML Map Viewer Component
@@ -44,30 +45,84 @@ const YamlMapViewer = ({
       });
       
       // Attach to input for execution
-      if (onAttach) onAttach();
+      if (onAttach && typeof onAttach === 'function') {
+        onAttach(yamlMap);
+      }
       
       // Close the viewer
       if (onClose) onClose();
     } catch (error) {
       console.error('Error using YAML map:', error);
-      alert(`Error: ${error.message}`);
+      const errorMsg = error.message || 'Failed to use YAML map';
+      if (window.showNotification) {
+        window.showNotification(`Error: ${errorMsg}`, 'error');
+      } else {
+        alert(`Error: ${errorMsg}`);
+      }
     } finally {
       setIsExecuting(false);
     }
   };
 
+  // Handle attaching to command center
+  const handleAttachToCommandCenter = async () => {
+    console.log('Attaching YAML map to Command Center:', yamlMap._id);
+    try {
+      // Track usage
+      await fetch(`/api/yaml-maps/${yamlMap._id}/use`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+      
+      // Use the callback to attach
+      if (onAttach && typeof onAttach === 'function') {
+        onAttach(yamlMap);
+        console.log('onAttach callback executed');
+      }
+      
+      // Emit the yaml-map-attached event
+      if (window.eventBus) {
+        window.eventBus.emit('yaml-map-attached', { mapId: yamlMap._id, yamlMap });
+        console.log('yaml-map-attached event emitted');
+      }
+      
+      // Show success message
+      if (window.showNotification) {
+        window.showNotification('YAML Map attached to Command Center!', 'success');
+      } else {
+        alert('YAML Map attached to Command Center!');
+      }
+      
+      // Close the viewer
+      if (onClose) onClose();
+    } catch (error) {
+      console.error('Error attaching YAML map:', error);
+      const errorMsg = error.message || 'Failed to attach YAML map';
+      if (window.showNotification) {
+        window.showNotification(`Error: ${errorMsg}`, 'error');
+      } else {
+        alert(`Error: ${errorMsg}`);
+      }
+    }
+  };
+
   return (
-    <div className={`yaml-map-detail ${isFullscreen ? 'fullscreen' : ''}`}>
-      <div className="yaml-map-detail-header">
-        <div className="yaml-map-detail-title">
-          <h3>{yamlMap.name}</h3>
-          <div className="yaml-map-detail-meta">
-            <span>
-              Updated: {new Date(yamlMap.updatedAt).toLocaleDateString()} | 
-              {yamlMap.isPublic ? ' Public' : ' Private'} |
-              {yamlMap.usageCount !== undefined ? ` Used ${yamlMap.usageCount} times` : ''}
-            </span>
+    <div className="yaml-viewer-modal-overlay" onClick={onClose}>
+      <div className={`yaml-map-detail ${isFullscreen ? 'fullscreen' : ''}`} onClick={e => e.stopPropagation()}>
+        <div className="yaml-map-detail-header">
+          <div className="yaml-map-detail-title">
+            <h3>{yamlMap.name}</h3>
+            <div className="yaml-map-detail-meta">
+              <span>
+                Updated: {new Date(yamlMap.updatedAt).toLocaleDateString()} | 
+                {yamlMap.isPublic ? ' Public' : ' Private'} |
+                {yamlMap.usageCount !== undefined ? ` Used ${yamlMap.usageCount} times` : ''}
+              </span>
+            </div>
           </div>
+          <button className="yaml-viewer-close" onClick={onClose}>
+            <i className="fas fa-times"></i>
+          </button>
         </div>
         <div className="yaml-map-actions">
           <button 
@@ -90,34 +145,7 @@ const YamlMapViewer = ({
           
           <button 
             className="btn-outline attach-btn command-center-btn"
-            onClick={() => {
-              console.log('Attaching YAML map to Command Center:', yamlMap._id);
-              try {
-                // Track usage
-                fetch(`/api/yaml-maps/${yamlMap._id}/use`, {
-                  method: 'POST',
-                  credentials: 'include'
-                }).catch(err => console.error('Error tracking YAML map usage:', err));
-                
-                // Use the callback to attach
-                if (onAttach) {
-                  onAttach();
-                  console.log('onAttach callback executed');
-                }
-                
-                // Emit the yaml-map-attached event
-                if (window.eventBus) {
-                  window.eventBus.emit('yaml-map-attached', { mapId: yamlMap._id });
-                  console.log('yaml-map-attached event emitted');
-                }
-                
-                // Show toast notification
-                alert('YAML Map attached to Command Center!');
-              } catch (error) {
-                console.error('Error attaching YAML map:', error);
-                alert(`Error: ${error.message}`);
-              }
-            }}
+            onClick={handleAttachToCommandCenter}
           >
             <i className="fas fa-paperclip"></i>
             Attach to Command Center

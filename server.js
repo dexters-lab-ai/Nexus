@@ -3928,9 +3928,10 @@ async function updateTaskInDatabase(taskId, updates) {
  * @param {string} originalPrompt - Original user prompt
  * @param {string} runDir - Run directory
  * @param {string} runId - Run ID
+ * @param {Object} [taskPlan] - Optional TaskPlan instance for additional context
  * @returns {Object} - Final result
  */
-async function processTaskCompletion(userId, taskId, intermediateResults, originalPrompt, runDir, runId) {
+async function processTaskCompletion(userId, taskId, intermediateResults, originalPrompt, runDir, runId, taskPlan) {
   console.log(`[TaskCompletion] Processing completion for task ${taskId}`);
   try {
     let finalScreenshot = null;
@@ -3986,8 +3987,22 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
     }
     
     // 3. Now generate the landing report with the URLs from the midscene report
-    // rawReport was extracted from the planLogs - old implementation code lost for noe
     console.log(`[TaskCompletion] Generating landing report with URLs:`, nexusReportUrl, reportRawUrl);
+    
+    // Prepare plan logs for the report if taskPlan is provided
+    const planLogs = taskPlan && taskPlan.planLog ? taskPlan.planLog : [];
+    
+    // Create a sanitized version of taskPlan without extractedInfo
+    let sanitizedTaskPlan = null;
+    if (taskPlan) {
+      // Create a shallow copy of the taskPlan
+      sanitizedTaskPlan = { ...taskPlan };
+      // Remove extractedInfo and other potentially sensitive data
+      delete sanitizedTaskPlan.extractedInfo;
+      delete sanitizedTaskPlan.userOpenaiKey;
+      delete sanitizedTaskPlan.browserSession;
+    }
+    
     const reportResult = await generateReport(
       originalPrompt,
       intermediateResults,
@@ -3995,7 +4010,9 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
       runId,
       REPORT_DIR,
       nexusReportUrl,
-      reportRawUrl
+      reportRawUrl,
+      planLogs,  // Pass plan logs to the report generator
+      sanitizedTaskPlan  // Pass sanitized task plan data
     );
     
     // 4. Extract the report path
@@ -7309,7 +7326,8 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
                         plan.steps.map(step => step.result || { success: false }),
                         prompt,
                         runDir,
-                        runId
+                        runId,
+                        plan
                       );
                       
                       // Set the maxStepsReached flag for client awareness
@@ -7408,7 +7426,8 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
                       plan.steps.map(step => step.result || { success: false }),
                       prompt,
                       runDir,
-                      runId
+                      runId,
+                      plan
                     );
                     const finalExtracted = (finalResult.raw && finalResult.raw.pageText && 
                                             cleanForPrompt(finalResult.raw.pageText).length > 0)
@@ -7567,7 +7586,8 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
         plan.steps.map(step => step.result || { success: false }),
         prompt,
         runDir,
-        runId
+        runId,
+        plan  // Pass the full task plan for detailed reporting
       );
       
       await Task.updateOne(

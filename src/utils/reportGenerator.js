@@ -517,7 +517,80 @@ function convertToWebPath(filePath, runId) {
   return filePath;
 }
 
-export async function generateReport(prompt, results, screenshotPath, runId, reportDir, nexusReportUrl = null, rawReportUrl = null) {
+/**
+ * Render a task plan object as HTML
+ * @param {Object} taskPlan - The task plan object to render
+ * @returns {string} - HTML string representing the task plan
+ */
+function renderTaskPlan(taskPlan) {
+  if (!taskPlan) return '';
+  
+  try {
+    // Handle different formats of task plan
+    const planData = taskPlan.plan || taskPlan.steps || [];
+    
+    if (!Array.isArray(planData) || planData.length === 0) {
+      return '<p>No task plan data available.</p>';
+    }
+    
+    // Create a simple list of steps
+    const stepsHtml = planData.map((step, index) => {
+      const stepNumber = index + 1;
+      const instruction = step.instruction || step.description || 'No description';
+      const status = step.status || 'pending';
+      const statusClass = status.toLowerCase();
+      
+      return `
+        <div class="task-plan-step ${statusClass}">
+          <div class="step-header">
+            <span class="step-number">${stepNumber}.</span>
+            <span class="step-status ${statusClass}">${status}</span>
+          </div>
+          <div class="step-instruction">${instruction}</div>
+          ${step.result ? `<div class="step-result">${JSON.stringify(step.result, null, 2)}</div>` : ''}
+          ${step.error ? `<div class="step-error">Error: ${step.error.message || 'Unknown error'}</div>` : ''}
+        </div>
+      `;
+    }).join('\n');
+    
+    return `
+      <div class="task-plan-container">
+        <div class="task-plan-steps">
+          ${stepsHtml}
+        </div>
+      </div>
+    `;
+  } catch (error) {
+    console.error('Error rendering task plan:', error);
+    return '<p>Error rendering task plan. See console for details.</p>';
+  }
+}
+
+/**
+ * Generate a comprehensive HTML report for a completed task
+ * 
+ * @param {string} prompt - The user's original prompt/command
+ * @param {Array} results - Array of intermediate results from task execution
+ * @param {string} screenshotPath - Path to the final screenshot
+ * @param {string} runId - Unique identifier for this task run
+ * @param {string} reportDir - Directory to save the report
+ * @param {string} [nexusReportUrl=null] - URL to the detailed nexus report
+ * @param {string} [rawReportUrl=null] - URL to the raw report
+ * @param {Array} [planLogs=[]] - Array of execution logs from the TaskPlan
+ * @param {Object} [taskPlan=null] - The TaskPlan object (sanitized)
+ * @returns {string} - Path to the generated report file
+ */
+export async function generateReport(
+  prompt, 
+  results, 
+  screenshotPath, 
+  runId, 
+  reportDir, 
+  nexusReportUrl = null, 
+  rawReportUrl = null,
+  planLogs = [],
+  taskPlan = null
+) {
   
   // Process any base64 screenshots in results to save them as files
   if (Array.isArray(results)) {
@@ -1004,6 +1077,86 @@ export async function generateReport(prompt, results, screenshotPath, runId, rep
       border: 1px solid var(--border);
     }
   </style>
+  <script>
+    function renderTaskPlan(plan) {
+      if (!plan) return '';
+      
+      // Handle different plan formats
+      const steps = plan.steps || (Array.isArray(plan) ? plan : []);
+      
+      if (steps.length === 0) {
+        return '<p>No task plan steps available.</p>';
+      }
+      
+      let tableRows = '';
+      steps.forEach(function(step, index) {
+        const status = step.status || 'pending';
+        const statusClass = 'status-' + status;
+        const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+        const action = step.action ? String(step.action).replace(/</g, '&lt;').replace(/>/g, '&gt;') : 'N/A';
+        const details = step.details ? String(step.details).replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+        
+        tableRows += '\n          <tr>\n            <td>' + (index + 1) + '</td>\n' +
+            '            <td>' + action + '</td>\n' +
+            '            <td><span class="status-badge ' + statusClass + '">' + statusLabel + '</span></td>\n' +
+            '            <td>' + details + '</td>\n' +
+            '          </tr>';
+      });
+      
+      return '\n        <table class="task-plan">\n          <thead>\n            <tr>\n              <th>Step</th>\n              <th>Action</th>\n              <th>Status</th>\n              <th>Details</th>\n            </tr>\n          </thead>\n          <tbody>' + tableRows + '\n          </tbody>\n        </table>';
+    }
+    
+    function formatLogEntry(log) {
+      if (typeof log === 'string') return log;
+      
+      try {
+        if (log instanceof Error) {
+          return '[ERROR] ' + (log.message || '') + '\n' + (log.stack || '');
+        }
+        
+        if (typeof log === 'object' && log !== null) {
+          // Handle common log formats
+          if (log.timestamp && log.level && log.message) {
+            const timestamp = new Date(log.timestamp).toISOString();
+            return '[' + timestamp + '] [' + String(log.level).toUpperCase() + '] ' + log.message;
+          }
+          
+          // Fallback to JSON stringify
+          try {
+            return JSON.stringify(log, null, 2);
+          } catch (e) {
+            return String(log);
+          }
+        }
+        
+        return String(log);
+      } catch (e) {
+        return 'Error formatting log entry';
+      }
+    }
+    
+    // Copy logs to clipboard
+    document.addEventListener('DOMContentLoaded', () => {
+      const copyButton = document.querySelector('.copy-logs');
+      if (copyButton) {
+        copyButton.addEventListener('click', () => {
+          const logs = Array.from(document.querySelectorAll('.log-entry'))
+            .map(el => el.textContent)
+            .join('\n');
+          
+          navigator.clipboard.writeText(logs).then(() => {
+            const originalText = copyButton.textContent;
+            copyButton.textContent = 'Copied!';
+            setTimeout(() => {
+              copyButton.textContent = originalText;
+            }, 2000);
+          }).catch(err => {
+            console.error('Failed to copy logs:', err);
+          });
+        });
+      }
+    });
+  </script>
 </head>
 <body>
   <div class="container">
@@ -1029,13 +1182,41 @@ export async function generateReport(prompt, results, screenshotPath, runId, rep
       </div>
     </div>
     <div class="content">
-      <h2>Task Details</h2>
-      <div class="detail-content">
-        <p><strong>Command:</strong> ${prompt}</p>
-        <p><strong>Run ID:</strong> ${runId}</p>
-        <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+      <div class="report-header">
+        <div class="header-content">
+          <h1>Task Execution Report</h1>
+          <div class="task-meta">
+            <div class="meta-item">
+              <span class="meta-label">Run ID:</span>
+              <span class="meta-value">${runId}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Timestamp:</span>
+              <span class="meta-value">${new Date().toISOString()}</span>
+            </div>
+          </div>
+        </div>
       </div>
-      <h2>Execution Results</h2>
+
+      <div class="section">
+        <h2>Task Details</h2>
+        <div class="card">
+          <div class="command">
+            <span class="label">Command:</span>
+            <pre>${prompt}</pre>
+          </div>
+        </div>
+      </div>
+
+      ${taskPlan ? '\n      <div class="section">\n        <h2>Task Plan</h2>\n        <div class="card">\n          ' + renderTaskPlan(taskPlan) + '\n        </div>\n      </div>' : ''}
+
+      ${planLogs && planLogs.length > 0 ? '\n      <div class="section">\n        <h2>Execution Logs</h2>\n        <div class="card logs-container">\n          <div class="logs-header">\n            <span>' + planLogs.length + ' log entries</span>\n            <button class="copy-logs">Copy Logs</button>\n          </div>\n          <div class="logs-content">\n            ' + planLogs.map(function(log) {
+              const formattedLog = formatLogEntry(log);
+              return '<div class="log-entry">' + formattedLog.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+            }).join('') + '\n          </div>\n        </div>\n      </div>' : ''}
+
+      <div class="section">
+        <h2>Execution Results</h2>
       ${results.slice(0, 10).map((result, i) => {
         if (result.error) {
           return `

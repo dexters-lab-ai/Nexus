@@ -4,6 +4,7 @@ import Button from './base/Button.jsx';
 import { eventBus } from '../utils/events.js';
 import { stores } from '../store/index.js';
 import YamlMapEditor from './YamlMapEditor.js';
+import YamlMapViewer from './YamlMapViewer.js';
 import api from '../utils/api.js';
 
 // Prevent auto-execution of YamlMaps.js
@@ -1438,6 +1439,31 @@ export default function Sidebar(props = {}) {
                     item.style.alignItems = 'center';
                     item.style.justifyContent = 'space-between';
                     
+                    // Add click handler for the edit button
+                    const yamlEditButton = item.querySelector('.yaml-edit-btn');
+                    if (yamlEditButton) {
+                      yamlEditButton.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log(`[Sidebar] Edit button clicked for map ID: ${map._id}`);
+                        
+                        try {
+                          if (window.YamlMapEditor && typeof window.YamlMapEditor.open === 'function') {
+                            console.log('[Sidebar] Opening editor with YamlMapEditor.open');
+                            window.YamlMapEditor.open(map._id);
+                          } else if (typeof window.editYamlMap === 'function') {
+                            console.log('[Sidebar] Opening editor with window.editYamlMap');
+                            window.editYamlMap(map._id);
+                          } else {
+                            throw new Error('No editor function found');
+                          }
+                        } catch (error) {
+                          console.error('[Sidebar] Error opening editor:', error);
+                          showNotification('Error: Could not open YAML editor', 'error');
+                        }
+                      });
+                    }
+                    
                     // Add click handler to view the map (only for the content part)
                     const contentPart = item.querySelector('.yaml-map-content');
                     if (contentPart) {
@@ -1449,44 +1475,195 @@ export default function Sidebar(props = {}) {
                         
                         try {
                           if (isYamlTab) {
-                            // In YAML tab, open the editor
-                            if (window.YamlMapEditor && typeof window.YamlMapEditor.open === 'function') {
-                              console.log('[Sidebar] Opening editor with YamlMapEditor.open');
-                              window.YamlMapEditor.open(map._id);
-                            } else if (typeof window.viewYamlMap === 'function') {
-                              console.log('[Sidebar] Opening editor with window.viewYamlMap');
-                              window.viewYamlMap(map._id);
-                            } else if (typeof viewYamlMap === 'function') {
-                              console.log('[Sidebar] Opening editor with local viewYamlMap');
-                              viewYamlMap(map._id);
-                            } else {
-                              throw new Error('No editor function found');
+                            // In YAML tab, show the viewer by default
+                            try {
+                              // Create a container for the viewer if it doesn't exist
+                              let viewerContainer = document.getElementById('yaml-map-viewer-container');
+                              if (!viewerContainer) {
+                                viewerContainer = document.createElement('div');
+                                viewerContainer.id = 'yaml-map-viewer-container';
+                                viewerContainer.style.position = 'fixed';
+                                viewerContainer.style.top = '0';
+                                viewerContainer.style.left = '0';
+                                viewerContainer.style.width = '100%';
+                                viewerContainer.style.height = '100%';
+                                viewerContainer.style.zIndex = '1000';
+                                viewerContainer.style.display = 'flex';
+                                viewerContainer.style.justifyContent = 'center';
+                                viewerContainer.style.alignItems = 'center';
+                                viewerContainer.style.padding = '2rem';
+                                viewerContainer.style.boxSizing = 'border-box';
+                                viewerContainer.style.background = 'rgba(15, 15, 25, 0.7)';
+                                viewerContainer.style.backdropFilter = 'blur(12px) saturate(180%)';
+                                viewerContainer.style.WebkitBackdropFilter = 'blur(12px) saturate(180%)';
+                                
+                                // Add close button
+                                const closeButton = document.createElement('button');
+                                closeButton.innerHTML = '<i class="fas fa-times"></i>';
+                                closeButton.style.position = 'absolute';
+                                closeButton.style.top = '20px';
+                                closeButton.style.right = '20px';
+                                closeButton.style.background = 'rgba(255, 255, 255, 0.1)';
+                                closeButton.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+                                closeButton.style.borderRadius = '50%';
+                                closeButton.style.width = '40px';
+                                closeButton.style.height = '40px';
+                                closeButton.style.display = 'flex';
+                                closeButton.style.alignItems = 'center';
+                                closeButton.style.justifyContent = 'center';
+                                closeButton.style.color = '#fff';
+                                closeButton.style.cursor = 'pointer';
+                                closeButton.style.zIndex = '1001';
+                                closeButton.style.transition = 'all 0.2s ease';
+                                closeButton.style.fontSize = '1.2rem';
+                                closeButton.style.outline = 'none';
+                                
+                                closeButton.addEventListener('mouseover', () => {
+                                  closeButton.style.background = 'rgba(255, 255, 255, 0.2)';
+                                  closeButton.style.transform = 'rotate(90deg)';
+                                });
+                                
+                                closeButton.addEventListener('mouseout', () => {
+                                  closeButton.style.background = 'rgba(255, 255, 255, 0.1)';
+                                  closeButton.style.transform = 'rotate(0deg)';
+                                });
+                                
+                                closeButton.addEventListener('click', (e) => {
+                                  e.stopPropagation();
+                                  if (viewerContainer && viewerContainer.parentNode) {
+                                    viewerContainer.parentNode.removeChild(viewerContainer);
+                                  }
+                                });
+                                
+                                viewerContainer.appendChild(closeButton);
+                                document.body.appendChild(viewerContainer);
+                              }
+                              
+                              // Create and show the viewer
+                              const viewer = new YamlMapViewer({
+                                yamlMap: map,
+                                container: viewerContainer,
+                                onClose: () => {
+                                  if (viewerContainer && viewerContainer.parentNode) {
+                                    viewerContainer.style.opacity = '0';
+                                    viewerContainer.style.transform = 'translateY(20px)';
+                                    setTimeout(() => {
+                                      if (viewerContainer && viewerContainer.parentNode) {
+                                        viewerContainer.parentNode.removeChild(viewerContainer);
+                                      }
+                                    }, 200);
+                                  }
+                                },
+                                onEdit: () => {
+                                  if (window.YamlMapEditor && typeof window.YamlMapEditor.open === 'function') {
+                                    window.YamlMapEditor.open(map._id);
+                                  }
+                                },
+                                onDelete: () => {
+                                  // Handle delete if needed
+                                  console.log('Delete map:', map._id);
+                                }
+                              });
+                              
+                              viewer.render();
+                              console.log('[Sidebar] YAML viewer opened for map ID:', map._id);
+                            } catch (error) {
+                              console.error('[Sidebar] Error opening YAML viewer:', error);
+                              showNotification('Error: Could not open YAML viewer', 'error');
                             }
                           } else {
-                            // In Live tab, open the viewer
+                            // In Live tab, use the same viewer as YAML tab
                             try {
-                              // Try to use the yaml-map-integration's showYamlMapViewer first
-                              if (window.showYamlMapViewer) {
-                                console.log('[Sidebar] Opening viewer with showYamlMapViewer');
-                                window.showYamlMapViewer(map._id);
-                              } 
-                              // Fall back to YamlMapViewer.open if available
-                              else if (window.YamlMapViewer && typeof window.YamlMapViewer.open === 'function') {
-                                console.log('[Sidebar] Opening viewer with YamlMapViewer.open');
-                                window.YamlMapViewer.open(map._id);
-                              } 
-                              // Fall back to viewYamlMap if available
-                              else if (window.viewYamlMap) {
-                                console.log('[Sidebar] Opening viewer with window.viewYamlMap');
-                                window.viewYamlMap(map._id, { readOnly: true });
-                              } 
-                              // Last resort: use the editor in read-only mode if possible
-                              else if (window.YamlMapEditor && typeof window.YamlMapEditor.open === 'function') {
-                                console.log('[Sidebar] Opening viewer with YamlMapEditor in read-only mode');
-                                window.YamlMapEditor.open(map._id, { readOnly: true });
-                              } else {
-                                throw new Error('No viewer function found');
+                              // Create a container for the viewer if it doesn't exist
+                              let viewerContainer = document.getElementById('yaml-map-viewer-container');
+                              if (!viewerContainer) {
+                                viewerContainer = document.createElement('div');
+                                viewerContainer.id = 'yaml-map-viewer-container';
+                                viewerContainer.style.position = 'fixed';
+                                viewerContainer.style.top = '0';
+                                viewerContainer.style.left = '0';
+                                viewerContainer.style.width = '100%';
+                                viewerContainer.style.height = '100%';
+                                viewerContainer.style.zIndex = '1000';
+                                viewerContainer.style.display = 'flex';
+                                viewerContainer.style.justifyContent = 'center';
+                                viewerContainer.style.alignItems = 'center';
+                                viewerContainer.style.padding = '2rem';
+                                viewerContainer.style.boxSizing = 'border-box';
+                                viewerContainer.style.background = 'rgba(15, 15, 25, 0.7)';
+                                viewerContainer.style.backdropFilter = 'blur(12px) saturate(180%)';
+                                viewerContainer.style.WebkitBackdropFilter = 'blur(12px) saturate(180%)';
+                                
+                                // Add close button
+                                const closeButton = document.createElement('button');
+                                closeButton.innerHTML = '<i class="fas fa-times"></i>';
+                                closeButton.style.position = 'absolute';
+                                closeButton.style.top = '20px';
+                                closeButton.style.right = '20px';
+                                closeButton.style.background = 'rgba(255, 255, 255, 0.1)';
+                                closeButton.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+                                closeButton.style.borderRadius = '50%';
+                                closeButton.style.width = '40px';
+                                closeButton.style.height = '40px';
+                                closeButton.style.display = 'flex';
+                                closeButton.style.alignItems = 'center';
+                                closeButton.style.justifyContent = 'center';
+                                closeButton.style.color = '#fff';
+                                closeButton.style.cursor = 'pointer';
+                                closeButton.style.zIndex = '1001';
+                                closeButton.style.transition = 'all 0.2s ease';
+                                closeButton.style.fontSize = '1.2rem';
+                                closeButton.style.outline = 'none';
+                                
+                                closeButton.addEventListener('mouseover', () => {
+                                  closeButton.style.background = 'rgba(255, 255, 255, 0.2)';
+                                  closeButton.style.transform = 'rotate(90deg)';
+                                });
+                                
+                                closeButton.addEventListener('mouseout', () => {
+                                  closeButton.style.background = 'rgba(255, 255, 255, 0.1)';
+                                  closeButton.style.transform = 'rotate(0deg)';
+                                });
+                                
+                                closeButton.addEventListener('click', (e) => {
+                                  e.stopPropagation();
+                                  if (viewerContainer && viewerContainer.parentNode) {
+                                    viewerContainer.parentNode.removeChild(viewerContainer);
+                                  }
+                                });
+                                
+                                viewerContainer.appendChild(closeButton);
+                                document.body.appendChild(viewerContainer);
                               }
+                              
+                              // Create and show the viewer
+                              const viewer = new YamlMapViewer({
+                                yamlMap: map,
+                                container: viewerContainer,
+                                onClose: () => {
+                                  if (viewerContainer && viewerContainer.parentNode) {
+                                    viewerContainer.style.opacity = '0';
+                                    viewerContainer.style.transform = 'translateY(20px)';
+                                    setTimeout(() => {
+                                      if (viewerContainer && viewerContainer.parentNode) {
+                                        viewerContainer.parentNode.removeChild(viewerContainer);
+                                      }
+                                    }, 200);
+                                  }
+                                },
+                                onEdit: () => {
+                                  if (window.YamlMapEditor && typeof window.YamlMapEditor.open === 'function') {
+                                    window.YamlMapEditor.open(map._id);
+                                  }
+                                },
+                                onDelete: () => {
+                                  // Handle delete if needed
+                                  console.log('Delete map:', map._id);
+                                }
+                              });
+                              
+                              viewer.render();
+                              console.log('[Sidebar] YAML viewer opened for map ID (Live tab):', map._id);
                             } catch (error) {
                               console.error('[Sidebar] Error opening viewer:', error);
                               showNotification('Error: Could not open YAML viewer', 'error');
@@ -1848,15 +2025,22 @@ export default function Sidebar(props = {}) {
   const viewYamlMap = (mapId) => {
     console.log('Direct YAML map view function called for map:', mapId);
     
-    // First try to use the YamlMapEditor component if available
+    // First try to use the YamlMapViewer component if available
     try {
+      if (window.YamlMapViewer && typeof window.YamlMapViewer.open === 'function') {
+        console.log('YamlMapViewer is defined, calling open()');
+        window.YamlMapViewer.open(mapId);
+        return;
+      }
+      
+      // Fallback to YamlMapEditor if viewer is not available (for backward compatibility)
       if (typeof YamlMapEditor !== 'undefined') {
-        console.log('YamlMapEditor is defined, calling open()');
+        console.log('YamlMapViewer not found, falling back to YamlMapEditor');
         YamlMapEditor.open(mapId);
         return;
       }
     } catch (error) {
-      console.error('Error opening YAML editor:', error);
+      console.error('Error opening YAML viewer/editor:', error);
     }
     
     // First emit the event for compatibility with other components

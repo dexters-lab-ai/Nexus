@@ -94,6 +94,7 @@ class YamlMapViewer {
 
   // Handle using the YAML map
   async handleUseMap() {
+    if (this.isExecuting) return;
     this.setIsExecuting(true);
     
     try {
@@ -103,11 +104,28 @@ class YamlMapViewer {
         credentials: 'include'
       });
       
-      // Attach to input for execution
-      if (this.onAttach) this.onAttach();
-      
-      // Close the viewer
-      if (this.onClose) this.onClose();
+      // Find the command input using the correct selector
+      const commandInput = document.querySelector('#unified-input');
+      if (commandInput) {
+        // Set the command input value to the YAML map command
+        commandInput.value = `/yaml ${this.yamlMap._id}`;
+        
+        // Trigger input event to update any listeners
+        const event = new Event('input', { bubbles: true });
+        commandInput.dispatchEvent(event);
+        
+        // Focus the input
+        commandInput.focus();
+        
+        // Close the viewer after a short delay
+        setTimeout(() => {
+          if (this.onClose) this.onClose();
+        }, 300);
+      } else {
+        console.warn('Command input not found, falling back to default behavior');
+        if (this.onAttach) this.onAttach();
+        if (this.onClose) this.onClose();
+      }
     } catch (error) {
       console.error('Error using YAML map:', error);
       alert(`Error: ${error.message}`);
@@ -331,15 +349,15 @@ class YamlMapViewer {
     console.log('[DEBUG-ATTACH] Using mapId:', mapId);
     
     try {
-      // Find the command input directly - exactly like Sidebar.jsx does
-      console.log('[DEBUG-ATTACH] Searching for command input with selector: #command-input, .command-input');
+      // Find the command input using the correct selector
+      console.log('[DEBUG-ATTACH] Searching for command input with selector: #unified-input');
       const allInputs = document.querySelectorAll('input');
       console.log('[DEBUG-ATTACH] All input elements on page:', allInputs.length);
       allInputs.forEach((input, i) => {
         console.log(`[DEBUG-ATTACH] Input #${i}:`, input.id, input.className, input.type);
       });
       
-      const commandInput = document.querySelector('#command-input, .command-input');
+      const commandInput = document.querySelector('#unified-input');
       console.log('[DEBUG-ATTACH] Command input found?', !!commandInput);
       
       if (commandInput) {
