@@ -23,7 +23,7 @@
   bottom: 2rem;
   left: 0;
   width: 100%;
-  max-height: 65vh;
+  max-height: 78vh;
   overflow-y: auto;
   background: rgba(25, 30, 45, 0.85);
   backdrop-filter: blur(12px);
@@ -44,6 +44,12 @@
   animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 -8px 25px rgba(0, 10, 30, 0.35);
   transition: max-height 0.3s ease, transform 0.3s ease;
+}
+
+@media (max-height: 600px) {
+  #intermediate-results-container {
+    max-height: 65vh;
+  }
 }
 
 #intermediate-results-container::-webkit-scrollbar {
@@ -120,7 +126,8 @@
   color: #fff;
   background: rgba(40, 50, 80, 0.5);
   border-radius: 14px;
-  padding: 10px 12px; /* Reduced padding */
+  padding: 0.5em !important; /* Reduced padding */
+  padding-top: 0 !important;
   margin-bottom: 8px; /* Smaller margin */
   font-size: 13px; /* Smaller font */
   line-height: 1.4;
@@ -144,7 +151,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px; /* Reduced margin */
+  margin-top: 0;
+  margin-bottom: 0; /* Reduced margin */
   font-weight: 500;
   padding: 2px 0;
 }
@@ -186,14 +194,15 @@
   -webkit-line-clamp: 3; /* Shows 3 lines of text */
   line-clamp: 3; /* Standard property for compatibility */
   -webkit-box-orient: vertical;
-  font-size: 12px; /* Smaller font */
+  font-size: 10px; /* Smaller font */
+  font-family: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
   color: rgba(255, 255, 255, 0.85);
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5); /* Engraved text effect */
 }
 
 .result-thumbnail {
-  width: 90px; /* Smaller thumbnail */
-  height: 60px;
+  width: 160px; /* Smaller thumbnail */
+  height: 70px;
   border-radius: 6px;
   object-fit: cover;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -202,7 +211,142 @@
 }
 
 .result-thumbnail:hover {
-  transform: scale(1.05);
+  transform: scale(1.2);
+  translate: -20px 0px;
+}
+
+/* Task Plan Container Styling */
+.task-plan-container {
+  font-family: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 10px 0;
+  padding: 0 5px;
+}
+
+.task-plan-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.task-plan-step {
+  background: rgba(30, 35, 45, 0.6);
+  border-radius: 8px;
+  padding: 10px 12px;
+  border-left: 3px solid #4a90e2;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.task-plan-step:hover {
+  background: rgba(40, 45, 60, 0.8);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.step-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.step-number {
+  background: rgba(74, 144, 226, 0.2);
+  color: #4a90e2;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 8px;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.step-status {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 8px;
+  font-weight: 600;
+}
+
+.step-status.completed {
+  background: rgba(46, 204, 113, 0.15);
+  color: #2ecc71;
+}
+
+.step-status.pending {
+  background: rgba(241, 196, 15, 0.15);
+  color: #f1c40f;
+}
+
+.step-status.failed, .step-status.error {
+  background: rgba(231, 76, 60, 0.15);
+  color: #e74c3c;
+}
+
+.step-instruction {
+  color: #e0e0e0;
+  margin: 6px 0 8px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.step-result, .step-error {
+  font-size: 11px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin-top: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-overflow: clip;
+  font-family: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  max-height: 200px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.step-result {
+  color: #a7c1ff;
+  border-left: 2px solid #4a90e2;
+}
+
+.step-error {
+  color: #ff9e9e;
+  border-left: 2px solid #e74c3c;
+  background: rgba(231, 76, 60, 0.1);
+}
+
+.step-separator {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 8px 0;
+}
+
+.truncation-note {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.truncation-note i {
+  color: #4a90e2;
 }
 
 /* Final Result Styling */
