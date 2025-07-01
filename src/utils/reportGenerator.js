@@ -668,7 +668,7 @@ function renderTaskPlan(taskPlan, { maxSteps = 100, maxResultLength = 1000 } = {
         }
         
         .task-plan-step {
-          background: rgba(40, 20, 60, 0.7);
+          background: rgba(19, 7, 30, 0.7);
           border-radius: 0.75rem;
           padding: 1.25rem;
           border-left: 4px solid #7c3aed;
@@ -677,18 +677,18 @@ function renderTaskPlan(taskPlan, { maxSteps = 100, maxResultLength = 1000 } = {
         }
         
         .task-plan-step.completed {
-          border-left-color: #8b5cf6;
+          border-left-color:rgb(92, 246, 177);
           background: rgba(99, 102, 241, 0.15);
         }
         
         .task-plan-step.error {
           border-left-color: #ec4899;
-          background: rgba(236, 72, 153, 0.15);
+          background: rgba(36, 15, 25, 0.15);
         }
         
         .task-plan-step.pending {
-          border-left-color: #a78bfa;
-          background: rgba(167, 139, 250, 0.15);
+          border-left-color:rgb(249, 222, 85);
+          background: rgba(22, 13, 52, 0.15);
         }
         
         .step-header {
