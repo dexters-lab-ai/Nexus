@@ -299,10 +299,11 @@ RUN mkdir -p /tmp/chrome-user-data /tmp/chrome /home/node/.cache/puppeteer/chrom
     && chmod -R 777 /tmp/chrome-user-data /tmp/chrome /home/node/.cache/puppeteer \
     && chown -R node:node /tmp/chrome-user-data /tmp/chrome /home/node/.cache/puppeteer
 
-# Install production dependencies only
+# Copy installed node_modules and package files from builder
 COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/package*.json ./
 
+# Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3420
 ENV NEXUS_RUN_DIR=/usr/src/app/nexus_run
@@ -314,13 +315,6 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
 
 # Ensure the Chrome binary is executable
 RUN chmod +x ${CHROME_BIN} || true
-
-# Install production dependencies
-COPY package*.json ./
-# Clean npm cache and install production deps
-RUN npm cache clean --force && \
-    npm install --omit=dev --legacy-peer-deps && \
-    npm cache clean --force
 
 # Copy built app from builder
 COPY --from=builder /usr/src/app/dist ./dist
