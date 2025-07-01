@@ -334,6 +334,12 @@ COPY --from=builder /usr/src/app/config ./config
 COPY --from=builder /usr/src/app/scripts ./scripts
 COPY --from=builder /usr/src/app/patches ./patches
 
+# Replace pcControl.js with mock version in production
+RUN if [ "$NODE_ENV" = "production" ]; then \
+      cp src/utils/pcControl.mock.js src/utils/pcControl.js; \
+      echo "Using mock PC Control in production"; \
+    fi
+
 # Copy Android SDK from builder stage
 COPY --from=builder /opt/android-sdk /opt/android-sdk
 
