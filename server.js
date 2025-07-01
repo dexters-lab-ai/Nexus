@@ -3662,6 +3662,11 @@ function handleLargeContent(obj) {
 // Track tasks that have already been completed to prevent double-completion
 const completedTasks = new Set();
 
+// Track free tier usage (users without API keys)
+const freeTierUsage = new Map(); // userId -> { count: number, lastReset: Date }
+const MAX_FREE_PROMPTS = 3; // Maximum number of free prompts per user
+const FREE_TIER_RESET_HOURS = 24; // Reset counter after 24 hours
+
 /**
  * Update task in database and notify clients with optimized storage.
  * Saves images to filesystem instead of database and retains only essential data.
@@ -6174,7 +6179,84 @@ async function openaiClassifyPrompt(prompt, userId) {
 // Import YAML map processing utilities
 import { processYamlMapTask, extractYamlMapIdFromPrompt } from './src/utils/yamlProcessor.js';
 
+/**
+ * Check if a user has exceeded their free tier limit
+ * @param {string} userId - User ID to check
+ * @returns {{exceeded: boolean, remaining: number, resetIn: number}} - Usage information
+ */
+function checkFreeTierLimit(userId) {
+  const now = new Date();
+  let usage = freeTierUsage.get(userId) || { count: 0, lastReset: now };
+  
+  // Reset counter if more than 24 hours have passed
+  const hoursSinceReset = (now - usage.lastReset) / (1000 * 60 * 60);
+  if (hoursSinceReset >= FREE_TIER_RESET_HOURS) {
+    usage = { count: 0, lastReset: now };
+    freeTierUsage.set(userId, usage);
+  }
+  
+  const remaining = Math.max(0, MAX_FREE_PROMPTS - usage.count);
+  const resetIn = Math.ceil(FREE_TIER_RESET_HOURS - hoursSinceReset);
+  
+  return {
+    exceeded: usage.count >= MAX_FREE_PROMPTS,
+    remaining,
+    resetIn,
+    total: MAX_FREE_PROMPTS
+  };
+}
+
+/**
+ * Increment the free tier usage counter for a user
+ * @param {string} userId - User ID to increment counter for
+ */
+function incrementFreeTierUsage(userId) {
+  const now = new Date();
+  let usage = freeTierUsage.get(userId) || { count: 0, lastReset: now };
+  
+  // Reset counter if more than 24 hours have passed
+  const hoursSinceReset = (now - usage.lastReset) / (1000 * 60 * 60);
+  if (hoursSinceReset >= FREE_TIER_RESET_HOURS) {
+    usage = { count: 1, lastReset: now };
+  } else {
+    usage.count = (usage.count || 0) + 1;
+  }
+  
+  freeTierUsage.set(userId, usage);
+}
+
 async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url, engine) {
+  // --- Check if user has any API key configured ---
+  const userData = await User.findById(userId).select('apiKeys openaiApiKey');
+  
+  // Check if any API key is configured (either in the new apiKeys object or legacy openaiApiKey)
+  const hasApiKey = userData && (
+    // Check legacy openaiApiKey
+    (userData.openaiApiKey && userData.openaiApiKey.trim() !== '') ||
+    // Check new apiKeys structure
+    (userData.apiKeys && Object.values(userData.apiKeys).some(
+      key => key && typeof key === 'string' && key.trim() !== ''
+    ))
+  );
+  
+  // For users without any API key, enforce rate limiting
+  if (!hasApiKey) {
+    const usage = checkFreeTierLimit(userId);
+    
+    if (usage.exceeded) {
+      throw new Error(
+        `Free tier limit reached (${usage.total} prompts per ${FREE_TIER_RESET_HOURS}h). ` +
+        `Please add an API key in settings to continue. ` +
+        `Next reset in ~${usage.resetIn} hours.`
+      );
+    }
+    
+    // Increment usage counter
+    incrementFreeTierUsage(userId);
+    
+    console.log(`[RateLimit] User ${userId} used ${usage.total - usage.remaining + 1}/${usage.total} free prompts`);
+  }
+
   // --- Unified message persistence: save user command as message ---
   await new Message({
     userId,

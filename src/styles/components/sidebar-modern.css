@@ -56,10 +56,13 @@
   }
   
   .sidebar.collapsed {
-    transform: translateX(calc(100% - var(--sidebar-collapsed-width))) !important;
+    transform: translateX(calc(100% - var(--sidebar-collapsed-width) + 53px)) !important;
   }
   .sidebar:not(.collapsed) {
     transform: translateX(0) !important;
+  }
+  .sidebar-header {
+    transform: translateX(-14px) !important;
   }
 }
 
@@ -713,7 +716,7 @@
   }
   
   .sidebar.collapsed {
-    transform: translateX(calc(100% - var(--sidebar-collapsed-width)));
+    transform: translateX(calc(100% - var(--sidebar-collapsed-width) - 50px));
   }
   .sidebar:not(.collapsed) {
     transform: translateX(0) !important;

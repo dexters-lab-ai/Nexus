@@ -22,10 +22,10 @@ async function getPuppeteerLaunchOptions() {
   const launchOptions = {
     headless: isProduction ? 'new' : false,
     ignoreHTTPSErrors: true,
-    // Single source of truth for viewport size - 1280x1024 provides good balance of detail and performance
+    // Single source of truth for viewport size - 1280x720 (16:9) stays well within GPT-4o's limits
     defaultViewport: { 
       width: 1280, 
-      height: 1024, 
+      height: 720,  // Reduced from 1024 to 720 to stay well within GPT-4o's 2000x768 limit
       deviceScaleFactor: 1 
     },
     args: [
@@ -34,8 +34,8 @@ async function getPuppeteerLaunchOptions() {
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       
-      // Window and display settings
-      '--window-size=1280,1024',
+      // Window and display settings - match viewport size
+      '--window-size=1280,720',
       '--no-first-run',
       
       // Performance optimizations

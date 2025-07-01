@@ -190,14 +190,27 @@ export default class WormholeLoader {
     textOverlay.className = 'agent-loading-text';
     textOverlay.innerHTML = 'agent loading<span class="dot-1">.</span><span class="dot-2">.</span><span class="dot-3">.</span>';
     
+    // Check if mobile view
+    const isMobile = window.innerWidth <= 768; // Standard mobile breakpoint
+    
     // Style the text overlay
     textOverlay.style.position = 'absolute';
-    textOverlay.style.top = '50%';
     textOverlay.style.left = '50%';
-    textOverlay.style.transform = 'translate(-50%, -50%)';
+    textOverlay.style.transform = 'translateX(-50%)';
+    
+    // Adjust vertical position based on device
+    if (isMobile) {
+      textOverlay.style.top = '47%'; // Higher position for mobile
+      textOverlay.style.fontSize = '0.8rem';
+    } else {
+      textOverlay.style.top = '50%';
+      textOverlay.style.transform = 'translate(-50%, -50%)';
+      textOverlay.style.fontSize = '0.9rem';
+    }
+    
+    // Common styles
     textOverlay.style.color = 'rgba(255, 255, 255, 0.7)';
     textOverlay.style.fontFamily = '"Roboto Mono", monospace';
-    textOverlay.style.fontSize = '0.9rem';
     textOverlay.style.letterSpacing = '2px';
     textOverlay.style.textTransform = 'lowercase';
     textOverlay.style.fontWeight = '300';

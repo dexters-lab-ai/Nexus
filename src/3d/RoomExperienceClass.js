@@ -803,7 +803,7 @@ export default class RoomExperience extends EventEmitter {
     pcMesh.material.depthTest = true;
     pcMesh.material.depthWrite = false;
     pcMesh.material.transparent = true;
-    this.pcScreen = new Screen(pcMesh, '/bruno_demo_temp/static/assets/videoPortfolio.mp4', this.scene);
+    this.pcScreen = new Screen(pcMesh, '/bruno_demo_temp/static/assets/MichaelSaylorMeme.mp4', this.scene);
     // Only add mesh ONCE (Screen will add to scene)
 
     // Mac Screen - Bruno's exact positioning
@@ -813,7 +813,7 @@ export default class RoomExperience extends EventEmitter {
     macMesh.material.depthTest = true;
     macMesh.material.depthWrite = false;
     macMesh.material.transparent = true;
-    this.macScreen = new Screen(macMesh, '/bruno_demo_temp/static/assets/videoStream.mp4', this.scene);
+    this.macScreen = new Screen(macMesh, '/bruno_demo_temp/static/assets/MemeToSurvive.mp4', this.scene);
     // Only add mesh ONCE (Screen will add to scene)
   }
 

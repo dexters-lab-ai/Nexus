@@ -652,6 +652,136 @@ function renderTaskPlan(taskPlan, { maxSteps = 100, maxResultLength = 1000 } = {
     }
     
     return `
+      <style>
+        .task-plan-container {
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+          max-width: 100%;
+          margin: 0 auto;
+          color: #e2e8f0;
+        }
+        
+        .task-plan-steps {
+          display: flex;
+          flex-direction: column;
+          gap: 1.5rem;
+          padding: 1rem 0;
+        }
+        
+        .task-plan-step {
+          background: rgba(40, 20, 60, 0.7);
+          border-radius: 0.75rem;
+          padding: 1.25rem;
+          border-left: 4px solid #7c3aed;
+          transition: all 0.2s ease;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        .task-plan-step.completed {
+          border-left-color: #8b5cf6;
+          background: rgba(99, 102, 241, 0.15);
+        }
+        
+        .task-plan-step.error {
+          border-left-color: #ec4899;
+          background: rgba(236, 72, 153, 0.15);
+        }
+        
+        .task-plan-step.pending {
+          border-left-color: #a78bfa;
+          background: rgba(167, 139, 250, 0.15);
+        }
+        
+        .step-header {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          margin-bottom: 0.75rem;
+          font-weight: 600;
+          color: #94a3b8;
+        }
+        
+        .step-number {
+          color: #60a5fa;
+          font-feature-settings: 'tnum';
+          min-width: 1.5rem;
+          text-align: right;
+        }
+        
+        .step-status {
+          font-size: 0.75rem;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          padding: 0.2rem 0.5rem;
+          border-radius: 9999px;
+          font-weight: 600;
+        }
+        
+        .step-status.completed {
+          background: rgba(16, 185, 129, 0.2);
+          color: #6ee7b7;
+        }
+        
+        .step-status.error {
+          background: rgba(239, 68, 68, 0.2);
+          color: #fca5a5;
+        }
+        
+        .step-status.pending {
+          background: rgba(245, 158, 11, 0.2);
+          color: #fcd34d;
+        }
+        
+        .step-instruction {
+          color: #e2e8f0;
+          margin-bottom: 0.75rem;
+          line-height: 1.6;
+        }
+        
+        .step-result {
+          background: rgba(30, 20, 45, 0.7);
+          border-radius: 0.5rem;
+          padding: 0.875rem;
+          font-family: 'Fira Code', 'Roboto Mono', monospace;
+          font-size: 0.875rem;
+          color: #c7d2fe;
+          white-space: pre-wrap;
+          word-break: break-word;
+          margin-top: 0.75rem;
+          border: 1px solid rgba(124, 58, 237, 0.3);
+          max-height: 300px;
+          overflow-y: auto;
+          line-height: 1.5;
+          box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .step-error {
+          margin-top: 0.75rem;
+          color: #fca5a5;
+          font-size: 0.875rem;
+          padding: 0.75rem;
+          background: rgba(239, 68, 68, 0.1);
+          border-radius: 0.5rem;
+          border-left: 3px solid #ef4444;
+        }
+        
+        .step-separator {
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.3), transparent);
+          margin: 0.5rem 0;
+        }
+        
+        .truncation-note {
+          text-align: center;
+          color: #94a3b8;
+          font-size: 0.875rem;
+          padding: 1rem;
+          background: rgba(30, 41, 59, 0.5);
+          border-radius: 0.5rem;
+          margin-top: 1rem;
+          border: 1px dashed rgba(99, 102, 241, 0.3);
+        }
+      </style>
+      
       <div class="task-plan-container">
         <div class="task-plan-steps">
           ${stepsHtml.join('\n')}
