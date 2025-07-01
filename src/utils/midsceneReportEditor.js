@@ -380,7 +380,7 @@ export async function editMidsceneReport(reportPath) {
             const openBraces = (jsonStr.match(/\{/g) || []).length;
             const closeBraces = (jsonStr.match(/\}/g) || []).length;
             const openBrackets = (jsonStr.match(/\[/g) || []).length;
-            const closeBrackets = (jsonMsg.match(/\]/g) || []).length;
+            const closeBrackets = (jsonStr.match(/\]/g) || []).length;
             
             // Add missing closing brackets/braces
             while (openBraces > closeBraces) { jsonStr += '}'; }

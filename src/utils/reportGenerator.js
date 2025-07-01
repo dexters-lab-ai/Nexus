@@ -3,6 +3,39 @@
 import fs from 'fs';
 import path from 'path';
 
+// Format a log entry for display in reports
+function formatLogEntry(log) {
+  if (!log) return '';
+  
+  try {
+    // If it's already a string, return as is
+    if (typeof log === 'string') return log;
+    
+    // If it's an object, try to stringify it
+    if (typeof log === 'object') {
+      // Handle error objects specially
+      if (log instanceof Error) {
+        return `[ERROR] ${log.message}\n${log.stack || ''}`;
+      }
+      
+      // Handle objects with timestamp and message
+      if (log.timestamp && log.message) {
+        const timestamp = new Date(log.timestamp).toISOString();
+        return `[${timestamp}] ${log.message}`;
+      }
+      
+      // Fall back to JSON stringification
+      return JSON.stringify(log, null, 2);
+    }
+    
+    // For any other type, convert to string
+    return String(log);
+  } catch (e) {
+    console.error('Error formatting log entry:', e);
+    return '[Error formatting log entry]';
+  }
+}
+
 /**
  * Generate a static HTML “landing” report for a finished task.
  *
@@ -518,11 +551,38 @@ function convertToWebPath(filePath, runId) {
 }
 
 /**
- * Render a task plan object as HTML
+ * Safely stringify an object with size limits and truncation
+ * @param {any} obj - The object to stringify
+ * @param {number} [maxLength=1000] - Maximum length of the stringified result
+ * @returns {string} - The stringified object, potentially truncated
+ */
+function safeStringify(obj, maxLength = 1000) {
+  const cache = new Set();
+  const result = JSON.stringify(obj, (key, value) => {
+    // Handle circular references
+    if (typeof value === 'object' && value !== null) {
+      if (cache.has(value)) return '[Circular]';
+      cache.add(value);
+    }
+    return value;
+  });
+  
+  // Truncate if needed
+  if (result && result.length > maxLength) {
+    return result.substring(0, maxLength) + '... [truncated]';
+  }
+  return result || 'null';
+}
+
+/**
+ * Render a task plan object as HTML with size limits and error handling
  * @param {Object} taskPlan - The task plan object to render
+ * @param {Object} [options] - Rendering options
+ * @param {number} [options.maxSteps=100] - Maximum number of steps to render
+ * @param {number} [options.maxResultLength=1000] - Maximum length of result strings
  * @returns {string} - HTML string representing the task plan
  */
-function renderTaskPlan(taskPlan) {
+function renderTaskPlan(taskPlan, { maxSteps = 100, maxResultLength = 1000 } = {}) {
   if (!taskPlan) return '';
   
   try {
@@ -533,30 +593,69 @@ function renderTaskPlan(taskPlan) {
       return '<p>No task plan data available.</p>';
     }
     
+    // Limit the number of steps to process
+    const stepsToProcess = planData.slice(0, maxSteps);
+    const truncatedCount = planData.length - stepsToProcess.length;
+    
     // Create a simple list of steps
-    const stepsHtml = planData.map((step, index) => {
-      const stepNumber = index + 1;
-      const instruction = step.instruction || step.description || 'No description';
-      const status = step.status || 'pending';
-      const statusClass = status.toLowerCase();
-      
-      return `
-        <div class="task-plan-step ${statusClass}">
-          <div class="step-header">
-            <span class="step-number">${stepNumber}.</span>
-            <span class="step-status ${statusClass}">${status}</span>
+    const stepsHtml = [];
+    
+    for (let i = 0; i < stepsToProcess.length; i++) {
+      try {
+        const step = stepsToProcess[i];
+        const stepNumber = i + 1;
+        const instruction = step.instruction || step.description || 'No description';
+        const status = step.status || 'pending';
+        const statusClass = status.toLowerCase();
+        let resultHtml = '';
+        
+        // Handle step result with size limits
+        if (step.result) {
+          try {
+            const resultStr = safeStringify(step.result, maxResultLength);
+            resultHtml = `<div class="step-result">${resultStr}</div>`;
+          } catch (e) {
+            resultHtml = '<div class="step-result error">[Could not stringify result]</div>';
+          }
+        }
+        
+        stepsHtml.push(`
+          <div class="task-plan-step ${statusClass}">
+            <div class="step-header">
+              <span class="step-number">${stepNumber}.</span>
+              <span class="step-status ${statusClass}">${status}</span>
+            </div>
+            <div class="step-instruction">${instruction}</div>
+            ${resultHtml}
+            ${step.error ? `<div class="step-error">Error: ${step.error.message || 'Unknown error'}</div>` : ''}
           </div>
-          <div class="step-instruction">${instruction}</div>
-          ${step.result ? `<div class="step-result">${JSON.stringify(step.result, null, 2)}</div>` : ''}
-          ${step.error ? `<div class="step-error">Error: ${step.error.message || 'Unknown error'}</div>` : ''}
-        </div>
-      `;
-    }).join('\n');
+        `);
+      } catch (stepError) {
+        console.error(`Error rendering step ${i + 1}:`, stepError);
+        stepsHtml.push(`<div class="task-plan-step error">Error rendering step ${i + 1}</div>`);
+      }
+      
+      // Add a small separator between steps
+      if (i < stepsToProcess.length - 1) {
+        stepsHtml.push('<div class="step-separator"></div>');
+      }
+    }
+    
+    // Add a note if we truncated steps
+    let truncatedNote = '';
+    if (truncatedCount > 0) {
+      truncatedNote = `
+        <div class="truncation-note">
+          <i class="fas fa-info-circle"></i> 
+          ${truncatedCount} more steps not shown. The task plan was too large to display completely.
+        </div>`;
+    }
     
     return `
       <div class="task-plan-container">
         <div class="task-plan-steps">
-          ${stepsHtml}
+          ${stepsHtml.join('\n')}
+          ${truncatedNote}
         </div>
       </div>
     `;
