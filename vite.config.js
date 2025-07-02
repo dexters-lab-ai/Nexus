@@ -5,10 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { visualizer } from 'rollup-plugin-visualizer';
 import fs from 'fs';
-import { writeFileSync, mkdirSync, copyFileSync } from 'fs';
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
+import { writeFileSync, mkdirSync } from 'fs';
 
 // Plugin to copy auth and events utilities to assets
 function copyUtilsPlugin() {
@@ -341,172 +338,49 @@ export default defineConfig(({ mode }) => {
               const path = await import('path');
               const { glob } = await import('glob');
               
-              // Track processed files to prevent duplicates
-              const processedFiles = new Set();
-              
               // Find all files in src/styles
               const files = await glob('src/styles/**/*', { nodir: true });
               
-              // Process files in smaller batches to reduce memory usage
-              const BATCH_SIZE = 10; // Process 10 files at a time
+              // Specific CSS files that need to be in the root css/ directory
+              const specificFiles = [
+                'src/styles/components/settings-advanced.css',
+                'src/styles/components/settings-modal-enhancements.css'
+              ];
               
-              // Filter and batch CSS files
-              const cssFiles = files.filter(file => {
-                const fileName = path.basename(file);
-                return file.endsWith('.css') && !fileName.startsWith('_');
-              });
-              
-              console.log(`[vite:copy-styles] Found ${cssFiles.length} CSS files to process`);
-              
-              // Process files in batches
-              for (let i = 0; i < cssFiles.length; i += BATCH_SIZE) {
-                const batch = cssFiles.slice(i, i + BATCH_SIZE);
-                console.log(`[vite:copy-styles] Processing batch ${i / BATCH_SIZE + 1} of ${Math.ceil(cssFiles.length / BATCH_SIZE)}`);
-                
-                // Process each file in the current batch
-                await Promise.all(batch.map(async (file) => {
-                  try {
-                    const fileName = path.basename(file);
-                    
-                    // Skip already processed files (double-check)
-                    if (processedFiles.has(fileName)) {
-                      console.warn(`[vite:copy-styles] Skipping duplicate file in batch: ${file}`);
-                      return;
-                    }
-                    
-                    // Read and process the file
-                    const content = await fs.readFile(file, 'utf-8');
-                    
-                    // Determine output path based on file location
-                    let outputPath;
-                    if (file.includes('src/styles/components/')) {
-                      outputPath = `css/components/${fileName}`;
-                    } else {
-                      outputPath = `css/${fileName}`;
-                    }
-                    
-                    // Mark file as processed
-                    processedFiles.add(fileName);
-                    
-                    // Add file to the bundle
-                    this.emitFile({
-                      type: 'asset',
-                      fileName: outputPath,
-                      source: content
-                    });
-                    
-                    console.log(`[vite:copy-styles] Processed ${file} -> ${outputPath}`);
-                  } catch (error) {
-                    console.error(`[vite:copy-styles] Error processing ${file}:`, error.message);
+              // Process all files
+              for (const file of [...files, ...specificFiles]) {
+                try {
+                  const content = await fs.readFile(file, 'utf-8');
+                  const fileName = path.basename(file);
+                  
+                  // Only process CSS files that don't start with _ (Sass partials)
+                  if (!file.endsWith('.css') || path.basename(file).startsWith('_')) {
+                    continue;
                   }
-                }));
-                
-                // Add a small delay between batches to free up memory
-                if (i + BATCH_SIZE < cssFiles.length) {
-                  await new Promise(resolve => setTimeout(resolve, 100));
+                  
+                  // Determine output path based on file location
+                  let outputPath;
+                  if (specificFiles.includes(file)) {
+                    // Specific files go to root css/ directory
+                    outputPath = `css/${fileName}`;
+                  } else if (file.includes('src/styles/components/')) {
+                    // Component CSS goes to components subdirectory
+                    outputPath = `css/components/${fileName}`;
+                  } else {
+                    // Other CSS files go to root css/ directory
+                    outputPath = `css/${fileName}`;
+                  }
+                  
+                  // Add file to the bundle
+                  this.emitFile({
+                    type: 'asset',
+                    fileName: outputPath,
+                    source: content
+                  });
+                } catch (error) {
+                  console.warn(`[vite:copy-styles] Could not process ${file}:`, error.message);
                 }
               }
-            }
-          },
-          {
-            name: 'copy-fonts',
-            buildStart() {
-              // Process fonts in chunks to avoid memory issues
-              const processFonts = async () => {
-                try {
-                  // Ensure webfonts directory exists
-                  const webfontsDir = path.resolve(__dirname, 'public/webfonts');
-                  if (!fs.existsSync(webfontsDir)) {
-                    fs.mkdirSync(webfontsDir, { recursive: true });
-                  }
-                  
-                  // Get path to Font Awesome fonts
-                  const fontAwesomePath = path.dirname(require.resolve('@fortawesome/fontawesome-free/webfonts/fa-solid-900.woff2'));
-                  
-                  // Process fonts in batches to reduce memory usage
-                  const fontBatches = [
-                    // First batch: Only the essential woff2 files
-                    [
-                      'fa-solid-900.woff2',
-                      'fa-regular-400.woff2',
-                      'fa-brands-400.woff2'
-                    ],
-                    // Second batch: woff files
-                    [
-                      'fa-solid-900.woff',
-                      'fa-regular-400.woff',
-                      'fa-brands-400.woff'
-                    ],
-                    // Third batch: Other formats (less commonly used)
-                    [
-                      'fa-solid-900.ttf',
-                      'fa-regular-400.ttf',
-                      'fa-brands-400.ttf',
-                      'fa-solid-900.eot',
-                      'fa-regular-400.eot',
-                      'fa-brands-400.eot',
-                      'fa-solid-900.svg',
-                      'fa-regular-400.svg',
-                      'fa-brands-400.svg'
-                    ]
-                  ];
-                  
-                  let totalCopied = 0;
-                  let totalSkipped = 0;
-                  
-                  // Process each batch with a small delay to free up memory
-                  for (const batch of fontBatches) {
-                    const batchResults = await Promise.all(
-                      batch.map(font => 
-                        new Promise(resolve => {
-                          try {
-                            const src = path.join(fontAwesomePath, font);
-                            const dest = path.join(webfontsDir, font);
-                            
-                            if (fs.existsSync(src)) {
-                              copyFileSync(src, dest);
-                              console.log(`[vite:copy-fonts] Copied ${font}`);
-                              resolve({ copied: true });
-                            } else {
-                              console.warn(`[vite:copy-fonts] Source file not found: ${src}`);
-                              resolve({ skipped: true });
-                            }
-                          } catch (error) {
-                            console.error(`[vite:copy-fonts] Error processing font:`, error);
-                            resolve({ error: true });
-                          }
-                        })
-                      )
-                    );
-                    
-                    // Add a small delay between batches to free up memory
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    
-                    // Update counters
-                    totalCopied += batchResults.filter(r => r.copied).length;
-                    totalSkipped += batchResults.filter(r => r.skipped).length;
-                  }
-                  
-                  console.log(`[vite:copy-fonts] Copied ${totalCopied} font files (${totalSkipped} skipped)`);
-                  
-                  // Copy the CSS file separately
-                  try {
-                    const faCssPath = require.resolve('@fortawesome/fontawesome-free/css/all.min.css');
-                    const faCssDest = path.join(webfontsDir, '../css/fontawesome-all.min.css');
-                    fs.mkdirSync(path.dirname(faCssDest), { recursive: true });
-                    copyFileSync(faCssPath, faCssDest);
-                    console.log('[vite:copy-fonts] Copied Font Awesome CSS');
-                  } catch (error) {
-                    console.error('[vite:copy-fonts] Error copying Font Awesome CSS:', error.message);
-                  }
-                  
-                } catch (error) {
-                  console.error('[vite:copy-fonts] Error in copy-fonts plugin:', error);
-                }
-              };
-              
-              // Start processing fonts
-              return processFonts();
             }
           }
         ]
