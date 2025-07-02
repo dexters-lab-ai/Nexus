@@ -1,59 +1,54 @@
+version: '3.8'
+
 services:
-  app:
+  # Development environment
+  app-dev:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    container_name: nexus-app
-    # Use host network for better performance in development
-    network_mode: host
-    # Explicitly expose ports for documentation
-    expose:
-      - "3000"  # Vite dev server
-      - "3420"  # Backend API
-      - "24678" # Vite HMR
+      target: development
+    container_name: nexus-app-dev
+    hostname: nexus-dev
+    networks:
+      - nexus-network
+    ports:
+      - "3000:3000"  # Vite dev server
+      - "3420:3420"  # Backend API
+      - "24678:24678" # Vite HMR
     environment:
       - NODE_ENV=development
       - DOCKER=true
       - PORT=3420
-      # Use host.docker.internal for accessing host services
-      - VITE_API_URL=http://host.docker.internal:3420
-      - VITE_WS_URL=ws://host.docker.internal:3420
+      - VITE_API_URL=http://localhost:3420
+      - VITE_WS_URL=ws://localhost:3420
       - FRONTEND_URL=http://localhost:3000
       - APP_DOMAIN=localhost
       - NEXUS_RUN_DIR=/usr/src/app/nexus_run
-      # Enable debug logging if needed
-      #- DEBUG=vite:*
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+      # Uncomment for debugging
+      # - DEBUG=vite:*
+      # - NODE_OPTIONS=--inspect=0.0.0.0:9229
     volumes:
-      # Mount source code for hot reloading
       - .:/usr/src/app
-      # Keep node_modules and .vite in container to avoid permission issues
       - /usr/src/app/node_modules
       - /usr/src/app/.vite
-      # Persistent data
       - nexus_data:/usr/src/app/nexus_run
-      # Mount config directory for API keys (read-only)
       - ./config:/usr/src/app/config:ro
-      # Enable polling for file changes in development
-      - ./public:/usr/src/app/public
-      - ./src:/usr/src/app/src
-      - ./index.html:/usr/src/app/index.html
     working_dir: /usr/src/app
-    # Use tini as init process to handle signals properly
     init: true
-    # Container resource limits
+    healthcheck:
+      test: ["CMD", "node", "healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     deploy:
       resources:
         limits:
           cpus: '2'
           memory: 4G
-    # Enable auto-restart unless stopped
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
     logging:
       driver: "json-file"
       options:
@@ -61,8 +56,70 @@ services:
         max-file: "3"
         compress: "true"
 
-# Volumes for persistent data
+  # Production environment
+  app-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: nexus-app-prod
+    hostname: nexus-prod
+    networks:
+      - nexus-network
+    ports:
+      - "80:3000"
+      - "443:3420"
+    environment:
+      - NODE_ENV=production
+      - DOCKER=true
+      - PORT=3420
+      - VITE_API_URL=/
+      - NEXUS_RUN_DIR=/usr/src/app/nexus_run
+    volumes:
+      - nexus_data:/usr/src/app/nexus_run
+      - ./config:/usr/src/app/config:ro
+    working_dir: /usr/src/app
+    init: true
+    healthcheck:
+      test: ["CMD", "node", "healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+
+  # Database (example - uncomment and configure as needed)
+  # mongodb:
+  #   image: mongo:6.0
+  #   container_name: nexus-mongodb
+  #   environment:
+  #     - MONGO_INITDB_ROOT_USERNAME=root
+  #     - MONGO_INITDB_ROOT_PASSWORD=example
+  #   volumes:
+  #     - mongodb_data:/data/db
+  #   ports:
+  #     - "27017:27017"
+  #   networks:
+  #     - nexus-network
+  #   restart: unless-stopped
+
+networks:
+  nexus-network:
+    driver: bridge
+
 volumes:
   nexus_data:
     name: nexus_app_data
     driver: local
+  # mongodb_data:
