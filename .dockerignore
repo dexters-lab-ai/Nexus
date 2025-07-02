@@ -1,31 +1,34 @@
 # Node.js
+node_modules/
 npm-debug.log
 yarn-debug.log
 yarn-error.log
+package-lock.json
+yarn.lock
 
 # Environment variables
 .env
-.env.local
-.env.development
-.env.test
+.env.*
 !.env.production
 !.env.example
 
 # Version control
 .git
-.gitmodules
 .gitignore
-.github
+.gitmodules
+.github/
 .gitattributes
 
 # Editor directories and files
-.vscode
-.idea
+.vscode/
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?
+*.swp
+*.swo
+*~
 
 # OS generated files
 .DS_Store
@@ -36,10 +39,12 @@ yarn-error.log
 ehthumbs.db
 Thumbs.db
 
-# Build directories
+# Build and test artifacts
 /dist
 /build
 /coverage
+/.cache
+/.sass-cache
 
 # Logs
 logs
@@ -47,6 +52,24 @@ logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Documentation
+/docs
+*.md
+!README.md
+
+# Misc
+.cache/
+.temp/
+.tmp/
+*.tmp
+*.bak
+*.backup
+*~
 
 # Misc
 *.pem
