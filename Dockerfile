@@ -16,15 +16,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy package files if they exist
+# Copy package files
 COPY package*.json ./
 
-# Copy packages directory if it exists, otherwise continue
+# Copy packages directory if it exists in the build context
 RUN if [ -d "packages" ]; then \
-        cp -r packages/ ./; \
+        cp -r packages/. ./packages/; \
     else \
         echo "No packages directory found, continuing build"; \
     fi
+
+# Ensure packages directory exists
+RUN mkdir -p packages
 
 # Stage 2: Android SDK builder
 FROM base AS android-builder
