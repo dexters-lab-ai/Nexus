@@ -1,6 +1,12 @@
 # Stage 1: Base image with essential dependencies
 FROM node:20.18.1-bullseye-slim AS base
 
+# Set working directory
+WORKDIR /usr/src/app
+
+# Create packages directory to avoid build errors
+RUN mkdir -p packages
+
 # Install only essential system dependencies first
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
@@ -9,6 +15,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Copy package files if they exist
+COPY package*.json ./
+
+# Copy packages directory if it exists, otherwise continue
+RUN if [ -d "packages" ]; then \
+        cp -r packages/ ./; \
+    else \
+        echo "No packages directory found, continuing build"; \
+    fi
 
 # Stage 2: Android SDK builder
 FROM base AS android-builder
