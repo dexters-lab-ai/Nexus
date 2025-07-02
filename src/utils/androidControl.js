@@ -1150,7 +1150,7 @@ class AndroidControl {
     
     // Default ADB path based on platform
     const defaultAdbPath = isWindows 
-      ? 'C:\\program-tools\\adb.exe'  // Default Windows path
+      ? 'C:\\platform-tools\\adb.exe'  // Default Windows path
       : '/usr/bin/adb';                 // Default Linux/macOS path
     
     return {
@@ -1623,8 +1623,9 @@ class AndroidControl {
         environment: this.isDocker ? 'docker' : 'local'
       };
     } catch (error) {
-      console.error(`${this.logPrefix} Connection failed:`, error);
-      throw new Error(`Failed to connect to Android device: ${error.message}`);
+      const cleanError = this._getErrorMessage(error);
+      console.error(`${this.logPrefix} Connection failed:`, cleanError);
+      throw new Error(`Failed to connect to Android device: ${cleanError}`);
     }
   }
   
@@ -2070,16 +2071,38 @@ class AndroidControl {
   /**
    * Extract a clean error message from an error object
    * @private
+   * @param {Error|string|any} error - The error to process
+   * @returns {string} A clean error message
    */
   _getErrorMessage(error) {
-    if (!error) return 'Unknown error';
+    if (!error) return 'Unknown error occurred';
     
-    // Handle different error formats
+    // If it's already a string, return as is
     if (typeof error === 'string') return error;
-    if (error.message) return error.message;
-    if (error.error) return String(error.error);
     
-    return 'An unknown error occurred';
+    // Handle Error objects
+    if (error instanceof Error) {
+      // For ADB/connection errors, try to extract the most relevant part
+      const message = error.message || 'Unknown error';
+      
+      // Clean up common ADB error patterns
+      if (message.includes('original error:')) {
+        return message.split('original error:').pop().trim();
+      }
+      
+      // Remove stack trace if present
+      return message.split('\n')[0].trim();
+    }
+    
+    // Handle object errors
+    if (typeof error === 'object') {
+      // Try common error message properties
+      return error.message || error.error || error.reason || 
+             error.description || JSON.stringify(error);
+    }
+    
+    // Fallback to string conversion
+    return String(error);
   }
   
   // ... (rest of the class remains the same)
@@ -2088,18 +2111,39 @@ class AndroidControl {
    */
   async cleanup() {
     try {
+      // Safely disconnect device if it exists and has a disconnect method
       if (this.device) {
-        await this.device.disconnect();
-        this.device = null;
+        try {
+          if (typeof this.device.disconnect === 'function') {
+            await this.device.disconnect();
+          } else if (this.device.connection && typeof this.device.connection.disconnect === 'function') {
+            await this.device.connection.disconnect();
+          }
+        } catch (deviceError) {
+          console.warn(`${this.logPrefix} Error disconnecting device:`, deviceError);
+        } finally {
+          this.device = null;
+        }
       }
+      
+      // Safely disconnect agent if it exists
       if (this.agent) {
-        await this.agent.disconnect();
-        this.agent = null;
+        try {
+          if (typeof this.agent.disconnect === 'function') {
+            await this.agent.disconnect();
+          }
+        } catch (agentError) {
+          console.warn(`${this.logPrefix} Error disconnecting agent:`, agentError);
+        } finally {
+          this.agent = null;
+        }
       }
+      
+      // Clear active sessions
       this.activeSessions.clear();
     } catch (error) {
       console.error(`${this.logPrefix} Error during cleanup:`, error);
-      throw error;
+      // Don't throw from cleanup to prevent masking the original error
     }
   }
 

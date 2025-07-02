@@ -1042,10 +1042,13 @@ tasks:
       }
     });
     
-    // Close button
-    const closeBtn = this.overlay.querySelector('.guide-close');
+    // Close button (X in top-right corner)
+    const closeBtn = this.overlay.querySelector('.close-btn');
     if (closeBtn) {
-      closeBtn.addEventListener('click', () => this.hide());
+      closeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.hide();
+      });
     }
     
     // Tab switching

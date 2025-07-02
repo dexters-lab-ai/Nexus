@@ -1443,12 +1443,22 @@ class YamlMapEditor {
       return;
     }
     
-    // Close button
+    // Close button (X in top-right corner)
+    const closeButton = this.modalContainer.querySelector('.yaml-editor-close');
+    if (closeButton) {
+      closeButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.handleClose();
+      });
+    }
     
     // Cancel button
     const cancelBtn = this.modalContainer.querySelector('.cancel-btn');
     if (cancelBtn) {
-      cancelBtn.addEventListener('click', () => this.handleClose());
+      cancelBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.handleClose();
+      });
     }
     
     // Form submission

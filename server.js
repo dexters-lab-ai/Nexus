@@ -270,16 +270,41 @@ function setupWebSocketServer(server) {
     // All event handlers are set up in the upgrade handler to avoid duplication
   });
 
+  // WebSocket connection tracking
+  const connectionAttempts = new Map();
+  const WS_UPGRADE_TIMEOUT = 30000; // 30 seconds
+  const WS_MAX_CONNECTIONS_PER_IP = 10;
+  const WS_RATE_LIMIT_WINDOW = 60000; // 1 minute
+
   // Handle HTTP server upgrade for WebSocket connections
   server.on('upgrade', (request, socket, head) => {
-    // Set a connection timeout
-    socket.setTimeout(10000, () => {
+    const clientIp = request.socket.remoteAddress || 'unknown';
+    const now = Date.now();
+    
+    // Rate limiting
+    const attempts = connectionAttempts.get(clientIp) || [];
+    const recentAttempts = attempts.filter(t => now - t < WS_RATE_LIMIT_WINDOW);
+    recentAttempts.push(now);
+    connectionAttempts.set(clientIp, recentAttempts);
+    
+    if (recentAttempts.length > WS_MAX_CONNECTIONS_PER_IP) {
+      console.warn(`[WebSocket] Rate limiting connection from ${clientIp} (${recentAttempts.length} attempts)`);
+      socket.write('HTTP/1.1 429 Too Many Requests\r\nRetry-After: 60\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    // Set a more generous timeout with keep-alive
+    socket.setTimeout(WS_UPGRADE_TIMEOUT, () => {
       if (!socket.destroyed) {
-        console.log('[WebSocket] Connection upgrade timed out');
+        console.warn(`[WebSocket] Upgrade timeout from ${clientIp}`);
         socket.write('HTTP/1.1 408 Request Timeout\r\n\r\n');
         socket.destroy();
       }
     });
+    
+    // Enable TCP keep-alive
+    socket.setKeepAlive(true, 30000); // 30s keep-alive
 
     // Skip session validation for health checks
     if (request.url === '/health') {
@@ -1811,22 +1836,46 @@ app.get('/api/nli', requireAuth, async (req, res) => {
     res.write(`data: ${JSON.stringify(taskStartEvent)}\n\n`);
     if (res.flush) res.flush();
 
-    // Start task processing
-    processTask(userId, userEmail, taskId.toString(), runId, runDir, prompt, null, null)
-      .catch(err => {
-        console.error('Error in processTask:', err);
-        res.write(`data: ${JSON.stringify({ 
-          event: 'taskError',
-          taskId: taskId.toString(),
-          error: 'Error processing task',
-          timestamp: new Date().toISOString()
-        })}\n\n`);
-        if (res.flush) res.flush();
-      });
-
     // FIXED: Proper cleanup and timeout handling
     let interval;
     let timeoutId;
+    let taskCompleted = false;
+
+    // Start task processing with proper error handling
+    (async () => {
+      try {
+        await processTask(userId, userEmail, taskId.toString(), runId, runDir, prompt, null, null);
+        taskCompleted = true;
+      } catch (err) {
+        console.error('Error in processTask:', err);
+        
+        // Ensure we have a proper error message
+        const errorMessage = err?.message || 'Error processing task';
+        const errorCode = err?.code || 'PROCESS_TASK_ERROR';
+        
+        // Send error event to client
+        if (res.writable) {
+          res.write(`data: ${JSON.stringify({ 
+            event: 'taskError',
+            taskId: taskId.toString(),
+            error: errorMessage,
+            code: errorCode,
+            timestamp: new Date().toISOString()
+          })}\n\n`);
+          if (res.flush) res.flush();
+        }
+        
+        // Update task status in database
+        await updateTaskInDatabase(taskId, {
+          status: 'failed',
+          error: errorMessage,
+          completedAt: new Date()
+        });
+        
+        // Clean up
+        cleanup();
+      }
+    })();
     
     const cleanup = () => {
       if (interval) {
@@ -1848,17 +1897,17 @@ app.get('/api/nli', requireAuth, async (req, res) => {
 
     // Set timeout for the entire operation
     timeoutId = setTimeout(() => {
-      console.error(`Task ${taskId} timed out after 5 minutes`);
+      console.error(`Task ${taskId} timed out after 15 minutes`);
       if (res.writable) {
         res.write(`data: ${JSON.stringify({
           event: 'error',
           taskId: taskId.toString(),
-          error: 'Operation timed out after 5 minutes'
+          error: 'Operation timed out after 15 minutes'
         })}\n\n`);
         if (res.flush) res.flush();
       }
       cleanup();
-    }, 5 * 60 * 1000);
+    }, 15 * 60 * 1000);
 
     // Handle client disconnect
     req.on('close', cleanup);
@@ -2273,16 +2322,16 @@ app.post('/api/nli', requireAuth, async (req, res) => {
 
     // Set a 5-minute timeout for the entire operation
     const timeout = setTimeout(() => {
-      console.error(`Task ${taskId} timed out after 5 minutes`);
+      console.error(`Task ${taskId} timed out after 15 minutes`);
       if (res.writable) {
         res.write('data: ' + JSON.stringify({
           event: 'error',
           taskId: taskId.toString(),
-          error: 'Operation timed out after 5 minutes'
+          error: 'Operation timed out after 15 minutes'
         }) + '\n\n');
       }
       cleanup();
-    }, 5 * 60 * 1000);
+    }, 15 * 60 * 1000);
 
     // Handle client disconnect
     req.on('close', cleanup);
@@ -3476,10 +3525,23 @@ async function saveTaskCompletionMessages(userId, taskId, prompt, contentText, a
 
 // --- WebSocket helper functions ---
 async function sendWebSocketUpdate(userId, data) {
-  // Only send WebSocket updates for streaming events; skip chat HTTP replies
-  if (!data.event) {
+  // Always allow error messages and task updates through
+  const isError = data.type === 'error' || data.status === 'error' || data.status === 'failed';
+  const isTaskUpdate = data.type === 'task' || data.taskId;
+  
+  // Skip non-event data unless it's an error or task update
+  if (!data.event && !isError && !isTaskUpdate) {
     console.debug('[WebSocket] Skipped non-event data over WS:', data);
     return;
+  }
+  
+  // Ensure error messages have a consistent format
+  if (isError) {
+    data = {
+      ...data,
+      type: 'error',
+      timestamp: data.timestamp || new Date().toISOString()
+    };
   }
 
   const connections = userConnections.get(userId);
@@ -3547,11 +3609,28 @@ async function sendWebSocketUpdate(userId, data) {
     }
     
     const queue = unsentMessages.get(userId);
-    queue.push(data);
+    
+    // Don't queue duplicate error messages for the same task
+    if (isError && data.taskId) {
+      const existingErrorIndex = queue.findIndex(
+        msg => msg.type === 'error' && msg.taskId === data.taskId
+      );
+      
+      if (existingErrorIndex !== -1) {
+        // Replace existing error for this task
+        queue[existingErrorIndex] = data;
+      } else {
+        queue.push(data);
+      }
+    } else {
+      queue.push(data);
+    }
     
     console.log(`[WebSocket] Queued message for userId=${userId}`, {
       queueSize: queue.length,
+      type: data.type || 'unknown',
       event: data.event,
+      taskId: data.taskId || 'none',
       timestamp: new Date().toISOString()
     });
   }
@@ -5494,7 +5573,7 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
             
             if (effectiveUrl && !isNavigationCommand) {
               logAction(`Navigating to provided URL: ${effectiveUrl}`);
-              await page.goto(effectiveUrl, { timeout: 30000, waitUntil: 'networkidle2' });
+              await page.goto(effectiveUrl, { timeout: 20000, waitUntil: 'domcontentloaded' });
             }
           } else {
             // Create new session and navigate.
@@ -5510,7 +5589,7 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
             logAction("Browser launched successfully");
             page = await browser.newPage();
             logAction("New page created");
-            await page.setDefaultNavigationTimeout(600000); // 10 minutes
+            await page.setDefaultNavigationTimeout(5000); // 5 seconds
 
             // Set up listeners.
             page.on('console', msg => {
@@ -5533,7 +5612,7 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
             });
             
             logAction(`Navigating to URL: ${effectiveUrl}`);
-            await page.goto(effectiveUrl, { waitUntil: 'domcontentloaded', timeout: 300000 });
+            await page.goto(effectiveUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
             logAction("Navigation completed successfully");
             
             // Initialize midscene agent with just the page (reads env vars internally)
@@ -5568,7 +5647,7 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       logAction("Browser launched successfully");
       page = await browser.newPage();
       logAction("New page created");
-      await page.setDefaultNavigationTimeout(600000); // 10 minutes
+      await page.setDefaultNavigationTimeout(5000); // 5 seconds
 
       // Set up listeners.
       page.on('console', msg => {
@@ -5591,7 +5670,7 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       });
       
       logAction(`Navigating to URL: ${effectiveUrl}`);
-      await page.goto(effectiveUrl, { waitUntil: 'domcontentloaded', timeout: 300000 });
+      await page.goto(effectiveUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
       logAction("Navigation completed successfully");
       
       agent = new PuppeteerAgent(page);
@@ -5820,7 +5899,7 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
         logQuery("Browser launched successfully");
         page = await browser.newPage();
         logQuery("New page created");
-        await page.setDefaultNavigationTimeout(600000); // 10 minutes
+        await page.setDefaultNavigationTimeout(5000); // 5 seconds
         agent = new PuppeteerAgent(page);
         release = null;
         activeBrowsers.set(taskKey, { browser, agent, page, release, closed: false, hasReleased: false });
@@ -5841,7 +5920,7 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       logQuery("Browser launched successfully");
       page = await browser.newPage();
       logQuery("New page created");
-      await page.setDefaultNavigationTimeout(600000); // 10 minutes
+      await page.setDefaultNavigationTimeout(5000); // 5 seconds
       // Set up event listeners.
       page.on('console', msg => {
         debugLog(`Console: ${msg.text().substring(0, 150)}`);
@@ -5863,7 +5942,7 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       });
       
       logQuery(`Navigating to URL: ${providedUrl}`);
-      await page.goto(providedUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await page.goto(providedUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
       logQuery("Navigation completed successfully");
       
       // Initialize midscene agent with just the page (reads env vars internally)
@@ -6463,6 +6542,50 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
         executionId
       });
 
+      // Ensure environment is properly set up for Android automation
+      await setupNexusEnvironment(userId);
+      
+      // Check if the current model is VL-capable (specifically for Android automation)
+      const validVLModels = [
+        // Qwen VL models
+        'qwen/qwen2.5-vl-72b-instruct',  // OpenRouter
+        'qwen-vl-max-latest',            // Aliyun DashScope
+        
+        // Gemini 2.5 Pro
+        'gemini-2.5-pro-preview-05-06',
+        
+        // UI-TARS and Doubao Vision models
+        'ep-',  // Any inference endpoint ID from Volcano Engine
+        'doubao-1.5-ui-tars',
+        'doubao-1.5-thinking-vision-pro'
+      ];
+      
+      const currentModel = (process.env.MIDSCENE_MODEL_NAME || '').toLowerCase();
+      const isVLModel = validVLModels.some(model => 
+        currentModel.includes(model.toLowerCase())
+      ) || 
+      // Check for VL flags in environment variables
+      process.env.MIDSCENE_USE_QWEN_VL === '1' ||
+      process.env.MIDSCENE_USE_GEMINI === '1' ||
+      process.env.MIDSCENE_USE_VLM_UI_TARS === 'DOUBAO' ||
+      process.env.MIDSCENE_USE_DOUBAO_VISION === '1';
+      
+      if (!isVLModel) {
+        const errorMessage = 'Android automation requires a vision-language model with visual grounding capabilities.\n' +
+          'Please switch to a supported model like:\n' +
+          '- Qwen-2.5-VL on OpenRouter or Aliyun\n' +
+          '- Gemini-2.5-Pro on Google Gemini\n' +
+          '- Doubao-1.5-thinking-vision-pro on Volcano Engine\n' +
+          '- UI-TARS on volcengine.com\n\n' +
+          'Note: GPT-4o cannot be used for Android automation.';
+          
+        // Create a simple error object that will serialize cleanly
+        const error = new Error(errorMessage);
+        error.isModelError = true;
+        error.code = 'UNSUPPORTED_MODEL';
+        throw error;
+      }
+      
       // Connect to Android device if not already connected
       if (!androidControl.device) {
         console.log(`[AndroidControl] [${taskId}] Connecting to Android device...`);
@@ -6587,24 +6710,56 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
       const errorTime = new Date();
       const executionTime = errorTime - startTime;
       
-      // Format error details
+      // Create a sanitized error message that's safe for database storage
+      const getErrorMessage = (err) => {
+        if (!err) return 'Unknown error';
+        
+        // If it's already a string, return as is
+        if (typeof err === 'string') return err;
+        
+        // Handle Error objects
+        if (err instanceof Error) {
+          return err.message || 'Unknown error';
+        }
+        
+        // Handle object errors
+        if (typeof err === 'object') {
+          return err.message || err.error || err.reason || 'Unknown error';
+        }
+        
+        // Fallback to string conversion
+        return String(err);
+      };
+
+      // Get a simple error message for database storage
+      const errorMessage = getErrorMessage(error);
+      
+      // Create a more detailed error object for the response
       const errorDetails = {
-        message: error.message,
-        stack: error.stack,
-        command,
+        message: errorMessage,
+        command: typeof command === 'string' ? command : 'script',
         executionTime: `${executionTime}ms`,
-        timestamp: errorTime.toISOString()
+        timestamp: errorTime.toISOString(),
+        code: error.code || 'UNKNOWN_ERROR'
       };
       
-      // Send error update
+      // Send error update with sanitized error details
       await sendWebSocketUpdate(userId, {
         type: 'error',
         taskId,
         status: 'failed',
-        message: `Android command failed: ${error.message}`,
+        message: `Android command failed: ${errorMessage}`,
         error: errorDetails,
         timestamp: errorTime.toISOString()
       });
+      
+      // Create a safe error message for the database
+      const safeErrorMessage = typeof errorMessage === 'string' 
+        ? errorMessage 
+        : 'An unknown error occurred during Android automation';
+      
+      // Only include the first line of the error message in the database to prevent issues
+      const firstLineError = safeErrorMessage.split('\n')[0];
       
       // Save error to task with enhanced metadata
       const errorMeta = {
@@ -6612,33 +6767,33 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
         error: true,
         command: typeof command === 'string' ? command : 'script',
         executionTime,
-        deviceId: androidControl.device?.id,
-        sdkVersion: androidControl.sdkVersion,
+        deviceId: androidControl.device?.id || 'disconnected',
+        sdkVersion: androidControl.sdkVersion || 'unknown',
         errorDetails: {
-          name: error.name,
-          message: error.message,
-          stack: error.stack,
-          code: error.code
+          message: error.message || 'Unknown error',
+          code: error.code || 'UNKNOWN_ERROR',
+          stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
         },
         timestamp: errorTime.toISOString()
       };
       
-      await saveTaskCompletionMessages(
-        userId,
-        taskId,
-        prompt,
-        error.stack || error.message || 'Unknown error',
-        `Failed to execute Android command: ${error.message}`,
-        errorMeta
-      );
-      
-      // Update task status in database
+      // Update task status in database with just the first line of the error message
       await updateTaskInDatabase(taskId, {
         status: 'failed',
         completedAt: errorTime,
         executionTime,
-        error: errorDetails
+        error: firstLineError  // Only store a simple string
       });
+      
+      // Save detailed error to task history
+      await saveTaskCompletionMessages(
+        userId,
+        taskId,
+        prompt,
+        safeErrorMessage,
+        `Failed to execute Android command: ${firstLineError}`,
+        errorMeta
+      );
       
       // Clean up resources
       try {

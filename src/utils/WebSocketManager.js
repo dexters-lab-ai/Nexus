@@ -24,24 +24,41 @@ class WebSocketManager {
       INITIAL_RETRY_DELAY: 1000, // Start with 1 second
       MAX_RETRY_DELAY: 30000,    // Max 30 seconds between retries
       SESSION_CHECK_INTERVAL: 30000, // Check session every 30 seconds
-      DEBUG: process.env.NODE_ENV !== 'production'
+      DEBUG: process.env.NODE_ENV !== 'production',
+      CIRCUIT_BREAKER_THRESHOLD: 5, // Number of failures before opening circuit
+      CIRCUIT_BREAKER_TIMEOUT: 60000, // 1 minute circuit breaker timeout
+      JITTER_FACTOR: 0.5 // 0-1, how much jitter to add to backoff
     };
 
     // Connection state
     this.ws = null;
     this.listeners = new Set();
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 10; // Increased from 5 to 10
-    this.reconnectDelay = 1000; // Start with 1s, will increase exponentially
+    this.maxReconnectAttempts = this.config.MAX_RETRIES;
+    this.reconnectDelay = this.config.INITIAL_RETRY_DELAY;
     this.pingInterval = null;
     this.lastPongTime = null;
     this.connectionId = null;
     this.pingTimeout = null;
+    this.connectionTimeout = null;
     this.isAlive = false;
     this.isReconnecting = false;
     this.visibilityChangeHandler = null;
     this.sessionCheckInterval = null;
     this.lastSessionCheck = 0;
+    this.cleanupFunctions = [];
+    
+    // Circuit breaker state
+    this.circuitBreaker = {
+      isOpen: false,
+      failureCount: 0,
+      lastFailure: 0,
+      resetAfter: this.config.CIRCUIT_BREAKER_TIMEOUT
+    };
+    
+    // Message queue for when connection is down
+    this.messageQueue = [];
+    this.isProcessingQueue = false;
     
     // User context - Will be set in initialize()
     this.userId = null;
@@ -175,7 +192,85 @@ class WebSocketManager {
   // Internal Methods
   // ====================
 
+  // Get next delay with jitter for backoff
+  getNextBackoffDelay() {
+    const baseDelay = Math.min(
+      this.config.INITIAL_RETRY_DELAY * Math.pow(2, this.reconnectAttempts - 1),
+      this.config.MAX_RETRY_DELAY
+    );
+    // Add jitter to prevent thundering herd
+    const jitter = baseDelay * this.config.JITTER_FACTOR * (Math.random() * 2 - 1);
+    return Math.min(baseDelay + jitter, this.config.MAX_RETRY_DELAY);
+  }
+
+  // Check if we should attempt reconnection
+  shouldReconnect() {
+    // Check circuit breaker
+    if (this.circuitBreaker.isOpen) {
+      const now = Date.now();
+      if (now - this.circuitBreaker.lastFailure < this.circuitBreaker.resetAfter) {
+        this.log('Circuit breaker is open, not reconnecting yet');
+        return false;
+      }
+      // Reset circuit if enough time has passed
+      this.circuitBreaker.isOpen = false;
+      this.circuitBreaker.failureCount = 0;
+    }
+    
+    // Check max retries
+    if (this.reconnectAttempts >= this.config.MAX_RETRIES) {
+      this.error('Max reconnection attempts reached');
+      this.notifyListeners({
+        type: 'error',
+        error: 'Max reconnection attempts reached',
+        reconnectAttempts: this.reconnectAttempts
+      });
+      return false;
+    }
+    
+    return true;
+  }
+
+  // Handle connection errors and schedule reconnection
+  handleConnectionError(error) {
+    this.error('WebSocket connection error:', error);
+    
+    // Update circuit breaker
+    this.circuitBreaker.failureCount++;
+    this.circuitBreaker.lastFailure = Date.now();
+    
+    if (this.circuitBreaker.failureCount >= this.config.CIRCUIT_BREAKER_THRESHOLD) {
+      this.circuitBreaker.isOpen = true;
+      this.warn('Circuit breaker opened due to multiple failures');
+    }
+    
+    // Schedule reconnection if needed
+    if (this.shouldReconnect()) {
+      this.scheduleReconnection();
+    }
+  }
+
+  // Schedule reconnection with backoff
+  /**
+   * Get the next backoff delay with jitter
+   * @returns {number} Delay in milliseconds
+   */
+  getNextBackoffDelay() {
+    // Exponential backoff with jitter: min(2^attempt * 1000, MAX_RETRY_DELAY) ± 30%
+    const baseDelay = Math.min(
+      this.config.INITIAL_RETRY_DELAY * Math.pow(2, this.reconnectAttempts - 1),
+      this.config.MAX_RETRY_DELAY
+    );
+    const jitter = baseDelay * this.config.JITTER_FACTOR * (Math.random() * 2 - 1);
+    return Math.min(baseDelay + jitter, this.config.MAX_RETRY_DELAY);
+  }
+
   async connect() {
+    // Check circuit breaker first
+    if (!this.shouldReconnect()) {
+      return;
+    }
+    
     // Clean up any existing connection
     this.cleanupConnection();
     
@@ -184,27 +279,53 @@ class WebSocketManager {
     this.isAlive = false;
     
     try {
-      // Create new WebSocket connection with authentication token if available
-      const token = localStorage.getItem('authToken');
-      const url = token ? `${this.connectionUrl}?token=${encodeURIComponent(token)}` : this.connectionUrl;
+      // Add jitter to prevent thundering herd
+      const jitter = Math.random() * 2000; // 0-2s jitter
+      await new Promise(resolve => setTimeout(resolve, jitter));
       
-      this.log('Connecting to WebSocket...', { url: this.connectionUrl });
-      this.ws = new WebSocket(url);
+      // Create new WebSocket connection with retry token
+      const token = localStorage.getItem('authToken');
+      const url = new URL(this.connectionUrl);
+      if (token) url.searchParams.set('token', token);
+      url.searchParams.set('retry', this.reconnectAttempts);
+      
+      this.log('Connecting to WebSocket...', { 
+        url: url.toString(),
+        attempt: this.reconnectAttempts + 1,
+        maxAttempts: this.config.MAX_RETRIES
+      });
+      
+      // Clear any existing connection timeout
+      if (this.connectionTimeout) {
+        clearTimeout(this.connectionTimeout);
+        this.connectionTimeout = null;
+      }
+      
+      // Set up connection timeout
+      this.connectionTimeout = setTimeout(() => {
+        if (this.connectionState !== connectionStates.CONNECTED) {
+          this.error('Connection timeout');
+          this.handleDisconnection(new Error('Connection timeout'));
+        }
+      }, this.config.CONNECTION_TIMEOUT || 30000);
+      
+      // Create WebSocket with binary type for better performance
+      this.ws = new WebSocket(url.toString());
+      this.ws.binaryType = 'arraybuffer';
       
       // Set up event handlers
       this.setupEventHandlers();
       
-      // Set connection timeout
-      const connectionTimeout = setTimeout(() => {
-        if (this.connectionState !== connectionStates.CONNECTED) {
-          this.error('Connection timeout');
-          this.handleDisconnect({ code: 4001, reason: 'Connection timeout', wasClean: false });
-        }
-      }, 10000); // 10 second connection timeout
+      // Set ping interval
+      this.setupPingInterval();
       
       // Handle successful connection
       this.ws.onopen = () => {
-        clearTimeout(connectionTimeout);
+        if (this.connectionTimeout) {
+          clearTimeout(this.connectionTimeout);
+          this.connectionTimeout = null;
+        }
+        
         this.log('WebSocket connected, setting up ping interval');
         this.setupPingInterval();
         this.processPendingMessages();
@@ -220,7 +341,7 @@ class WebSocketManager {
       
     } catch (error) {
       this.error('WebSocket connection failed:', error);
-      this.handleDisconnect({ code: 4000, reason: error.message, wasClean: false });
+      this.handleDisconnection({ code: 4000, reason: error.message, wasClean: false });
     }
   }
 
@@ -298,28 +419,13 @@ class WebSocketManager {
   }
 
   onclose(event) {
-    this.log(`WebSocket closed: ${event.code} ${event.reason || ''}`);
-    this.cleanupConnection();
-    this.handleDisconnect(event);
-      
-    // Notify listeners of disconnection
-    this.notify({ 
-      type: 'disconnected', 
-      event: event ? {
-        code: event.code,
-        reason: event.reason,
-        wasClean: event.wasClean
-      } : null,
-      timestamp: Date.now(),
-      reconnectAttempt: this.reconnectAttempts + 1,
-      maxReconnectAttempts: this.maxReconnectAttempts
-    });
+    this.handleDisconnection(event);
   }
 
   onerror(error) {
     this.error('WebSocket error:', error);
     this.cleanupConnection();
-    this.handleDisconnect();
+    this.handleDisconnection(error);
       
     // Notify listeners of error
     this.notify({ 
@@ -327,6 +433,85 @@ class WebSocketManager {
       error: error.message,
       timestamp: Date.now()
     });
+  }
+
+  handleDisconnection(error) {
+    const event = error?.code !== undefined ? error : null;
+    const wasClean = event?.wasClean || false;
+    const code = event?.code || 1006; // 1006 = Abnormal Closure
+    const reason = event?.reason || (error instanceof Error ? error.message : 'Connection closed');
+    
+    this.log(`WebSocket disconnected: ${code} ${reason || ''}`, { wasClean });
+    this.cleanupConnection();
+    
+    // Ensure notifyListeners exists before calling it
+    const notify = (data) => {
+      if (typeof this.notifyListeners === 'function') {
+        this.notifyListeners(data);
+      } else if (typeof this.notify === 'function') {
+        this.notify(data);
+      } else {
+        console.warn('No notification method available:', data);
+      }
+    };
+    
+    // Notify listeners with consistent event structure
+    const notification = {
+      type: 'disconnected',
+      event: event ? {
+        code,
+        reason,
+        wasClean
+      } : null,
+      timestamp: Date.now(),
+      reconnectAttempt: this.reconnectAttempts + 1,
+      maxReconnectAttempts: this.maxReconnectAttempts,
+      error: error instanceof Error ? error.message : String(error)
+    };
+    
+    notify(notification);
+    
+    // Handle reconnection logic
+    if (code === 1000) {
+      // Normal closure - reset state
+      this.circuitBreaker.failureCount = 0;
+      this.reconnectAttempts = 0;
+      return;
+    }
+    
+    // Check if we should attempt reconnection
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      const delay = this.getNextBackoffDelay();
+      this.reconnectAttempts++;
+      
+      this.log(`Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+      
+      this.reconnectTimeout = setTimeout(() => {
+        this.log('Attempting to reconnect now...');
+        this.connect();
+      }, delay);
+      
+      // Notify of reconnection attempt
+      notify({
+        type: 'reconnecting',
+        attempt: this.reconnectAttempts,
+        maxAttempts: this.maxReconnectAttempts,
+        nextAttemptIn: delay,
+        timestamp: Date.now()
+      });
+      
+      // Update circuit breaker on errors
+      this.handleConnectionError(error);
+    } else {
+      // Max retries reached or circuit open
+      this.log('Max reconnection attempts reached');
+      notify({
+        type: 'connection_failed',
+        message: 'Max reconnection attempts reached',
+        attempts: this.reconnectAttempts,
+        timestamp: Date.now()
+      });
+    }
   }
 
   /**
@@ -368,18 +553,11 @@ class WebSocketManager {
    * Handle incoming pong from server
    */
   handlePong() {
-    const now = Date.now();
-    this.lastPongTime = now;
-    this.isAlive = true;
-    this.isWaitingForPong = false;
-    
-    // Clear any pending ping timeout
     this.clearPingTimeout();
-    
-    if (this.config.DEBUG) {
-      const rtt = now - (this.lastPingTime || now);
-      this.log(`Received pong (RTT: ${rtt}ms)`);
-    }
+    this.isWaitingForPong = false;
+    this.lastPongTime = Date.now();
+    const pingTime = this.lastPingTime ? Date.now() - this.lastPingTime : 0;
+    this.log(`Received pong from server (ping: ${pingTime}ms)`);
   }
 
   /**
@@ -398,6 +576,7 @@ class WebSocketManager {
       }
     }
   }
+
   /**
    * Send a ping message to the server
    */
@@ -412,15 +591,35 @@ class WebSocketManager {
         // Set timeout for pong response
         this.clearPingTimeout();
         this.pingTimeout = setTimeout(() => {
-          if (this.isWaitingForPong) {
-            this.log('Pong timeout, reconnecting...');
-            this.cleanupConnection();
-            this.handleDisconnect();
-          }
+          this.pingTimeout();
         }, this.config.PONG_TIMEOUT);
         
       } catch (error) {
         this.error('Failed to send ping:', error);
+      }
+    }
+  }
+
+  /**
+   * Handle ping timeout - server didn't respond to our ping
+   */
+  pingTimeout() {
+    if (this.ws) {
+      this.log('Pong timeout, reconnecting...');
+      try {
+        // Close the connection first if it's still open
+        if (this.ws.readyState === WebSocket.OPEN) {
+          this.ws.close(4000, 'Pong timeout');
+        }
+      } catch (e) {
+        this.log('Error closing WebSocket during pong timeout:', e);
+      } finally {
+        // Always clean up and reconnect
+        this.cleanupConnection();
+        // Use a small delay before reconnecting to prevent tight loop
+        setTimeout(() => {
+          this.handleDisconnection(new Error('Pong timeout'));
+        }, 1000);
       }
     }
   }
@@ -507,86 +706,8 @@ class WebSocketManager {
   }
 
   /**
-   * Handle WebSocket disconnection with reconnection logic
-   * @param {CloseEvent} event - The close event
+   * Send authentication update to the server
    */
-  async handleDisconnect(event = {}) {
-    // Prevent multiple reconnection attempts
-    if (this.isReconnecting) {
-      this.log('Already attempting to reconnect, skipping duplicate attempt');
-      return;
-    }
-    
-    this.isReconnecting = true;
-    this.log('Handling disconnect...', event);
-    
-    // Clean up the existing connection
-    this.cleanupConnection();
-    
-    // Don't attempt to reconnect if this was a clean close from our side
-    if (event && event.code === 1000 && event.wasClean) {
-      this.log('Clean disconnect, not reconnecting');
-      this.isReconnecting = false;
-      return;
-    }
-    
-    // Notify listeners of disconnection
-    this.notify({ 
-      type: 'disconnected', 
-      event: event ? {
-        code: event.code,
-        reason: event.reason,
-        wasClean: event.wasClean
-      } : null,
-      timestamp: Date.now(),
-      reconnectAttempt: this.reconnectAttempts + 1,
-      maxReconnectAttempts: this.maxReconnectAttempts
-    });
-    
-    // Clear any existing reconnection timeout
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-    }
-    
-    // Only attempt to reconnect if we're not already reconnecting
-    // and we haven't exceeded max attempts
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      // Exponential backoff with jitter
-      const baseDelay = Math.min(
-        this.config.MAX_RETRY_DELAY, 
-        this.config.INITIAL_RETRY_DELAY * Math.pow(1.5, this.reconnectAttempts)
-      );
-      const jitter = Math.random() * 1000; // Add up to 1 second of jitter
-      const delay = Math.floor(baseDelay + jitter);
-      
-      this.reconnectAttempts++;
-      
-      this.log(`Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-      
-      this.reconnectTimeout = setTimeout(() => {
-        this.log('Attempting to reconnect now...');
-        this.connect();
-      }, delay);
-      
-      // Notify of reconnection attempt
-      this.notify({
-        type: 'reconnecting',
-        attempt: this.reconnectAttempts,
-        maxAttempts: this.maxReconnectAttempts,
-        nextAttemptIn: delay,
-        timestamp: Date.now()
-      });
-    } else {
-      this.log('Max reconnection attempts reached');
-      this.notify({ 
-        type: 'connection_failed', 
-        message: 'Max reconnection attempts reached',
-        attempts: this.reconnectAttempts,
-        timestamp: Date.now()
-      });
-    }
-  }
-
   sendAuthUpdate() {
     if (!this.userId) return;
     

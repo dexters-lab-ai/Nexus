@@ -778,7 +778,16 @@ export function MessageTimeline(props = {}) {
     const shouldAutoScroll = isFirstLoad || isAtBottom || messagesStore.getState().loading;
     
     const currentMessageIds = new Set(Array.from(messagesContainer.children)
-      .filter(el => el.dataset.messageId)
+      .filter(el => {
+        // Skip elements with data-neural-flow="true" or neural canvas containers
+        if (el.dataset.neuralFlow === 'true' || 
+            el.classList?.contains('neural-canvas-container') || 
+            el.classList?.contains('neural-flow-container') ||
+            el.querySelector('[data-neural-flow="true"], .neural-canvas-container, .neural-flow-container')) {
+          return false;
+        }
+        return el.dataset.messageId;
+      })
       .map(el => el.dataset.messageId));
     
     const messagesToAdd = [];

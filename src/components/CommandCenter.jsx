@@ -2990,6 +2990,8 @@ export function CommandCenter(props = {}) {
       position: relative;
       z-index: 2;
       border-top-left-radius: 0;
+      max-height: 100px;
+      transition: max-height 0.5s ease;
     `;
     
     // Create type indicator (hidden)
@@ -3512,8 +3514,8 @@ export function CommandCenter(props = {}) {
     console.log('eventBus received nliResponsePersisted:', payload);
     
     // Transition all thought messages that haven't been completed yet
-    console.log('[DEBUG] NLI response persisted, updating any active thought messages');
-    transitionThoughtBubbles();
+    console.log('[DEBUG] NLI response persisted, updating any active thought messages')
+    transitionThoughtBubbles(taskId, true); // Force transition
   };
   
   // Enhanced function to transition thought bubbles from thinking state to completed state
@@ -4395,12 +4397,12 @@ export function CommandCenter(props = {}) {
     const timelineContainer = document.querySelector('.message-timeline-container');
     if (timelineContainer) {
       const errorCard = document.createElement('div');
-      errorCard.className = 'bubble-card task-error-card';
+      errorCard.className = 'msg-item msg-assistant msg-thought msg-thought-item'; //old: bubble-card task-error-card
       errorCard.setAttribute('data-task-id', taskId);
       
       // Base error content
       let cardContent = `
-        <span class="status-badge failure">⚠️</span>
+        <span class="status-badge failure">Oops! ⚠️</span>
         <span class="error-summary">Task failed: ${data.error || 'Unknown error'}</span>
       `;
       

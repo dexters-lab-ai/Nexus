@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>O.P.E.R.A.T.O.R Report</title>
+  <link rel="icon" href="/favicon.ico">
+  <style>
+    :root {
+      --primary: #4e6fff;
+      --secondary: #8a4fff;
+      --accent: #ff4b8a;
+      --background: #0a0c14;
+      --card-bg: #1a1d2d;
+      --text: #e3e5fc;
+      --text-secondary: #a9adc7;
+      --border: #2a2d3d;
+      --glow-primary: 0 0 15px rgba(78, 111, 255, 0.5);
+      --glow-accent: 0 0 15px rgba(255, 75, 138, 0.5);
+    }
+    
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body { 
+      background: linear-gradient(135deg, var(--background), #141b29); 
+      color: var(--text); 
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+      padding: 0;
+      margin: 0;
+    }
+    
+    .container { 
+      max-width: 1200px; 
+      margin: 0 auto; 
+      padding: 30px; 
+      animation: fadeIn 0.5s ease-out;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .header { 
+      display: flex; 
+      align-items: center; 
+      margin-bottom: 40px; 
+      position: relative;
+      padding-bottom: 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      width: 200px;
+      height: 2px;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      box-shadow: var(--glow-primary);
+    }
+    
+    .logo { 
+      width: 60px; 
+      height: 60px;
+      margin-right: 20px; 
+      filter: drop-shadow(0 0 8px rgba(78, 111, 255, 0.6));
+    }
+    
+    .action-buttons {
+      display: flex;
+      gap: 12px;
+      margin-left: auto;
+    }
+    
+    .btn {
+      padding: 12px 24px; 
+      text-decoration: none; 
+      border-radius: 8px; 
+      font-weight: 600; 
+      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #fff;
+    }
+    
+    .primary-btn {
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      box-shadow: var(--glow-primary);
+      border: none;
+    }
+    
+    .secondary-btn {
+      background: rgba(78, 111, 255, 0.15);
+      border: 1px solid var(--primary);
+      color: var(--primary);
+    }
+    
+    .primary-btn::before {
+      content: '⟲';
+      font-size: 18px;
+    }
+    
+    .secondary-btn::before {
+      content: '📄';
+      font-size: 18px;
+    }
+    
+    .btn:hover { 
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(78, 111, 255, 0.7); 
+    }
+    
+    .content { 
+      background: var(--card-bg); 
+      padding: 30px; 
+      border-radius: 16px; 
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      margin-bottom: 30px;
+      animation: slideUp 0.5s ease-out;
+    }
+    
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .screenshot { 
+      max-width: 100%; 
+      border-radius: 8px;
+      margin: 15px 0;
+      border: 1px solid var(--border);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    .screenshot:hover {
+      transform: scale(1.02);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Modal Styles */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(10, 12, 20, 0.95);
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      backdrop-filter: blur(5px);
+    }
+    
+    .modal.open {
+      display: flex;
+      opacity: 1;
+      animation: modalFadeIn 0.3s forwards;
+    }
+    
+    @keyframes modalFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    .modal-content {
+      position: relative;
+      width: 90%;
+      max-width: 1200px;
+      max-height: 90vh;
+      margin: auto;
+      background: var(--card-bg);
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+      transform: translateY(20px);
+      opacity: 0;
+      animation: modalContentFadeIn 0.4s forwards 0.1s;
+    }
+    
+    @keyframes modalContentFadeIn {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px 20px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: white;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .modal-header h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+    }
+    
+    .close-modal {
+      font-size: 28px;
+      font-weight: bold;
+      color: white;
+      cursor: pointer;
+      transition: color 0.2s;
+      line-height: 24px;
+    }
+    
+    .close-modal:hover {
+      color: var(--accent);
+    }
+    
+    .modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 5px;
+      background: #1a1a27;
+      border-radius: 8px;
+      margin: 0 -15px;
+      padding: 15px;
+    }
+    
+    /* Ensure content inside modal is properly styled */
+    .modal-body pre {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-family: 'Fira Code', 'Courier New', monospace;
+      font-size: 0.9em;
+      line-height: 1.5;
+      color: #e0e0e0;
+      margin: 0;
+      padding: 0;
+    }
+    
+    /* Responsive images in modal */
+    .modal-body img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 4px;
+      margin: 10px 0;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Scrollbar styling */
+    .modal-body::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    
+    .modal-body::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+    }
+    
+    .modal-body::-webkit-scrollbar-thumb {
+      background: rgba(100, 120, 250, 0.5);
+      border-radius: 4px;
+    }
+    
+    .modal-body::-webkit-scrollbar-thumb:hover {
+      background: rgba(100, 120, 250, 0.7);
+    }
+    
+    /* Image Modal */
+    .img-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      z-index: 1100;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    
+    .img-modal.open {
+      display: flex;
+      opacity: 1;
+      animation: modalFadeIn 0.3s forwards;
+    }
+    
+    .img-modal-content {
+      max-width: 90%;
+      max-height: 90vh;
+      margin: auto;
+      border-radius: 8px;
+      box-shadow: 0 0 25px rgba(78, 111, 255, 0.5);
+      transform: scale(0.9);
+      transition: transform 0.3s ease;
+      animation: imgZoomIn 0.3s forwards;
+    }
+    
+    @keyframes imgZoomIn {
+      from { transform: scale(0.9); }
+      to { transform: scale(1); }
+    }
+    
+    .img-modal-close {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      color: white;
+      font-size: 40px;
+      font-weight: bold;
+      cursor: pointer;
+      opacity: 0.8;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+    
+    .img-modal-close:hover {
+      opacity: 1;
+      transform: rotate(90deg);
+    }
+    
+    .task { 
+      background: rgba(255, 255, 255, 0.05); 
+      padding: 20px; 
+      margin-bottom: 20px; 
+      border-radius: 12px; 
+      border-left: 3px solid var(--primary);
+      animation-delay: calc(0.1s * var(--idx));
+      animation: fadeIn 0.5s ease-out;
+    }
+    
+    .task.error {
+      border-left-color: var(--accent);
+    }
+    
+    .task-header { 
+      font-weight: 600; 
+      margin-bottom: 12px; 
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .task-header::before {
+      content: '📊';
+      font-size: 20px;
+    }
+    
+    .error .task-header::before {
+      content: '⚠️';
+    }
+    
+    .detail-content { 
+      background: linear-gradient(135deg, rgba(78, 111, 255, 0.1), rgba(138, 79, 255, 0.1)); 
+      border-radius: 12px; 
+      padding: 20px; 
+      color: var(--text); 
+      margin-top: 20px;
+      border: 1px solid rgba(78, 111, 255, 0.2);
+    }
+    
+    h1 {
+      font-size: 28px;
+      font-weight: 600;
+      background: linear-gradient(90deg, #fff, #a9adc7);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: 0.5px;
+    }
+    
+    h2 {
+      font-size: 24px;
+      margin-bottom: 20px;
+      font-weight: 600;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    h2::before {
+      content: '💡';
+      font-size: 24px;
+    }
+    
+    pre {
+      background: rgba(0, 0, 0, 0.2);
+      padding: 15px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 14px;
+      margin-top: 10px;
+      border: 1px solid var(--border);
+    }
+  </style>
+  <script>
+    function renderTaskPlan(plan) {
+      if (!plan) return '';
+      
+      // Handle different plan formats
+      const steps = plan.steps || (Array.isArray(plan) ? plan : []);
+      
+      if (steps.length === 0) {
+        return '<p>No task plan steps available.</p>';
+      }
+      
+      let tableRows = '';
+      steps.forEach(function(step, index) {
+        const status = step.status || 'pending';
+        const statusClass = 'status-' + status;
+        const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+        const action = step.action ? String(step.action).replace(/</g, '&lt;').replace(/>/g, '&gt;') : 'N/A';
+        const details = step.details ? String(step.details).replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+        
+        tableRows += '
+          <tr>
+            <td>' + (index + 1) + '</td>
+' +
+            '            <td>' + action + '</td>
+' +
+            '            <td><span class="status-badge ' + statusClass + '">' + statusLabel + '</span></td>
+' +
+            '            <td>' + details + '</td>
+' +
+            '          </tr>';
+      });
+      
+      return '
+        <table class="task-plan">
+          <thead>
+            <tr>
+              <th>Step</th>
+              <th>Action</th>
+              <th>Status</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>' + tableRows + '
+          </tbody>
+        </table>';
+    }
+    
+    function formatLogEntry(log) {
+      if (typeof log === 'string') return log;
+      
+      try {
+        if (log instanceof Error) {
+          return '[ERROR] ' + (log.message || '') + '
+' + (log.stack || '');
+        }
+        
+        if (typeof log === 'object' && log !== null) {
+          // Handle common log formats
+          if (log.timestamp && log.level && log.message) {
+            const timestamp = new Date(log.timestamp).toISOString();
+            return '[' + timestamp + '] [' + String(log.level).toUpperCase() + '] ' + log.message;
+          }
+          
+          // Fallback to JSON stringify
+          try {
+            return JSON.stringify(log, null, 2);
+          } catch (e) {
+            return String(log);
+          }
+        }
+        
+        return String(log);
+      } catch (e) {
+        return 'Error formatting log entry';
+      }
+    }
+    
+    // Copy logs to clipboard
+    document.addEventListener('DOMContentLoaded', () => {
+      const copyButton = document.querySelector('.copy-logs');
+      if (copyButton) {
+        copyButton.addEventListener('click', () => {
+          const logs = Array.from(document.querySelectorAll('.log-entry'))
+            .map(el => el.textContent)
+            .join('
+');
+          
+          navigator.clipboard.writeText(logs).then(() => {
+            const originalText = copyButton.textContent;
+            copyButton.textContent = 'Copied!';
+            setTimeout(() => {
+              copyButton.textContent = originalText;
+            }, 2000);
+          }).catch(err => {
+            console.error('Failed to copy logs:', err);
+          });
+        });
+      }
+    });
+  </script>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="/favicon.ico" alt="OPERATOR_logo" class="logo"/>
+      <h1>O.P.E.R.A.T.O.R – Sentinel Report</h1>
+      <div class="action-buttons">
+        <a id="replayButton" href="javascript:void(0)" class="btn primary-btn open-link" data-url="%2Fexternal-report%2Fweb-2025-07-02_04-39-40-310.html">Replay</a>
+      </div>
+      
+      <!-- Image Modal for viewing screenshots in full size -->
+      <div id="imageModal" class="img-modal">
+        <span class="img-modal-close">×</span>
+        <img class="img-modal-content" id="modalImage">
+      </div>
+
+      <!-- Raw Report Modal (assumed, as referenced in script) -->
+      <div id="rawReportModal" class="modal" style="display: none;">
+        <div class="modal-content">
+          <span class="close-modal">×</span>
+          <div id="rawReportContent"></div>
+        </div>
+      </div>
+    </div>
+    <div class="content">
+      <div class="report-header">
+        <div class="header-content">
+          <h1>Task Execution Report</h1>
+          <div class="task-meta">
+            <div class="meta-item">
+              <span class="meta-label">Run ID:</span>
+              <span class="meta-value">6fea616e-0186-48ad-8de8-8a28acc4ed65</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Timestamp:</span>
+              <span class="meta-value">2025-07-02T02:42:36.082Z</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Task Details</h2>
+        <div class="card">
+          <div class="command">
+            <span class="label">Command:</span>
+            <pre>go to Ebay and find me the latest Samsung Z Fold 4. Open one and write me a full summary of the product and reviews</pre>
+          </div>
+        </div>
+      </div>
+
+      
+      <div class="section">
+        <h2>Task Plan</h2>
+        <div class="card">
+          
+      <style>
+        .task-plan-container {
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+          max-width: 100%;
+          margin: 0 auto;
+          color: #e2e8f0;
+        }
+        
+        .task-plan-steps {
+          display: flex;
+          flex-direction: column;
+          gap: 1.5rem;
+          padding: 1rem 0;
+        }
+        
+        .task-plan-step {
+          background: rgba(19, 7, 30, 0.7);
+          border-radius: 0.75rem;
+          padding: 1.25rem;
+          border-left: 4px solid #7c3aed;
+          transition: all 0.2s ease;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        .task-plan-step.completed {
+          border-left-color:rgb(92, 246, 177);
+          background: rgba(99, 102, 241, 0.15);
+        }
+        
+        .task-plan-step.error {
+          border-left-color: #ec4899;
+          background: rgba(36, 15, 25, 0.15);
+        }
+        
+        .task-plan-step.pending {
+          border-left-color:rgb(249, 222, 85);
+          background: rgba(22, 13, 52, 0.15);
+        }
+        
+        .step-header {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          margin-bottom: 0.75rem;
+          font-weight: 600;
+          color: #94a3b8;
+        }
+        
+        .step-number {
+          color: #60a5fa;
+          font-feature-settings: 'tnum';
+          min-width: 1.5rem;
+          text-align: right;
+        }
+        
+        .step-status {
+          font-size: 0.75rem;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          padding: 0.2rem 0.5rem;
+          border-radius: 9999px;
+          font-weight: 600;
+        }
+        
+        .step-status.completed {
+          background: rgba(16, 185, 129, 0.2);
+          color: #6ee7b7;
+        }
+        
+        .step-status.error {
+          background: rgba(239, 68, 68, 0.2);
+          color: #fca5a5;
+        }
+        
+        .step-status.pending {
+          background: rgba(245, 158, 11, 0.2);
+          color: #fcd34d;
+        }
+        
+        .step-instruction {
+          color: #e2e8f0;
+          margin-bottom: 0.75rem;
+          line-height: 1.6;
+        }
+        
+        .step-result {
+          background: rgba(30, 20, 45, 0.7);
+          border-radius: 0.5rem;
+          padding: 0.875rem;
+          font-family: 'Fira Code', 'Roboto Mono', monospace;
+          font-size: 0.875rem;
+          color: #c7d2fe;
+          white-space: pre-wrap;
+          word-break: break-word;
+          margin-top: 0.75rem;
+          border: 1px solid rgba(124, 58, 237, 0.3);
+          max-height: 300px;
+          overflow-y: auto;
+          line-height: 1.5;
+          box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .step-error {
+          margin-top: 0.75rem;
+          color: #fca5a5;
+          font-size: 0.875rem;
+          padding: 0.75rem;
+          background: rgba(239, 68, 68, 0.1);
+          border-radius: 0.5rem;
+          border-left: 3px solid #ef4444;
+        }
+        
+        .step-separator {
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.3), transparent);
+          margin: 0.5rem 0;
+        }
+        
+        .truncation-note {
+          text-align: center;
+          color: #94a3b8;
+          font-size: 0.875rem;
+          padding: 1rem;
+          background: rgba(30, 41, 59, 0.5);
+          border-radius: 0.5rem;
+          margin-top: 1rem;
+          border: 1px dashed rgba(99, 102, 241, 0.3);
+        }
+      </style>
+      
+      <div class="task-plan-container">
+        <div class="task-plan-steps">
+          
+          <div class="task-plan-step failed">
+            <div class="step-header">
+              <span class="step-number">1.</span>
+              <span class="step-status failed">failed</span>
+            </div>
+            <div class="step-instruction">navigate to https://www.ebay.com</div>
+            <div class="step-result">{"success":false,"error":"Protocol error (Page.navigate): Session closed. Most likely the page has been closed.","actionLog":[{"timestamp":"2025-07-02T02:38:56.258Z","step":0,"message":"Starting action with command: \"navigate to https://www.ebay.com\", URL: \"none provided\"","data":null},{"timestamp":"2025-07-02T02:38:56.259Z","step":0,"message":"Extracted URL from command: https://www.ebay.com","data":null},{"timestamp":"2025-07-02T02:38:56.259Z","step":0,"message":"Creating new browser session and navigating to URL: https://www.ebay.com","data":null},{"timestamp":"2025-07-02T02:38:56.260Z","step":0,"message":"Acquired browser semaphore","data":null},{"timestamp":"2025-07-02T02:38:56.262Z","step":0,"message":"Launching browser with options: {\n  \"headless\": false,\n  \"ignoreHTTPSErrors\": true,\n  \"defaultViewport\": {\n    \"width\": 1280,\n    \"height\": 720,\n    \"...","data":null},{"timestamp":"2025-07-02T02:38:59.729Z","step":0,"message":"Browser launched successfully","d... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">2.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">navigate to https://www.ebay.com</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"68649bbe1b26f8a57158fcb1","closed":false,"currentUrl":"https://www.ebay.com/","stepIndex":1,"actionOutput":"Completed: navigate to https://www.ebay.com","pageTitle":"Electronics, Cars, Fashion, Collectibles & More | eBay","extractedInfo":"The main content promotes automotive parts with the headline 'Revamp your ride inside and out' and a subheading 'Get the right parts to keep your vehicle in top form.' It includes links to 'Exterior parts,' 'Interior parts,' and 'Lighting.' Another section titled 'Shopping made easy' highlights reliability, secure deliveries, and hassle-free returns.","navigableElements":["Sign in","register","Daily Deals","Brand Outlet","Gift Cards","Help & Contact","Ship to","Sell","Watchlist","My eBay","Expand Notifications","Shop by category","Search","Advanced","eBay Live","Saved","Electronics","Motors","Fashion","Collectibles and Art","Sports","Health & Beauty","Industrial equipment","Home & Garden","Deals","Sell","Shop no... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">3.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">type Samsung Z Fold 4 into the search bar and press enter</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"68649bbe1b26f8a57158fcb1","closed":false,"currentUrl":"https://www.ebay.com/sch/i.html?_nkw=Samsung+Z+Fold+4&_sacat=0&_from=R40&_trksid=m570.l1313","stepIndex":2,"actionOutput":"Completed: type Samsung Z Fold 4 into the search bar and press enter","pageTitle":"Samsung Z Fold 4 for sale | eBay","extractedInfo":"The page displays search results for 'Samsung Z Fold 4' with 85 results. It includes product listings with titles, prices, and additional details such as storage capacity and condition. The first product listed is 'Samsung Z Fold 4 5G Smartphone 512GB Phantom Black, SM-936U AT&T' priced at ZAR 10,007.17 with an option for 'or Best Offer' and additional delivery charges. Another product is 'Samsung Galaxy Z Fold 4 5G SM-F936N 256GB/512GB GSM Unlocked'.","navigableElements":["Sign in","register","Daily Deals","Brand Outlet","Gift Cards","Help & Contact","Ship to","Sell","Watchlist","My eBay","Expand Notifications","Shop by category","Advanced... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">4.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">click on the first product listing</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"68649bbe1b26f8a57158fcb1","closed":false,"currentUrl":"https://www.ebay.com/itm/297438794261?_skw=Samsung+Z+Fold+4&epid=19055660146&itmmeta=01JZ4G3H2BDENXHH89H7S451XK&hash=item4540bbd215:g:G18AAeSwMP1oS2GS&itmprp=enc%3AAQAKAAAA8FkggFvd1GGDu0w3yXCmi1cZguna3QBw4XBah6wA4LBS%2FyefojVA9xm1USGPgUFQrUIflvGVzy16GmtmI%2FOU8xlnq704Yoz7gJBhdM8J1LDpSajyqIK8bpW5%2BE8lmoiogEFphAmYRLsuLE6I3NXc6x%2Fym2L06Gl4WORANeFiXUtHahcEgKQZwrAZJdANzZ3u7L%2FUf%2Byj5F7nTsNV9M9BHWMjqlC%2FtT6%2F5J1sLuDZhLthHztQf67ZQWjdhXFXIN6s3NbZGnky7%2FIsBXHE8yRlDuJitN0NNkV1SSnEL8IhNyISUYjACAUJCmn4q6w65hfvAA%3D%3D%7Ctkp%3ABFBMqpGOkPll","stepIndex":3,"actionOutput":"Completed: click on the first product listing","pageTitle":"Samsung Z Fold 4 5G Smartphone 512GB Phantom Black, SM-936U AT&T | eBay","extractedInfo":"Samsung Z Fold 4 5G Smartphone 512GB Phantom Black, SM-936U AT&T listed for US $565.00 or Best Offer. Condition: Open box. Seller: prizedconsults with 100% positive feedback.","navigab... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">5.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">extract product details including title, price, condition, and seller information</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"68649bbe1b26f8a57158fcb1","closed":false,"currentUrl":"https://www.ebay.com/itm/297438794261?_skw=Samsung+Z+Fold+4&epid=19055660146&itmmeta=01JZ4G3H2BDENXHH89H7S451XK&hash=item4540bbd215:g:G18AAeSwMP1oS2GS&itmprp=enc%3AAQAKAAAA8FkggFvd1GGDu0w3yXCmi1cZguna3QBw4XBah6wA4LBS%2FyefojVA9xm1USGPgUFQrUIflvGVzy16GmtmI%2FOU8xlnq704Yoz7gJBhdM8J1LDpSajyqIK8bpW5%2BE8lmoiogEFphAmYRLsuLE6I3NXc6x%2Fym2L06Gl4WORANeFiXUtHahcEgKQZwrAZJdANzZ3u7L%2FUf%2Byj5F7nTsNV9M9BHWMjqlC%2FtT6%2F5J1sLuDZhLthHztQf67ZQWjdhXFXIN6s3NbZGnky7%2FIsBXHE8yRlDuJitN0NNkV1SSnEL8IhNyISUYjACAUJCmn4q6w65hfvAA%3D%3D%7Ctkp%3ABFBMqpGOkPll","stepIndex":4,"actionOutput":"Completed: extract product details including title, price, condition, and seller information","pageTitle":"Samsung Z Fold 4 5G Smartphone 512GB Phantom Black, SM-936U AT&T | eBay","extractedInfo":"The page displays a Samsung Z Fold 4 5G Smartphone with 512GB in Phantom Black, listed for US $565.00 or approximately ZAR 10,007.17. The... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">6.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">extract product reviews and ratings</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"68649bbe1b26f8a57158fcb1","closed":false,"currentUrl":"https://www.ebay.com/itm/297438794261?_skw=Samsung+Z+Fold+4&epid=19055660146&itmmeta=01JZ4G3H2BDENXHH89H7S451XK&hash=item4540bbd215:g:G18AAeSwMP1oS2GS&itmprp=enc%3AAQAKAAAA8FkggFvd1GGDu0w3yXCmi1cZguna3QBw4XBah6wA4LBS%2FyefojVA9xm1USGPgUFQrUIflvGVzy16GmtmI%2FOU8xlnq704Yoz7gJBhdM8J1LDpSajyqIK8bpW5%2BE8lmoiogEFphAmYRLsuLE6I3NXc6x%2Fym2L06Gl4WORANeFiXUtHahcEgKQZwrAZJdANzZ3u7L%2FUf%2Byj5F7nTsNV9M9BHWMjqlC%2FtT6%2F5J1sLuDZhLthHztQf67ZQWjdhXFXIN6s3NbZGnky7%2FIsBXHE8yRlDuJitN0NNkV1SSnEL8IhNyISUYjACAUJCmn4q6w65hfvAA%3D%3D%7Ctkp%3ABFBMqpGOkPll","stepIndex":5,"actionOutput":"Completed: extract product reviews and ratings","pageTitle":"Samsung Z Fold 4 5G Smartphone 512GB Phantom Black, SM-936U AT&T | eBay","extractedInfo":"No content extracted","navigableElements":[],"actionLog":[{"timestamp":"2025-07-02T02:42:01.193Z","step":5,"message":"Starting query: \"extract product reviews and ratings\"","data":n... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">7.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">extract any available customer feedback or reviews for the Samsung Z Fold 4</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"68649bbe1b26f8a57158fcb1","closed":false,"currentUrl":"https://www.ebay.com/itm/297438794261?_skw=Samsung+Z+Fold+4&epid=19055660146&itmmeta=01JZ4G3H2BDENXHH89H7S451XK&hash=item4540bbd215:g:G18AAeSwMP1oS2GS&itmprp=enc%3AAQAKAAAA8FkggFvd1GGDu0w3yXCmi1cZguna3QBw4XBah6wA4LBS%2FyefojVA9xm1USGPgUFQrUIflvGVzy16GmtmI%2FOU8xlnq704Yoz7gJBhdM8J1LDpSajyqIK8bpW5%2BE8lmoiogEFphAmYRLsuLE6I3NXc6x%2Fym2L06Gl4WORANeFiXUtHahcEgKQZwrAZJdANzZ3u7L%2FUf%2Byj5F7nTsNV9M9BHWMjqlC%2FtT6%2F5J1sLuDZhLthHztQf67ZQWjdhXFXIN6s3NbZGnky7%2FIsBXHE8yRlDuJitN0NNkV1SSnEL8IhNyISUYjACAUJCmn4q6w65hfvAA%3D%3D%7Ctkp%3ABFBMqpGOkPll","stepIndex":6,"actionOutput":"Completed: extract any available customer feedback or reviews for the Samsung Z Fold 4","pageTitle":"Samsung Z Fold 4 5G Smartphone 512GB Phantom Black, SM-936U AT&T | eBay","extractedInfo":"No content extracted","navigableElements":[],"actionLog":[{"timestamp":"2025-07-02T02:42:19.384Z","step":6,"message":"Starting query: \"extract... [truncated]</div>
+            
+          </div>
+        
+          
+        </div>
+      </div>
+    
+        </div>
+      </div>
+
+      
+      <div class="section">
+        <h2>Execution Logs</h2>
+        <div class="card logs-container">
+          <div class="logs-header">
+            <span>86 log entries</span>
+            <button class="copy-logs">Copy Logs</button>
+          </div>
+          <div class="logs-content">
+            <div class="log-entry">[2025-07-02T02:38:54.235Z] Plan created with engine: gpt-4o and execution mode: step-planning</div><div class="log-entry">[2025-07-02T02:38:54.275Z] taskStart → frontend</div><div class="log-entry">[2025-07-02T02:38:54.277Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-02T02:38:54.297Z] No intermediate extraction data available.</div><div class="log-entry">[2025-07-02T02:38:54.299Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-02T02:38:54.300Z] Sending function call request to AI</div><div class="log-entry">[2025-07-02T02:38:54.391Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-02T02:38:56.006Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-02T02:38:56.208Z] Function call received: browser_action</div><div class="log-entry">[2025-07-02T02:38:56.212Z] Executing step 1: action - navigate to https://www.ebay.com</div><div class="log-entry">[2025-07-02T02:39:35.541Z] Step 1 failed</div><div class="log-entry">[2025-07-02T02:39:35.632Z] Task progress updated in DB: 5%</div><div class="log-entry">[2025-07-02T02:39:35.634Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-02T02:39:35.638Z] Using extraction from last step</div><div class="log-entry">[2025-07-02T02:39:35.639Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-02T02:39:35.639Z] Sending function call request to AI</div><div class="log-entry">[2025-07-02T02:39:35.683Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-02T02:39:36.469Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-02T02:39:36.876Z] Function call received: browser_action</div><div class="log-entry">[2025-07-02T02:39:36.877Z] Executing step 2: action - navigate to https://www.ebay.com</div><div class="log-entry">[2025-07-02T02:40:06.590Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-02T02:40:06.591Z] Step 2 completed</div><div class="log-entry">[2025-07-02T02:40:06.719Z] Task progress updated in DB: 10%</div><div class="log-entry">[2025-07-02T02:40:06.719Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-02T02:40:06.723Z] Using extraction from last step</div><div class="log-entry">[2025-07-02T02:40:06.727Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-02T02:40:06.727Z] Sending function call request to AI</div><div class="log-entry">[2025-07-02T02:40:06.786Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-02T02:40:08.046Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-02T02:40:08.877Z] Function call received: browser_action</div><div class="log-entry">[2025-07-02T02:40:08.880Z] Executing step 3: action - type Samsung Z Fold 4 into the search bar and press enter</div><div class="log-entry">[2025-07-02T02:40:47.043Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-02T02:40:47.045Z] Step 3 completed</div><div class="log-entry">[2025-07-02T02:40:47.133Z] Task progress updated in DB: 15%</div><div class="log-entry">[2025-07-02T02:40:47.134Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-02T02:40:47.137Z] Using extraction from last step</div><div class="log-entry">[2025-07-02T02:40:47.140Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-02T02:40:47.141Z] Sending function call request to AI</div><div class="log-entry">[2025-07-02T02:40:47.199Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-02T02:40:48.617Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-02T02:40:50.877Z] Function call received: browser_action</div><div class="log-entry">[2025-07-02T02:40:50.880Z] Executing step 4: action - click on the first product listing</div><div class="log-entry">[2025-07-02T02:41:21.623Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-02T02:41:21.623Z] Step 4 completed</div><div class="log-entry">[2025-07-02T02:41:21.697Z] Task progress updated in DB: 20%</div><div class="log-entry">[2025-07-02T02:41:21.699Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-02T02:41:21.703Z] Using extraction from last step</div><div class="log-entry">[2025-07-02T02:41:21.704Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-02T02:41:21.705Z] Sending function call request to AI</div><div class="log-entry">[2025-07-02T02:41:21.750Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-02T02:41:36.975Z] New tool call started: browser_query</div><div class="log-entry">[2025-07-02T02:41:37.554Z] Function call received: browser_query</div><div class="log-entry">[2025-07-02T02:41:37.557Z] Executing step 5: query - extract product details including title, price, condition, and seller information</div><div class="log-entry">[2025-07-02T02:41:51.741Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-02T02:41:51.741Z] Step 5 completed</div><div class="log-entry">[2025-07-02T02:41:51.812Z] Task progress updated in DB: 25%</div><div class="log-entry">[2025-07-02T02:41:51.813Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-02T02:41:51.814Z] Using extraction from last step</div><div class="log-entry">[2025-07-02T02:41:51.815Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-02T02:41:51.816Z] Sending function call request to AI</div><div class="log-entry">[2025-07-02T02:41:51.853Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-02T02:41:52.480Z] New tool call started: browser_query</div><div class="log-entry">[2025-07-02T02:42:01.078Z] Function call received: browser_query</div><div class="log-entry">[2025-07-02T02:42:01.079Z] Executing step 6: query - extract product reviews and ratings</div><div class="log-entry">[2025-07-02T02:42:11.542Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-02T02:42:11.543Z] Step 6 completed</div><div class="log-entry">[2025-07-02T02:42:11.630Z] Task progress updated in DB: 30%</div><div class="log-entry">[2025-07-02T02:42:11.630Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-02T02:42:11.633Z] Using extraction from last step</div><div class="log-entry">[2025-07-02T02:42:11.634Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-02T02:42:11.634Z] Sending function call request to AI</div><div class="log-entry">[2025-07-02T02:42:11.676Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-02T02:42:13.677Z] New tool call started: browser_query</div><div class="log-entry">[2025-07-02T02:42:19.287Z] Function call received: browser_query</div><div class="log-entry">[2025-07-02T02:42:19.292Z] Executing step 7: query - extract any available customer feedback or reviews for the Samsung Z Fold 4</div><div class="log-entry">[2025-07-02T02:42:30.492Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-02T02:42:30.493Z] Step 7 completed</div><div class="log-entry">[2025-07-02T02:42:30.584Z] Task progress updated in DB: 35%</div><div class="log-entry">[2025-07-02T02:42:30.584Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-02T02:42:30.587Z] Using extraction from last step</div><div class="log-entry">[2025-07-02T02:42:30.588Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-02T02:42:30.588Z] Sending function call request to AI</div><div class="log-entry">[2025-07-02T02:42:30.637Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-02T02:42:31.970Z] New tool call started: task_complete</div><div class="log-entry">[2025-07-02T02:42:33.017Z] Function call received: task_complete</div><div class="log-entry">[2025-07-02T02:42:33.018Z] Task marked as completed: I found a Samsung Z Fold 4 5G Smartphone with 512GB in Phantom Black listed for US $565.00 (approximately ZAR 10,007.17). The condition is 'Open box', and the seller is 'prizedconsults' with a 100% positive rating. However, I was unable to extract any customer reviews or feedback from the product page.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Execution Results</h2>
+      
+            <div class="task error">
+              <div class="task-header">Step 1 – Error</div>
+              <pre>{
+  "success": false,
+  "error": "Protocol error (Page.navigate): Session closed. Most likely the page has been closed.",
+  "actionLog": [
+    {
+      "timestamp": "2025-07-02T02:38:56.258Z",
+      "step": 0,
+      "message": "Starting action with command: \"navigate to https://www.ebay.com\", URL: \"none provided\"",
+      "data": null
+    },
+    {
+      "timestamp": "2025-07-02T02:38:56.259Z",
+      "step": 0,
+      "message": "Extracted URL from command: https://www.ebay.com",
+      "data": n</pre>
+            </div>
+            <div class="task">
+              <div class="task-header">Step 2 – Screenshot</div>
+              <img src="/nexus_run/6fea616e-0186-48ad-8de8-8a28acc4ed65/screenshot-1751424006245.png" class="screenshot" alt="Step 2 Screenshot"/>
+              
+            </div>
+            <div class="task">
+              <div class="task-header">Step 3 – Screenshot</div>
+              <img src="/nexus_run/6fea616e-0186-48ad-8de8-8a28acc4ed65/screenshot-1751424046589.png" class="screenshot" alt="Step 3 Screenshot"/>
+              
+            </div>
+            <div class="task">
+              <div class="task-header">Step 4 – Screenshot</div>
+              <img src="/nexus_run/6fea616e-0186-48ad-8de8-8a28acc4ed65/screenshot-1751424081385.png" class="screenshot" alt="Step 4 Screenshot"/>
+              
+            </div>
+            <div class="task">
+              <div class="task-header">Step 5 – Screenshot</div>
+              <img src="/nexus_run/6fea616e-0186-48ad-8de8-8a28acc4ed65/screenshot-1751424111734.png" class="screenshot" alt="Step 5 Screenshot"/>
+              
+            </div>
+            <div class="task">
+              <div class="task-header">Step 6 – Screenshot</div>
+              <img src="/nexus_run/6fea616e-0186-48ad-8de8-8a28acc4ed65/screenshot-1751424131515.png" class="screenshot" alt="Step 6 Screenshot"/>
+              
+            </div>
+            <div class="task">
+              <div class="task-header">Step 7 – Screenshot</div>
+              <img src="/nexus_run/6fea616e-0186-48ad-8de8-8a28acc4ed65/screenshot-1751424150453.png" class="screenshot" alt="Step 7 Screenshot"/>
+              
+            </div>
+      <h2>Final State</h2><img src="/nexus_run/6fea616e-0186-48ad-8de8-8a28acc4ed65/final-screenshot-1751424153289.png" class="screenshot" alt="Final Screenshot"/>
+    </div>
+  </div>
+  </body>
+  
+  <script>
+    // This function safely extracts body content from HTML
+    function extractBodyContent(htmlString) {
+      let content = htmlString;
+      
+      if (typeof htmlString === 'string' && htmlString.indexOf('<body') !== -1) {
+        const bodyStartIndex = htmlString.indexOf('<body');
+        if (bodyStartIndex !== -1) {
+          const bodyContentStartIndex = htmlString.indexOf('>', bodyStartIndex) + 1;
+          const bodyEndIndex = htmlString.indexOf('</body>', bodyContentStartIndex);
+          
+          if (bodyContentStartIndex > 0 && bodyEndIndex !== -1) {
+            content = htmlString.substring(bodyContentStartIndex, bodyEndIndex);
+          }
+        }
+      }
+      
+      return content;
+    }
+
+    // Function to open the raw report modal
+    function openRawReportModal(url) {
+      const modal = document.getElementById('rawReportModal');
+      const contentDiv = document.getElementById('rawReportContent');
+      
+      if (!modal || !contentDiv) {
+        console.error('Modal elements not found');
+        return;
+      }
+      
+      contentDiv.textContent = 'Loading raw report data...';
+      modal.style.display = 'flex';
+      
+      void modal.offsetWidth;
+      modal.classList.add('open');
+      
+      fetch(url)
+        .then(response => {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('text/html')) {
+            return response.text()
+              .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                return doc.body.innerHTML;
+              });
+          }
+          return response.text();
+        })
+        .then(processedContent => {
+          while (contentDiv.firstChild) {
+            contentDiv.removeChild(contentDiv.firstChild);
+          }
+          
+          const container = document.createElement('div');
+          container.style.maxHeight = '80vh';
+          container.style.overflowY = 'auto';
+          container.style.padding = '1rem';
+          container.style.background = '#fff';
+          container.style.borderRadius = '4px';
+          container.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
+          
+          if (typeof processedContent === 'string' && 
+              (processedContent.trim().startsWith('<') || 
+              processedContent.includes('</') || 
+              processedContent.includes('/>'))) {
+            container.innerHTML = processedContent;
+          } else {
+            const pre = document.createElement('pre');
+            pre.style.whiteSpace = 'pre-wrap';
+            pre.textContent = processedContent;
+            container.appendChild(pre);
+          }
+          
+          contentDiv.appendChild(container);
+          
+          container.querySelectorAll('img').forEach(img => {
+            if (img.src.startsWith('/')) {
+              img.src = window.location.origin + img.src;
+            }
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+          });
+        })
+        .catch(error => {
+          while (contentDiv.firstChild) {
+            contentDiv.removeChild(contentDiv.firstChild);
+          }
+          
+          const errorDiv = document.createElement('div');
+          errorDiv.className = 'error';
+          errorDiv.textContent = 'Error loading report: ' + 
+            (error && typeof error.message === 'string' ? error.message : 'Unknown error');
+          contentDiv.appendChild(errorDiv);
+        });
+      
+      const closeBtn = modal.querySelector('.close-modal');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', () => closeModal(modal));
+      }
+      
+      modal.addEventListener('click', event => {
+        if (event.target === modal) {
+          closeModal(modal);
+        }
+      });
+    }
+
+    // Helper function to close any modal
+    function closeModal(modalElement) {
+      if (!modalElement) return;
+      
+      modalElement.classList.remove('open');
+      setTimeout(() => {
+        modalElement.style.display = 'none';
+      }, 300);
+    }
+
+    // Initialize functionality when page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      // Event delegation for open-link (replay button)
+      const container = document.querySelector('.container');
+      if (container) {
+        container.addEventListener('click', event => {
+          const link = event.target.closest('.open-link');
+          if (link) {
+            event.preventDefault();
+            const url = decodeURIComponent(link.getAttribute('data-url'));
+            if (url) {
+              window.open(url, '_blank', 'noopener,noreferrer');
+            } else {
+              console.warn('No URL found for link:', link);
+            }
+          }
+        });
+      }
+
+      // Image modal setup
+      const imgModal = document.getElementById('imageModal');
+      const modalImg = document.getElementById('modalImage');
+      const closeImgBtn = document.querySelector('.img-modal-close');
+      
+      if (!imgModal || !modalImg || !closeImgBtn) {
+        console.error('Image modal elements not found');
+        return;
+      }
+      
+      document.querySelectorAll('.screenshot').forEach(screenshot => {
+        screenshot.addEventListener('click', () => {
+          modalImg.src = screenshot.src;
+          imgModal.style.display = 'flex';
+          void imgModal.offsetWidth;
+          imgModal.classList.add('open');
+        });
+      });
+      
+      closeImgBtn.addEventListener('click', () => closeModal(imgModal));
+      
+      imgModal.addEventListener('click', event => {
+        if (event.target === imgModal) {
+          closeModal(imgModal);
+        }
+      });
+    });
+  </script>
+</body>
+</html>
