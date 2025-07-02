@@ -1,18 +1,47 @@
-# Stage 1: Builder
-FROM node:20.18.1-bullseye-slim AS builder
+# Stage 1: Base image with essential dependencies
+FROM node:20.18.1-bullseye-slim AS base
 
-WORKDIR /usr/src/app
-
-# Install system dependencies including Chrome and full Android SDK
-RUN apt-get update && apt-get install -y \
+# Install only essential system dependencies first
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     make \
     g++ \
-    chromium \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Stage 2: Android SDK builder
+FROM base AS android-builder
+
+# Install Android SDK and essential dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     unzip \
     openjdk-11-jdk \
-    openjdk-11-jre \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Android Command Line Tools with retries
+RUN mkdir -p /opt/android-sdk/cmdline-tools && \
+    for i in {1..3}; do \
+        wget -q --tries=3 --timeout=30 https://dl.google.com/android/repository/commandlinetools-linux-9123335_latest.zip -O /tmp/cmdline-tools.zip && \
+        unzip -q /tmp/cmdline-tools.zip -d /opt/android-sdk/cmdline-tools && \
+        mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest && \
+        rm -f /tmp/cmdline-tools.zip && \
+        break; \
+    done || (echo "Failed to download Android tools after 3 attempts" && exit 1)
+
+# Accept Android licenses and install platform tools
+RUN yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/opt/android-sdk --licenses && \
+    /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/opt/android-sdk "platform-tools" && \
+    /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/opt/android-sdk "platforms;android-33" && \
+    /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/opt/android-sdk "build-tools;33.0.0"
+
+# Stage 3: Chrome dependencies
+FROM base AS chrome-deps
+
+# Install Chrome and its dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -39,54 +68,100 @@ RUN apt-get update && apt-get install -y \
     libxrandr2 \
     xdg-utils \
     udev \
-    --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/* \
-    # Install Android Command Line Tools
-    && mkdir -p /opt/android-sdk/cmdline-tools \
-    && wget -q https://dl.google.com/android/repository/commandlinetools-linux-9123335_latest.zip -O /tmp/cmdline-tools.zip \
-    && unzip -q /tmp/cmdline-tools.zip -d /opt/android-sdk/cmdline-tools \
-    && mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest \
-    && rm /tmp/cmdline-tools.zip \
-    # Accept licenses
-    && yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/opt/android-sdk --licenses \
-    # Install platform tools
-    && /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/opt/android-sdk "platform-tools" "platforms;android-33" "build-tools;33.0.0" \
-    # Create symlinks
-    && ln -s /opt/android-sdk/platform-tools/adb /usr/local/bin/adb \
-    # Create directory for udev rules (permissions will be set at runtime)
-    && mkdir -p /etc/udev/rules.d/ \
-    # Create the udev rules file with proper permissions
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0bb4", MODE="0666"' > /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0e79", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0502", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0b05", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="413c", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0489", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="091e", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="12d1", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="24e3", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2116", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0482", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="17ef", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="1004", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="22b8", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0409", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2080", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0955", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2257", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="10a9", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="1d4d", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0471", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="04da", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="05c6", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="04e8", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="04dd", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0fce", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0930", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="19d2", MODE="0666"' >> /etc/udev/rules.d/51-android.rules \
-    && chmod a+rw /etc/udev/rules.d/51-android.rules
+    && rm -rf /var/lib/apt/lists/*
+
+# Stage 4: Main builder
+FROM base AS builder
+
+# Copy Android SDK and Chrome deps from previous stages
+COPY --from=android-builder /opt/android-sdk /opt/android-sdk
+COPY --from=chrome-deps /usr/ /usr/
+COPY --from=chrome-deps /lib/ /lib/
+COPY --from=chrome-deps /bin/ /bin/
+
+WORKDIR /usr/src/app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set environment variables
+ENV ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk \
+    PATH="/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/tools:/opt/android-sdk/tools/bin:${PATH}" \
+    CHROME_BIN=/usr/bin/chromium-browser \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    NODE_OPTIONS="--max-old-space-size=4096"
+
+# Copy package files first for better layer caching
+COPY package*.json ./
+COPY packages/ ./packages/
+
+# Install dependencies with production flag first, then development
+RUN npm config set fetch-retries 5 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm install -g npm@latest && \
+    npm install --production --legacy-peer-deps && \
+    npm install --legacy-peer-deps && \
+    npm cache clean --force
+
+# Copy the rest of the application
+COPY . .
+
+# Create udev rules for Android devices
+RUN mkdir -p /etc/udev/rules.d/ && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0409", MODE="0666"' > /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2080", MODE="0666"' >> /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0955", MODE="0666"' >> /etc/udev/rules.d/51-android.rules
+
+# Create ADB key directory and set permissions
+RUN mkdir -p /home/node/.android && \
+    touch /home/node/.android/adbkey /home/node/.android/adbkey.pub && \
+    chmod 600 /home/node/.android/adbkey /home/node/.android/adbkey.pub && \
+    chown -R node:node /home/node/.android
+
+# Set proper permissions for ADB and add more udev rules
+RUN chmod -R a+rw /dev/bus/usb/ && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2257", MODE="0666"' >> /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="10a9", MODE="0666"' >> /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="1d4d", MODE="0666"' >> /etc/udev/rules.d/51-android.rules
+
+# Add common Android vendor IDs
+RUN echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0bb4", MODE="0666"' >> /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0e79", MODE="0666"' >> /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0502", MODE="0666"' >> /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0b05", MODE="0666"' >> /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="413c", MODE="0666"' >> /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0489", MODE="0666"' >> /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="091e", MODE="0666"' >> /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", MODE="0666"' >> /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="12d1", MODE="0666"' >> /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="24e3", MODE="0666"' >> /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2116", MODE="0666"' >> /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0482", MODE="0666"' >> /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="17ef", MODE="0666"' >> /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="1004", MODE="0666"' >> /etc/udev/rules.d/51-android.rules && \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="22b8", MODE="0666"' >> /etc/udev/rules.d/51-android.rules
+
+# Add all remaining Android vendor IDs in a single RUN command
+RUN { \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0471", MODE="0666"'; \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="04da", MODE="0666"'; \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="05c6", MODE="0666"'; \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="1f3a", MODE="0666"'; \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="04e8", MODE="0666"'; \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="04dd", MODE="0666"'; \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0fce", MODE="0666"'; \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0930", MODE="0666"'; \
+    echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="19d2", MODE="0666"'; \
+} >> /etc/udev/rules.d/51-android.rules
+
+# Set permissions and reload udev rules
+RUN chmod a+rw /etc/udev/rules.d/51-android.rules && \
+    udevadm control --reload-rules && \
+    udevadm trigger
 
 # Set Puppeteer environment variables
 # Android SDK and ADB environment variables
