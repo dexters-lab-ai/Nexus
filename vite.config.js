@@ -393,32 +393,102 @@ export default defineConfig(({ mode }) => {
           {
             name: 'copy-fonts',
             buildStart() {
-              try {
-                // Ensure webfonts directory exists
-                const webfontsDir = path.resolve(__dirname, 'public/webfonts');
-                if (!fs.existsSync(webfontsDir)) {
-                  fs.mkdirSync(webfontsDir, { recursive: true });
-                }
-                
-                // Copy Font Awesome fonts from node_modules
-                const fontAwesomePath = path.dirname(require.resolve('@fortawesome/fontawesome-free/webfonts/fa-solid-900.woff2'));
-                const fontFiles = [
-                  'fa-solid-900.woff2',
-                  'fa-regular-400.woff2',
-                  'fa-brands-400.woff2'
-                ];
-                
-                fontFiles.forEach(font => {
-                  const src = path.join(fontAwesomePath, font);
-                  const dest = path.join(webfontsDir, font);
-                  if (fs.existsSync(src)) {
-                    copyFileSync(src, dest);
-                    console.log(`[vite:copy-fonts] Copied ${font} to ${dest}`);
+              // Process fonts in chunks to avoid memory issues
+              const processFonts = async () => {
+                try {
+                  // Ensure webfonts directory exists
+                  const webfontsDir = path.resolve(__dirname, 'public/webfonts');
+                  if (!fs.existsSync(webfontsDir)) {
+                    fs.mkdirSync(webfontsDir, { recursive: true });
                   }
-                });
-              } catch (error) {
-                console.error('[vite:copy-fonts] Error copying fonts:', error);
-              }
+                  
+                  // Get path to Font Awesome fonts
+                  const fontAwesomePath = path.dirname(require.resolve('@fortawesome/fontawesome-free/webfonts/fa-solid-900.woff2'));
+                  
+                  // Process fonts in batches to reduce memory usage
+                  const fontBatches = [
+                    // First batch: Only the essential woff2 files
+                    [
+                      'fa-solid-900.woff2',
+                      'fa-regular-400.woff2',
+                      'fa-brands-400.woff2'
+                    ],
+                    // Second batch: woff files
+                    [
+                      'fa-solid-900.woff',
+                      'fa-regular-400.woff',
+                      'fa-brands-400.woff'
+                    ],
+                    // Third batch: Other formats (less commonly used)
+                    [
+                      'fa-solid-900.ttf',
+                      'fa-regular-400.ttf',
+                      'fa-brands-400.ttf',
+                      'fa-solid-900.eot',
+                      'fa-regular-400.eot',
+                      'fa-brands-400.eot',
+                      'fa-solid-900.svg',
+                      'fa-regular-400.svg',
+                      'fa-brands-400.svg'
+                    ]
+                  ];
+                  
+                  let totalCopied = 0;
+                  let totalSkipped = 0;
+                  
+                  // Process each batch with a small delay to free up memory
+                  for (const batch of fontBatches) {
+                    const batchResults = await Promise.all(
+                      batch.map(font => 
+                        new Promise(resolve => {
+                          try {
+                            const src = path.join(fontAwesomePath, font);
+                            const dest = path.join(webfontsDir, font);
+                            
+                            if (fs.existsSync(src)) {
+                              copyFileSync(src, dest);
+                              console.log(`[vite:copy-fonts] Copied ${font}`);
+                              resolve({ copied: true });
+                            } else {
+                              console.warn(`[vite:copy-fonts] Source file not found: ${src}`);
+                              resolve({ skipped: true });
+                            }
+                          } catch (error) {
+                            console.error(`[vite:copy-fonts] Error processing font:`, error);
+                            resolve({ error: true });
+                          }
+                        })
+                      )
+                    );
+                    
+                    // Add a small delay between batches to free up memory
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
+                    // Update counters
+                    totalCopied += batchResults.filter(r => r.copied).length;
+                    totalSkipped += batchResults.filter(r => r.skipped).length;
+                  }
+                  
+                  console.log(`[vite:copy-fonts] Copied ${totalCopied} font files (${totalSkipped} skipped)`);
+                  
+                  // Copy the CSS file separately
+                  try {
+                    const faCssPath = require.resolve('@fortawesome/fontawesome-free/css/all.min.css');
+                    const faCssDest = path.join(webfontsDir, '../css/fontawesome-all.min.css');
+                    fs.mkdirSync(path.dirname(faCssDest), { recursive: true });
+                    copyFileSync(faCssPath, faCssDest);
+                    console.log('[vite:copy-fonts] Copied Font Awesome CSS');
+                  } catch (error) {
+                    console.error('[vite:copy-fonts] Error copying Font Awesome CSS:', error.message);
+                  }
+                  
+                } catch (error) {
+                  console.error('[vite:copy-fonts] Error in copy-fonts plugin:', error);
+                }
+              };
+              
+              // Start processing fonts
+              return processFonts();
             }
           }
         ]
