@@ -679,7 +679,7 @@ export default class NeuralFlow {
       y: initialY,
       tx: 0, // target x (will be set in updateNodePositions)
       ty: 0, // target y (will be set in updateNodePositions)
-      radius: isPlanNode ? 14 : 8,
+      radius: isPlanNode ? 12 : 8,
       dendrites: [],
       dendriteCount: isPlanNode ? 9 : (Math.floor(Math.random() * 4) + 4),
       alpha: 0, // for fade-in

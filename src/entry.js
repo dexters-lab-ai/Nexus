@@ -1,6 +1,7 @@
 // Entry script: orchestrates splash, 3D world, and loading of React app
 import RoomEntryPoint from './3d/RoomEntryPoint.js';
 import { eventBus } from './utils/events.js';
+import WebSocketManager from './utils/WebSocketManager.js';
 
 // DOM elements
 const splash = document.getElementById('splash-screen');
@@ -112,7 +113,6 @@ eventBus.once('initialize-application', async () => {
     // Initialize WebSocket with user context
     const isAuthenticated = !userId.startsWith('guest_');
     try {
-      const WebSocketManager = (await import('./utils/WebSocketManager.js')).default;
       
       // Set up WebSocket connection with retry logic
       const maxRetries = 7;
@@ -183,7 +183,6 @@ eventBus.once('initialize-application', async () => {
     eventBus.on('user-logged-out', async () => {
       // Update WebSocket authentication state
       try {
-        const WebSocketManager = (await import('./utils/WebSocketManager.js')).default;
         await WebSocketManager.updateAuthState(null, false);
         console.log('WebSocket authentication reset after logout');
       } catch (error) {
@@ -198,7 +197,6 @@ eventBus.once('initialize-application', async () => {
         
         // Update WebSocket authentication state
         try {
-          const WebSocketManager = (await import('./utils/WebSocketManager.js')).default;
           await WebSocketManager.updateAuthState(newUserId, true);
           console.log('WebSocket authentication updated for user:', newUserId);
         } catch (error) {

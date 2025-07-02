@@ -5,7 +5,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { visualizer } from 'rollup-plugin-visualizer';
 import fs from 'fs';
-import { writeFileSync, mkdirSync } from 'fs';
+import { writeFileSync, mkdirSync, copyFileSync } from 'fs';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
 
 // Plugin to copy auth and events utilities to assets
 function copyUtilsPlugin() {
@@ -338,38 +341,42 @@ export default defineConfig(({ mode }) => {
               const path = await import('path');
               const { glob } = await import('glob');
               
+              // Track processed files to prevent duplicates
+              const processedFiles = new Set();
+              
               // Find all files in src/styles
               const files = await glob('src/styles/**/*', { nodir: true });
               
-              // Specific CSS files that need to be in the root css/ directory
-              const specificFiles = [
-                'src/styles/components/settings-advanced.css',
-                'src/styles/components/settings-modal-enhancements.css'
-              ];
-              
               // Process all files
-              for (const file of [...files, ...specificFiles]) {
+              for (const file of files) {
                 try {
-                  const content = await fs.readFile(file, 'utf-8');
                   const fileName = path.basename(file);
                   
-                  // Only process CSS files that don't start with _ (Sass partials)
-                  if (!file.endsWith('.css') || path.basename(file).startsWith('_')) {
+                  // Skip non-CSS files and Sass partials
+                  if (!file.endsWith('.css') || fileName.startsWith('_')) {
                     continue;
                   }
                   
+                  // Skip already processed files
+                  if (processedFiles.has(fileName)) {
+                    console.warn(`[vite:copy-styles] Skipping duplicate file: ${file}`);
+                    continue;
+                  }
+                  
+                  const content = await fs.readFile(file, 'utf-8');
+                  
                   // Determine output path based on file location
                   let outputPath;
-                  if (specificFiles.includes(file)) {
-                    // Specific files go to root css/ directory
-                    outputPath = `css/${fileName}`;
-                  } else if (file.includes('src/styles/components/')) {
+                  if (file.includes('src/styles/components/')) {
                     // Component CSS goes to components subdirectory
                     outputPath = `css/components/${fileName}`;
                   } else {
                     // Other CSS files go to root css/ directory
                     outputPath = `css/${fileName}`;
                   }
+                  
+                  // Mark file as processed
+                  processedFiles.add(fileName);
                   
                   // Add file to the bundle
                   this.emitFile({
@@ -380,6 +387,37 @@ export default defineConfig(({ mode }) => {
                 } catch (error) {
                   console.warn(`[vite:copy-styles] Could not process ${file}:`, error.message);
                 }
+              }
+            }
+          },
+          {
+            name: 'copy-fonts',
+            buildStart() {
+              try {
+                // Ensure webfonts directory exists
+                const webfontsDir = path.resolve(__dirname, 'public/webfonts');
+                if (!fs.existsSync(webfontsDir)) {
+                  fs.mkdirSync(webfontsDir, { recursive: true });
+                }
+                
+                // Copy Font Awesome fonts from node_modules
+                const fontAwesomePath = path.dirname(require.resolve('@fortawesome/fontawesome-free/webfonts/fa-solid-900.woff2'));
+                const fontFiles = [
+                  'fa-solid-900.woff2',
+                  'fa-regular-400.woff2',
+                  'fa-brands-400.woff2'
+                ];
+                
+                fontFiles.forEach(font => {
+                  const src = path.join(fontAwesomePath, font);
+                  const dest = path.join(webfontsDir, font);
+                  if (fs.existsSync(src)) {
+                    copyFileSync(src, dest);
+                    console.log(`[vite:copy-fonts] Copied ${font} to ${dest}`);
+                  }
+                });
+              } catch (error) {
+                console.error('[vite:copy-fonts] Error copying fonts:', error);
               }
             }
           }
