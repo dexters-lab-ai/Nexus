@@ -712,11 +712,11 @@
   }
   
   .sidebar.expanded {
-    transform: translateX(0px);
+    transform: translateX(0px) !important;
   }
   
   .sidebar.collapsed {
-    transform: translateX(calc(100% - var(--sidebar-collapsed-width) - 50px));
+    transform: translateX(calc(100% - var(--sidebar-collapsed-width) - 50px)) !important;
   }
   .sidebar:not(.collapsed) {
     transform: translateX(0) !important;
