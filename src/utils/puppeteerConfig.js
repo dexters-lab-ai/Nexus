@@ -6,6 +6,7 @@
 import puppeteer from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -18,10 +19,55 @@ const __dirname = path.dirname(__filename);
 async function getPuppeteerLaunchOptions() {
   const isProduction = process.env.NODE_ENV === 'production';
   
+  // In production, use a unique directory for each instance to prevent lock file conflicts
+  // In development, use a fixed directory for easier debugging
+  const profileDir = isProduction 
+    ? path.join(os.tmpdir(), `puppeteer_${Math.random().toString(36).substring(2, 15)}`)
+    : path.join(os.tmpdir(), 'puppeteer_dev_profile');
+    
+  // Ensure the profile directory exists and has correct permissions
+  try {
+    // Remove existing directory if it exists to prevent lock file conflicts
+    if (fs.existsSync(profileDir)) {
+      fs.rmSync(profileDir, { recursive: true, force: true });
+    }
+    
+    // Create fresh directory with correct permissions
+    fs.mkdirSync(profileDir, { recursive: true, mode: 0o755 });
+    
+    // Set up minimal preferences file to prevent first-run dialogs
+    const prefsPath = path.join(profileDir, 'Default', 'Preferences');
+    const prefsDir = path.dirname(prefsPath);
+    
+    if (!fs.existsSync(prefsDir)) {
+      fs.mkdirSync(prefsDir, { recursive: true, mode: 0o755 });
+    }
+    
+    const prefs = {
+      'profile': {
+        'exit_type': 'Normal',
+        'exited_cleanly': true
+      },
+      'browser': {
+        'has_seen_welcome_page': true
+      }
+    };
+    
+    fs.writeFileSync(prefsPath, JSON.stringify(prefs), 'utf8');
+    
+  } catch (error) {
+    console.error(`[Puppeteer] Error setting up profile directory ${profileDir}:`, error.message);
+    // Fall back to in-memory profile if we can't create a directory
+    console.warn('[Puppeteer] Falling back to in-memory profile (no persistence)');
+    launchOptions.userDataDir = undefined;
+  }
+
   // Common launch options for all environments
   const launchOptions = {
     headless: isProduction ? 'new' : false,
     ignoreHTTPSErrors: true,
+    // Only set userDataDir if we successfully created a profile directory
+    ...(profileDir && { userDataDir: profileDir }),
     // Single source of truth for viewport size - 1280x720 (16:9) stays well within GPT-4o's limits
     defaultViewport: { 
       width: 1280, 
@@ -86,7 +132,40 @@ async function getPuppeteerLaunchOptions() {
         : 'TranslateUI,Translate,ImprovedCookieControls,MediaRouter,NetworkService'),
       
       // Security - more conservative settings
-      '--disable-blink-features=AutomationControlled'
+      '--disable-blink-features=AutomationControlled',
+      // Prevent multiple instances from conflicting
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--disable-component-update',
+      '--disable-default-apps',
+      '--disable-session-crashed-bubble',
+      '--disable-background-networking',
+      '--disable-sync',
+      // Fix for Docker container issues
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--no-zygote',
+      '--single-process',
+      // Disable various background network services
+      '--disable-background-networking',
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-breakpad',
+      '--disable-client-side-phishing-detection',
+      '--disable-component-update',
+      '--disable-default-apps',
+      '--disable-dev-shm-usage',
+      '--disable-hang-monitor',
+      '--disable-ipc-flooding-protection',
+      '--disable-popup-blocking',
+      '--disable-prompt-on-repost',
+      '--disable-renderer-backgrounding',
+      '--disable-sync',
+      '--metrics-recording-only',
+      '--no-first-run',
+      '--safebrowsing-disable-auto-update',
+      '--password-store=basic',
+      '--use-mock-keychain'
     ]
   };
   

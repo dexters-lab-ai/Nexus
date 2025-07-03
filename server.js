@@ -3451,6 +3451,43 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/**
+ * Validates and normalizes a URL, with fallback to Google if invalid
+ * @param {string} url - The URL to validate
+ * @returns {string} - The validated URL or fallback to Google
+ */
+function validateAndNormalizeUrl(url) {
+  if (!url) return 'https://www.google.com';
+  
+  // Trim whitespace and remove quotes if present
+  url = url.trim().replace(/^["']|["']$/g, '');
+  
+  // If it's just a domain or search term, prepend https://
+  if (!/^https?:\/\//i.test(url)) {
+    // If it looks like a domain (contains a dot but no spaces)
+    if (url.includes('.') && !url.includes(' ')) {
+      url = `https://${url}`;
+    } else {
+      // Treat as a search query
+      const encodedQuery = encodeURIComponent(url);
+      return `https://www.google.com/search?q=${encodedQuery}`;
+    }
+  }
+  
+  // Basic URL validation
+  try {
+    const urlObj = new URL(url);
+    // Ensure protocol is http or https
+    if (!['http:', 'https:'].includes(urlObj.protocol)) {
+      return 'https://www.google.com';
+    }
+    return urlObj.toString();
+  } catch (e) {
+    // If URL parsing fails, fall back to Google search
+    const encodedQuery = encodeURIComponent(url);
+    return `https://www.google.com/search?q=${encodedQuery}`;
+  }
+}
 
 /**
  * Shared function for saving task completion messages consistently
@@ -5529,21 +5566,28 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
     // Determine if it's a navigation command and set effective URL.
     const isNavigationCommand = command.toLowerCase().startsWith('navigate to ');
     let effectiveUrl;
+    
     if (isNavigationCommand) {
-      const navigateMatch = command.match(/navigate to (\S+)/i);
+      const navigateMatch = command.match(/navigate to (.+)/i);
       if (navigateMatch) {
-        effectiveUrl = navigateMatch[1];
+        effectiveUrl = navigateMatch[1].trim();
         logAction(`Extracted URL from command: ${effectiveUrl}`);
       } else {
-        throw new Error("Invalid navigate to command: no URL found");
+        effectiveUrl = 'https://www.google.com';
+        logAction('No URL found in navigate command, defaulting to Google');
       }
     } else {
-      effectiveUrl = providedUrl;
+      effectiveUrl = providedUrl || 'https://www.google.com';
     }
 
-    // Validate URL for new tasks.
-    if (!existingSession && !effectiveUrl) {
-      throw new Error("URL required for new tasks");
+    // Normalize and validate the URL
+    effectiveUrl = validateAndNormalizeUrl(effectiveUrl);
+    logAction(`Using validated URL: ${effectiveUrl}`);
+
+    // If we still don't have a valid URL, use Google as fallback
+    if (!effectiveUrl) {
+      effectiveUrl = 'https://www.google.com';
+      logAction('Falling back to Google due to invalid URL');
     }
 
     // Override session using taskId to ensure unique session per task
@@ -5876,6 +5920,13 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
     logQuery(`Starting query: "${query}"`);
     
     const taskKey = taskId;
+    let effectiveUrl = providedUrl || 'https://www.google.com';
+    
+    // Normalize and validate the URL if provided
+    if (effectiveUrl) {
+      effectiveUrl = validateAndNormalizeUrl(effectiveUrl);
+      logQuery(`Using validated URL: ${effectiveUrl}`);
+    }
 
     if (existingSession) {
       logQuery("Using existing browser session");
@@ -5907,8 +5958,8 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
         ({ browser, agent, page, release } = session);
       }
     } else {
-      if (!providedUrl) throw new Error("URL required for new tasks");
-      logQuery(`Creating new browser session for URL: ${providedUrl}`);
+      // If we got here, we need to create a new browser session
+      logQuery(`Creating new browser session for URL: ${effectiveUrl}`);
       release = await browserSemaphore.acquire();
       logQuery("Acquired browser semaphore");
       
@@ -5941,9 +5992,15 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
         }
       });
       
-      logQuery(`Navigating to URL: ${providedUrl}`);
-      await page.goto(providedUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-      logQuery("Navigation completed successfully");
+      logQuery(`Navigating to URL: ${effectiveUrl}`);
+      try {
+        await page.goto(effectiveUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        logQuery("Navigation completed successfully");
+      } catch (navError) {
+        logQuery(`Navigation error: ${navError.message}. Falling back to Google`);
+        await page.goto('https://www.google.com', { waitUntil: 'domcontentloaded', timeout: 20000 });
+        logQuery("Navigation to fallback URL completed");
+      }
       
       // Initialize midscene agent with just the page (reads env vars internally)
       agent = new PuppeteerAgent(page);
