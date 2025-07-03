@@ -119,7 +119,7 @@ export default defineConfig(({ mode }) => {
     'import.meta.env.PROD': !isDev,
     'import.meta.env.VITE_API_URL': JSON.stringify(apiUrl),
     'import.meta.env.VITE_WS_URL': JSON.stringify(wsUrl),
-    'import.meta.env.VITE_APP_DOMAIN': JSON.stringify(env.VITE_APP_DOMAIN || 'operator-io236.ondigitalocean.app'),
+    'import.meta.env.VITE_APP_DOMAIN': JSON.stringify(env.VITE_APP_DOMAIN || 'operator.dexter-ai.io'),
   };
 
   // debug dump

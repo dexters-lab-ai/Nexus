@@ -23,29 +23,29 @@ services:
     
     # API Configuration
     - key: APP_DOMAIN
-      value: operator-pjcgr.ondigitalocean.app
+      value: operator.dexter-ai.io
     - key: VITE_API_URL
-      value: https://operator-pjcgr.ondigitalocean.app
+      value: https://operator.dexter-ai.io
     - key: VITE_WS_URL
-      value: wss://operator-pjcgr.ondigitalocean.app
+      value: wss://operator.dexter-ai.io
     - key: API_URL
-      value: https://operator-pjcgr.ondigitalocean.app
+      value: https://operator.dexter-ai.io
     - key: FRONTEND_URL
-      value: https://operator-pjcgr.ondigitalocean.app
+      value: https://operator.dexter-ai.io
     - key: WS_URL
-      value: wss://operator-pjcgr.ondigitalocean.app
+      value: wss://operator.dexter-ai.io
     - key: OPERATOR_APP_WS_URL
-      value: wss://operator-pjcgr.ondigitalocean.app/ws
+      value: wss://operator.dexter-ai.io/ws
     
     # Security
     - key: SECURE_COOKIES
       value: 'true'
     - key: COOKIE_DOMAIN
-      value: operator-pjcgr.ondigitalocean.app
+      value: operator.dexter-ai.io
     - key: SAME_SITE_COOKIE
       value: 'none'
     - key: CORS_ORIGIN
-      value: https://operator-pjcgr.ondigitalocean.app
+      value: https://operator.dexter-ai.io
     - key: TRUST_PROXY
       value: '1'
     
@@ -82,7 +82,7 @@ services:
     - key: GOOGLE_API_KEY_FILE
       value: config/google-key.json
     - key: WEBHOOK_URL
-      value: https://operator-pjcgr.ondigitalocean.app/api/webhook
+      value: https://operator.dexter-ai.io/api/webhook
 
   # Health Check Configuration
   health_check:

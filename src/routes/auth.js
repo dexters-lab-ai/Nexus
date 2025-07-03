@@ -145,7 +145,7 @@ router.post('/login', async (req, res) => {
         req.session.cookie.sameSite = process.env.NODE_ENV === 'production' ? 'none' : 'lax';
         req.session.cookie.maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
         req.session.cookie.domain = process.env.NODE_ENV === 'production' ? 
-          (process.env.COOKIE_DOMAIN || '.ondigitalocean.app') : undefined;
+          (process.env.COOKIE_DOMAIN || '.dexter-ai.io') : undefined;
           
         // Save the session
         req.session.save((err) => {
@@ -232,7 +232,7 @@ const handleLogout = (req, res) => {
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       domain: process.env.NODE_ENV === 'production' ? 
-        (process.env.COOKIE_DOMAIN || '.ondigitalocean.app') : undefined
+        (process.env.COOKIE_DOMAIN || '.dexter-ai.io') : undefined
     });
     
     console.log('✅ User logged out:', { userId, sessionId });

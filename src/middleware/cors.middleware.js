@@ -13,7 +13,7 @@ const isDocker = process.env.IS_DOCKER === 'true';
 const getAllowedOrigins = () => {
   const origins = [
     'https://operator-pjcgr.ondigitalocean.app',
-    'https://operator-io236.ondigitalocean.app',
+    'https://operator.dexter-ai.io',
     'http://localhost:3000',
     'http://localhost:5173',
     'http://localhost:3420',
@@ -92,7 +92,7 @@ export const corsMiddleware = (req, res, next) => {
     return res.status(403).json({
       error: 'Not allowed by CORS',
       message: 'The origin is not allowed to access this resource',
-      allowedOrigins: allowedOrigins.filter(o => o.includes('ondigitalocean.app')),
+      allowedOrigins: allowedOrigins.filter(o => o.includes('ondigitalocean.app') || o.includes('dexter-ai.io')),
       yourOrigin: origin
     });
   }

@@ -930,7 +930,7 @@ class WebSocketManager {
     
     // If we're in production, make sure we're using the correct domain
     if (!isLocalhost && window.location.hostname.endsWith('.ondigitalocean.app')) {
-      host = window.location.hostname.replace('operator-io236', 'api-operator-io236');
+      host = window.location.hostname.replace('operator-pjcgr', 'api-operator-pjcgr');
     }
     
     // WebSocket endpoint path - adjust this to match your server's WebSocket endpoint

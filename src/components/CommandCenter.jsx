@@ -232,7 +232,7 @@ export function CommandCenter(props = {}) {
         const relevantMutations = mutations.some(mutation => {
           return Array.from(mutation.addedNodes).some(node => 
             node.nodeType === 1 && 
-            (node.classList.contains('thought-bubble') || 
+            (
              node.classList.contains('bubble-card') ||
              node.classList.contains('message'))
           );
@@ -3515,7 +3515,7 @@ export function CommandCenter(props = {}) {
     
     // Transition all thought messages that haven't been completed yet
     console.log('[DEBUG] NLI response persisted, updating any active thought messages')
-    transitionThoughtBubbles(taskId, true); // Force transition
+    transitionThoughtBubbles(null, true); // all and force
   };
   
   // Enhanced function to transition thought bubbles from thinking state to completed state

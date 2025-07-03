@@ -61,12 +61,12 @@ const setStaticFileHeaders = (res, filePath) => {
   
   // Set Content-Security-Policy for additional security
   const csp = [
-    "default-src 'self' https://*.ondigitalocean.app http://localhost:* blob: data:",
-    "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://*.ondigitalocean.app http://localhost:*",
-    "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://*.ondigitalocean.app",
+    "default-src 'self' https://*.dexter-ai.io http://localhost:* blob: data:",
+    "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://*.dexter-ai.io http://localhost:*",
+    "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://*.dexter-ai.io",
     "img-src 'self' data: blob: https:",
-    "font-src 'self' https://cdnjs.cloudflare.com https://*.ondigitalocean.app data:",
-    "connect-src 'self' ws: wss: http://localhost:* https://*.ondigitalocean.app blob: data:",
+    "font-src 'self' https://cdnjs.cloudflare.com https://*.dexter-ai.io data:",
+    "connect-src 'self' ws: wss: http://localhost:* https://*.dexter-ai.io blob: data:",
     "media-src 'self' blob: data: https:",
     "worker-src 'self' blob: data:",
     "child-src 'self' blob: data:",

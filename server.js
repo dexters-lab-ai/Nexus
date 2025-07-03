@@ -43,6 +43,7 @@ const app = express();
 app.options('/api/health', (req, res) => {
   const origin = req.headers.origin || '';
   const isAllowedOrigin = origin.endsWith('.ondigitalocean.app') || 
+                       origin.endsWith('.dexter-ai.io') || 
                        origin.includes('localhost:') || 
                        origin.includes('127.0.0.1:');
   
@@ -68,7 +69,8 @@ app.options('/api/health', (req, res) => {
 app.get('/api/health', (req, res) => {
   try {
     const origin = req.headers.origin || '';
-    const isAllowedOrigin = origin.endsWith('.ondigitalocean.app') || 
+    const isAllowedOrigin = origin.endsWith('.ondigitalocean.app') ||
+                         origin.endsWith('.dexter-ai.io') || 
                          origin.includes('localhost:') || 
                          origin.includes('127.0.0.1:');
     
@@ -117,6 +119,7 @@ app.get('/api/health', (req, res) => {
       // Set CORS headers even in error case
       const origin = req.headers.origin || '';
       if (origin.endsWith('.ondigitalocean.app') || 
+          origin.endsWith('.dexter-ai.io') || 
           origin.includes('localhost:') || 
           origin.includes('127.0.0.1:')) {
         res.header('Access-Control-Allow-Origin', origin);
@@ -1144,7 +1147,7 @@ const sessionMiddleware = session({
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     domain: process.env.NODE_ENV === 'production' ? 
-      (process.env.COOKIE_DOMAIN || '.ondigitalocean.app') : undefined,
+      (process.env.COOKIE_DOMAIN || '.dexter-ai.io') : undefined,
     path: '/'  // Ensure cookie is sent for all paths
   },
   store: MongoStore.create({
@@ -1236,7 +1239,7 @@ app.use((req, res, next) => {
   
   // In production, allow any *.ondigitalocean.app subdomain
   if (isProduction || isLocalhost) {
-    if (isProduction ? origin.endsWith('.ondigitalocean.app') : true) {
+    if (isProduction ? origin.endsWith('.ondigitalocean.app') || origin.endsWith('.dexter-ai.io') : true) {
       // Set CORS headers
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -1495,7 +1498,7 @@ async function startApp() {
       httpServer.listen(PORT, HOST, () => {
         const protocol = process.env.NODE_ENV === 'production' ? 'wss' : 'ws';
         const host = process.env.NODE_ENV === 'production' 
-          ? process.env.APP_DOMAIN || 'operator-io236.ondigitalocean.app'
+          ? process.env.APP_DOMAIN || 'operator.dexter-ai.io'
           : 'localhost';
         
         // To:

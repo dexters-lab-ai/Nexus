@@ -39,7 +39,7 @@ router.get('/', (req, res) => {
   
   // Set CORS headers
   const origin = req.headers.origin || '';
-  const isAllowedOrigin = origin.endsWith('.ondigitalocean.app') || 
+  const isAllowedOrigin = origin.endsWith('.ondigitalocean.app') || origin.endsWith('.dexter-ai.io') || 
                        origin.includes('localhost:') || 
                        origin.includes('127.0.0.1:');
   
@@ -130,7 +130,7 @@ router.get('/', (req, res) => {
 // Add OPTIONS handler for preflight
 router.options('/', (req, res) => {
   const origin = req.headers.origin || '';
-  if (origin.endsWith('.ondigitalocean.app') || 
+  if (origin.endsWith('.ondigitalocean.app') || origin.endsWith('.dexter-ai.io') || 
       origin.includes('localhost:') || 
       origin.includes('127.0.0.1:')) {
     res.header('Access-Control-Allow-Origin', origin);

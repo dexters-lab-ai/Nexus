@@ -6,7 +6,7 @@ export const corsConfig = {
     
     // In production, allow any *.ondigitalocean.app subdomain
     if (process.env.NODE_ENV === 'production') {
-      if (origin.endsWith('.ondigitalocean.app')) {
+      if (origin.endsWith('.ondigitalocean.app') || origin.endsWith('.dexter-ai.io')) {
         return callback(null, true);
       }
     }
@@ -14,7 +14,7 @@ export const corsConfig = {
     // Allow development origins
     const allowedOrigins = [
       'https://operator-pjcgr.ondigitalocean.app',
-      'https://operator-io236.ondigitalocean.app',
+      'https://operator.dexter-ai.io',
       'http://localhost:3000',
       'http://localhost:3420',
       'http://localhost:5173'
@@ -68,7 +68,7 @@ const getCookieDomain = () => {
   }
   
   if (process.env.NODE_ENV === 'production') {
-    return '.ondigitalocean.app'; // Allow all subdomains
+    return '.dexter-ai.io'; // Allow all subdomains
   }
   
   // In development, don't set domain to allow localhost cookies
@@ -135,7 +135,7 @@ export default {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        domain: process.env.NODE_ENV === 'production' ? '.ondigitalocean.app' : undefined
+        domain: process.env.NODE_ENV === 'production' ? '.dexter-ai.io' : undefined
       },
       sessionKey: 'csrfToken',
       headerName: 'X-CSRF-Token'
