@@ -311,7 +311,7 @@ export async function editMidsceneReport(reportPath) {
   const parser = new Parser({
     onopentag(name, attrs) {
       if (name === 'title') {
-        writeStream.write('<title>Report - Nexus</title>');
+        writeStream.write('<title>VLM Run Report | O.P.E.R.A.T.O.R.</title>');
         insideTitle = true;
 
       } else if (name === 'link' && attrs.rel === 'icon') {
@@ -349,19 +349,11 @@ export async function editMidsceneReport(reportPath) {
     },
 
     ontext(text) {
-      if (insideTitle) {
-        // Skip writing the original title text since we already wrote our custom title
-        return;
-      } else if (text.includes('Midscene')) {
-        // Replace any Midscene references with Nexus
-        writeStream.write(text
-          .replace(/Report - Midscene(\.js)?/g, 'O.P.E.R.A.T.O.R – Sentinel Report')
-          .replace(/Midscene(\.js)? Report/g, 'O.P.E.R.A.T.O.R – Sentinel Report')
-          .replace(/Midscene/g, 'Nexus')
-        );
-        return;
+      if (insideScript) {
+        scriptContent += text;
+      } else if (!insideTitle) {
+        writeStream.write(text);
       }
-      writeStream.write(text);
     },
 
     onclosetag(name) {
@@ -371,31 +363,11 @@ export async function editMidsceneReport(reportPath) {
       } else if (name === 'script' && insideScript) {
         // Try to parse & patch the JSON dump
         try {
-          // First clean up the JSON string
           let jsonStr = scriptContent.trim();
-          
-          // Fix common JSON issues
-          if (!jsonStr.endsWith('}') && !jsonStr.endsWith(']')) {
-            // Try to properly close the JSON structure
-            const openBraces = (jsonStr.match(/\{/g) || []).length;
-            const closeBraces = (jsonStr.match(/\}/g) || []).length;
-            const openBrackets = (jsonStr.match(/\[/g) || []).length;
-            const closeBrackets = (jsonStr.match(/\]/g) || []).length;
-            
-            // Add missing closing brackets/braces
-            while (openBraces > closeBraces) { jsonStr += '}'; }
-            while (openBrackets > closeBrackets) { jsonStr += ']'; }
-            
-            // If still not properly closed, add a minimal valid structure
-            if (!jsonStr.endsWith('}') && !jsonStr.endsWith(']')) {
-              jsonStr = jsonStr.replace(/,\s*$/, '') + '}'; // Remove trailing comma and close
-            }
+          if (!jsonStr.endsWith('}')) {
+            jsonStr += '"}]}'; // attempt to close truncated JSON
           }
-          
-          // Parse the JSON
           const data = JSON.parse(jsonStr);
-          
-          // Update the data structure
           if (Array.isArray(data.executions)) {
             data.executions.forEach(exec => { 
               exec.sdkVersion = APP_VERSION;
@@ -403,21 +375,10 @@ export async function editMidsceneReport(reportPath) {
               if (exec.engine) {
                 exec.engineInfo = exec.engine;
               }
-              
-              // Update any Midscene references in the execution data
-              if (exec.name) exec.name = exec.name.replace(/Midscene/g, 'Nexus');
-              if (exec.title) exec.title = exec.title.replace(/Midscene/g, 'Nexus');
-              // Add any other fields that might contain Midscene references
             });
           }
-          
-          // Set the group name and ensure no Midscene references
           data.groupName = 'O.P.E.R.A.T.O.R – Sentinel Report';
-          if (data.name) data.name = data.name.replace(/Midscene/g, 'Nexus');
-          if (data.title) data.title = data.title.replace(/Midscene/g, 'Nexus');
-          
-          // Stringify with proper formatting
-          writeStream.write(JSON.stringify(data, null, 2));
+          writeStream.write(JSON.stringify(data));
 
         } catch (err) {
           console.error('[NexusReportEditor] JSON parse error, writing raw dump:', err);

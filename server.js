@@ -4901,7 +4901,7 @@ class PlanStep {
     this.endTime = null;
     this.logs = [];
     this.error = null;
-    this.stepSummary = null; 
+    this.stepSummary = null;
   }
 
   log(message, data = null) {
@@ -4927,9 +4927,8 @@ class PlanStep {
         temperature: 0,
         max_tokens: 5
       });
-      const summary = summaryResponse.choices[0].message.content.trim();
-      this.stepSummary = summary;
-      return summary;
+      this.stepSummary = summaryResponse.choices[0].message.content.trim();
+      return this.stepSummary;
     } catch (error) {
       console.error(`Error generating step summary: ${error.message}`);
       this.stepSummary = 'No summary';
@@ -4940,95 +4939,116 @@ class PlanStep {
   async execute(plan) {
     this.log(`Starting execution: ${this.type} - ${this.instruction}`);
     this.status = 'running';
-    
+
+    const STEP_TIMEOUT = 300000; // 5 minutes per step
+
     try {
       const trimmedStepLogs = this.logs.map(entry => {
         const shortMsg = entry.message.length > 150 ? entry.message.substring(0, 150) + '...' : entry.message;
         return { ...entry, message: shortMsg };
       });
-      sendWebSocketUpdate(this.userId, { 
-        event: 'stepProgress', 
-        taskId: this.taskId, 
-        stepIndex: this.index, 
-        progress: 10, 
+      sendWebSocketUpdate(this.userId, {
+        event: 'stepProgress',
+        taskId: this.taskId,
+        stepIndex: this.index,
+        progress: 10,
         message: `Starting: ${this.instruction}`,
         log: trimmedStepLogs
       });
-  
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Step ${this.index} timed out after ${STEP_TIMEOUT}ms`)), STEP_TIMEOUT)
+      );
+
       let result;
       if (this.type === 'action') {
-        result = await plan.executeBrowserAction(this.args, this.index);
+        this.log(`Executing browser action with session: ${plan.browserSession ? 'existing' : 'none'}`);
+        result = await Promise.race([
+          plan.executeBrowserAction(this.args, this.index),
+          timeoutPromise
+        ]);
       } else {
-        result = await plan.executeBrowserQuery(this.args, this.index);
+        this.log(`Executing browser query with session: ${plan.browserSession ? 'existing' : 'none'}`);
+        result = await Promise.race([
+          plan.executeBrowserQuery(this.args, this.index),
+          timeoutPromise
+        ]);
       }
       this.result = result;
       this.status = result.success ? 'completed' : 'failed';
       this.endTime = new Date();
-      
-      // Update the plan’s global state.
+
+      this.log(`Updating global state with result`, { success: result.success, currentUrl: result.currentUrl });
       plan.updateGlobalState(result);
-      plan.extractedInfo = result.extractedInfo || 'No content extracted';
-      plan.updateBrowserSession({ currentUrl: result.currentUrl });
-      if (result.state) {
-        plan.currentState = result.state;
-      } else {
-        plan.currentState = {
-          pageDescription: 'No content extracted',
-          navigableElements: [],
-          currentUrl: result.currentUrl || plan.currentUrl
-        };
-      }
-  
+      plan.updateBrowserSession({ currentUrl: result.currentUrl, ...result.browserSession });
+
       const trimmedActionLogs = (result.actionLog || []).map(entry => {
         const shortMsg = entry.message.length > 150 ? entry.message.substring(0, 150) + '...' : entry.message;
         return { ...entry, message: shortMsg };
       });
-  
+
       const finalTrimmedStepLogs = this.logs.map(entry => {
         const shortMsg = entry.message.length > 150 ? entry.message.substring(0, 150) + '...' : entry.message;
         return { ...entry, message: shortMsg };
       });
-  
-      sendWebSocketUpdate(this.userId, { 
-        event: 'stepProgress', 
-        taskId: this.taskId, 
-        stepIndex: this.index, 
-        progress: 100, 
+
+      sendWebSocketUpdate(this.userId, {
+        event: 'stepProgress',
+        taskId: this.taskId,
+        stepIndex: this.index,
+        progress: 100,
         message: this.status === 'completed' ? 'Step completed' : 'Step failed',
         log: [...finalTrimmedStepLogs, ...trimmedActionLogs]
       });
-  
+
       console.log(`[Task ${this.taskId}] Step ${this.index} completed`, {
         status: this.status,
         type: this.type,
         url: result.currentUrl
       });
-      
+
       await this.generateStepSummary();
-  
       return result;
     } catch (error) {
       this.log(`Error executing step: ${error.message}`);
       this.status = 'failed';
       this.endTime = new Date();
       this.error = error.message;
-      
+
       const trimmedLogs = this.logs.map(entry => {
         const shortMsg = entry.message.length > 150 ? entry.message.substring(0, 150) + '...' : entry.message;
         return { ...entry, message: shortMsg };
       });
-  
-      sendWebSocketUpdate(this.userId, { 
-        event: 'stepProgress', 
-        taskId: this.taskId, 
-        stepIndex: this.index, 
-        progress: 100, 
+
+      sendWebSocketUpdate(this.userId, {
+        event: 'stepProgress',
+        taskId: this.taskId,
+        stepIndex: this.index,
+        progress: 100,
         message: `Error: ${error.message}`,
         log: trimmedLogs
       });
-      
+
       console.log(`[Task ${this.taskId}] Step ${this.index} failed`, { error: error.message });
-      
+
+      // Only clean up browser session if unrecoverable (e.g., browser disconnected)
+      if (plan.browserSession && plan.browserSession.browser && !plan.browserSession.browser.isConnected()) {
+        try {
+          if (typeof plan.browserSession.release === 'function') {
+            plan.browserSession.release();
+            this.log('Released semaphore due to disconnected browser');
+          }
+          await plan.browserSession.browser.close();
+          plan.browserSession = null;
+          activeBrowsers.delete(this.taskId);
+          this.log('Cleaned up browser session due to unrecoverable error');
+        } catch (cleanupError) {
+          this.log(`Error during browser session cleanup: ${cleanupError.message}`);
+        }
+      } else {
+        this.log('Preserving browser session for next step');
+      }
+
       return {
         success: false,
         error: error.message,
@@ -5063,6 +5083,7 @@ class PlanStep {
     };
   }
 }
+
 /**
  * Get an OpenAI client for this user, specifically configured for CHAT PURPOSES ONLY.
  * This simplified function handles chat models (GPT-4o, Claude, Gemini, etc.)
@@ -5548,6 +5569,20 @@ async function setupNexusEnvironment(userId) {
  * @param {Object} existingSession - Existing browser session
  * @returns {Object} - Result of the action
  */
+// AI Action Context for browser automation
+const AI_ACTION_CONTEXT = `
+You are a visual AI assistant that can see and interact with web pages. 
+
+When you see these common elements, handle them automatically:
+- Click "Accept All" or similar buttons on cookie consent dialogs
+- Close any popups, modals or overlays that block content
+- For CAPTCHAs: Analyze the challenge and solve it if possible, otherwise ask for human help
+- Dismiss any non-essential notifications or banners
+- Handle login prompts only if credentials are provided
+
+Focus on completing the main task while managing these elements as needed.
+`;
+
 async function handleBrowserAction(args, userId, taskId, runId, runDir, currentStep = 0, existingSession) {
   console.log(`[BrowserAction] Received currentStep: ${currentStep}`);
   
@@ -5563,10 +5598,18 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
     console.log(`[BrowserAction][Step ${currentStep}] ${message}`, data || '');
   };
 
+  // NEW: Define timeout constants
+  const TIMEOUTS = {
+    NAVIGATION: 30000, // 30 seconds for page navigation
+    ACTION: 60000, // 60 seconds for AI action execution
+    ELEMENT_WAIT: 10000, // 10 seconds for element waiting
+    SEMAPHORE_ACQUIRE: 10000 // 10 seconds to acquire semaphore
+  };
+
   try {
     logAction(`Starting action with command: "${command}", URL: "${providedUrl || 'none provided'}"`);
 
-    // Determine if it's a navigation command and set effective URL.
+    // Determine if it's a navigation command and set effective URL
     const isNavigationCommand = command.toLowerCase().startsWith('navigate to ');
     let effectiveUrl;
     
@@ -5597,95 +5640,55 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
     args.task_id = taskId;
     existingSession = activeBrowsers.get(taskId);
 
-    // Browser session management.
-    if (existingSession) {
+    // Browser session management
+    if (existingSession && !existingSession.closed && !existingSession.hasReleased) {
       logAction("Using existing browser session");
       ({ browser, agent, page, release } = existingSession);
       
-      // If the page is invalid or closed, create a new one.
-      if (!page || page.isClosed()) {
-        try {
-          // Get a semaphore lock to prevent too many concurrent browser instances
-          release = await browserSemaphore.acquire();
-          
-          if (existingSession) {
-            browser = existingSession.browser;
-            
-            // Use existing page if provided, or get the first one
-            page = existingSession.page || (await browser.pages())[0];
-            logAction('Re-using previous browser session');
-            
-            // Initialize midscene agent with just the page (reads env vars internally)
-            agent = new PuppeteerAgent(page);
-            
-            if (effectiveUrl && !isNavigationCommand) {
-              logAction(`Navigating to provided URL: ${effectiveUrl}`);
-              await page.goto(effectiveUrl, { timeout: 20000, waitUntil: 'domcontentloaded' });
-            }
-          } else {
-            // Create new session and navigate.
-            logAction(`Creating new browser session and navigating to URL: ${effectiveUrl}`);
-            release = await browserSemaphore.acquire();
-            logAction("Acquired browser semaphore");
-
-            // Get debug-configured launch options
-            const launchOptions = await getPuppeteerLaunchOptions();
-            
-            logAction(`Launching browser with options: ${JSON.stringify(launchOptions, null, 2)}`);
-            browser = await puppeteerExtra.launch(launchOptions);
-            logAction("Browser launched successfully");
-            page = await browser.newPage();
-            logAction("New page created");
-            await page.setDefaultNavigationTimeout(5000); // 5 seconds
-
-            // Set up listeners.
-            page.on('console', msg => {
-              debugLog(`Console: ${msg.text().substring(0, 150)}`);
-            });
-            page.on('pageerror', err => {
-              debugLog(`Page error: ${err.message}`);
-            });
-            page.on('request', req => {
-              if (['document', 'script', 'xhr', 'fetch'].includes(req.resourceType()) &&
-                  !req.url().includes("challenges.cloudflare.com")) {
-                debugLog(`Request: ${req.method()} ${req.url().substring(0, 100)}`);
-              }
-            });
-            page.on('response', res => {
-              if (['document', 'script', 'xhr', 'fetch'].includes(res.request().resourceType()) &&
-                  !res.url().includes("challenges.cloudflare.com")) {
-                debugLog(`Response: ${res.status()} ${res.url().substring(0, 100)}`);
-              }
-            });
-            
-            logAction(`Navigating to URL: ${effectiveUrl}`);
-            await page.goto(effectiveUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-            logAction("Navigation completed successfully");
-            
-            // Initialize midscene agent with just the page (reads env vars internally)
-            agent = new PuppeteerAgent(page);
-            logAction("Nexus agent initialized");
-            activeBrowsers.set(taskId, { browser, agent, page, release, closed: false, hasReleased: false });
-            logAction("Browser session stored in active browsers");
-          }
-        } catch (error) {
-          logAction(`Error creating browser session: ${error.message}`);
-          throw error;
-        }
-      }
-      
+      // Enhanced page validation
       if (!page || page.isClosed()) {
         logAction("Page is invalid or closed, creating a new one");
         page = await browser.newPage();
         agent = new PuppeteerAgent(page);
+        await page.setDefaultTimeout(TIMEOUTS.ELEMENT_WAIT); // Set default timeout for element operations
         activeBrowsers.set(taskId, { browser, agent, page, release, closed: false, hasReleased: false });
       }
+
+      // Handle navigation if this is a navigation command
+      if (isNavigationCommand) {
+        const currentUrl = await page.url();
+        if (currentUrl !== effectiveUrl) {
+          logAction(`Navigating from ${currentUrl} to ${effectiveUrl}`);
+          try {
+            await page.goto(effectiveUrl, { 
+              waitUntil: 'networkidle2', 
+              timeout: TIMEOUTS.NAVIGATION 
+            });
+            logAction(`Successfully navigated to ${effectiveUrl}`);
+          } catch (err) {
+            logAction(`Navigation failed: ${err.message}. Falling back to Google`);
+            await page.goto('https://www.google.com', { 
+              waitUntil: 'networkidle2', 
+              timeout: TIMEOUTS.NAVIGATION 
+            });
+          }
+        } else {
+          logAction(`Already at target URL: ${effectiveUrl}`);
+        }
+      }
     } else {
-      // Create new session and navigate.
+      // Create new session with semaphore timeout
       logAction(`Creating new browser session and navigating to URL: ${effectiveUrl}`);
-      release = await browserSemaphore.acquire();
+      const semaphorePromise = browserSemaphore.acquire();
+      release = await Promise.race([
+        semaphorePromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Semaphore acquisition timeout')), TIMEOUTS.SEMAPHORE_ACQUIRE))
+      ]).catch(err => {
+        logAction(`Semaphore acquisition failed: ${err.message}`);
+        throw err;
+      });
       logAction("Acquired browser semaphore");
-      
+
       // Get debug-configured launch options
       const launchOptions = await getPuppeteerLaunchOptions();
       
@@ -5694,9 +5697,10 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       logAction("Browser launched successfully");
       page = await browser.newPage();
       logAction("New page created");
-      await page.setDefaultNavigationTimeout(5000); // 5 seconds
+      await page.setDefaultTimeout(TIMEOUTS.ELEMENT_WAIT); // Set default timeout for element operations
 
-      // Set up listeners.
+      // Set up event listeners
+      /*
       page.on('console', msg => {
         debugLog(`Console: ${msg.text().substring(0, 150)}`);
       });
@@ -5715,9 +5719,13 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
           debugLog(`Response: ${res.status()} ${res.url().substring(0, 100)}`);
         }
       });
-      
+      */
+      // Navigate with enhanced timeout and wait condition
       logAction(`Navigating to URL: ${effectiveUrl}`);
-      await page.goto(effectiveUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await page.goto(effectiveUrl, { waitUntil: 'networkidle2', timeout: TIMEOUTS.NAVIGATION }).catch(err => {
+        logAction(`Navigation failed: ${err.message}. Falling back to Google`);
+        return page.goto('https://www.google.com', { waitUntil: 'networkidle2', timeout: TIMEOUTS.NAVIGATION });
+      });
       logAction("Navigation completed successfully");
       
       agent = new PuppeteerAgent(page);
@@ -5726,7 +5734,7 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       logAction("Browser session stored in active browsers");
     }
 
-    // Progress update.
+    // Progress update
     sendWebSocketUpdate(userId, { 
       event: 'stepProgress', 
       taskId, 
@@ -5736,56 +5744,63 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       log: actionLog
     });
 
-    // Execute action (only for non-navigation commands).
-    logAction(`Executing action: "${command}"`);
-    await agent.aiAction(command);
-
-    logAction("Action executed successfully");
-
-    // Check for popups.
-    const popupCheck = await page.evaluate(() => {
-      return {
-        url: window.location.href,
-        popupOpened: window.opener !== null,
-        numFrames: window.frames.length,
-        alerts: document.querySelectorAll('[role="alert"]').length
-      };
-    });
-    logAction("Post-action popup check", popupCheck);
-
-    if (popupCheck.popupOpened) {
-      logAction("Popup detected - checking for new pages");
-      const pages = await browser.pages();
-      if (pages.length > 1) {
-        logAction(`Found ${pages.length} pages, switching to newest`);
-        const newPage = pages[pages.length - 1];
-        if (newPage !== page) {
-          page = newPage;
-          agent = new PuppeteerAgent(page);
-          logAction("Switched to new page and reinitialized agent");
-        }
+    // Set AI action context for better dialog handling
+    if (agent && agent.setAIActionContext) {
+      try {
+        logAction("Setting AI action context");
+        await agent.setAIActionContext(AI_ACTION_CONTEXT);
+      } catch (error) {
+        logAction(`Warning: Failed to set AI action context: ${error.message}`);
       }
-      
-      // Handle page obstacles.
-      logAction("Checking for page obstacles");
-      const obstacleResults = await handlePageObstacles(page, agent);
-      logAction("Obstacle check results", obstacleResults);
     }
 
-    // Extract rich context (extractedInfo remains separate).
+    // Execute the main action with AI-powered handling of dialogs and obstacles
+    if (!isNavigationCommand) {
+      logAction(`Executing action: "${command}"`);
+
+      // Execute the main action with built-in dialog handling
+      try {
+        const actionPromise = agent.aiAction(command);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error(`Action timed out after ${TIMEOUTS.ACTION}ms`)), TIMEOUTS.ACTION)
+        );
+        
+        await Promise.race([actionPromise, timeoutPromise]);
+        logAction("Action executed successfully");
+      } catch (actionError) {
+        logAction(`Action execution error: ${actionError.message}`);
+        
+        // Attempt AI-assisted recovery
+        if (agent && agent.aiAction) {
+          try {
+            logAction("Attempting AI-assisted recovery from error");
+            const recoveryResult = await agent.aiAction(
+              `The previous action: "${command}", failed with error: "${actionError.message}". ` +
+              "Please analyze the current page state and either: " +
+              "1) Complete the original action if possible, or " +
+              "2) Provide a detailed error message explaining what went wrong and suggestions for how to proceed."
+            );
+            logAction("AI recovery result:", recoveryResult);
+          } catch (recoveryError) {
+            logAction(`AI recovery attempt failed: ${recoveryError.message}`);
+          }
+        }
+        throw actionError;
+      }
+    }
+
+    // Extract rich context
     logAction("Extracting rich page context");
-    const { pageContent: extractedInfo, navigableElements } = await extractRichPageContext(
-      agent, 
-      page, 
-      command,
-      "Read, scan and observe the page. Then state - What information is now visible on the page? What can be clicked or interacted with?"
-    );
+    const { pageContent: extractedInfo, navigableElements } = await Promise.race([
+      extractRichPageContext(agent, page, command, "Read, scan and observe the page. Then state - What information is now visible on the page? What can be clicked or interacted with?"),
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`Context extraction timed out after ${TIMEOUTS.ACTION}ms`)), TIMEOUTS.ACTION))
+    ]);
     logAction("Rich context extraction complete", { 
       contentLength: typeof extractedInfo === 'string' ? extractedInfo.length : 'object',
       navigableElements: navigableElements.length
     });
 
-    // Capture screenshot.
+    // Capture screenshot
     const screenshotFilename = `screenshot-${Date.now()}.png`;
     const screenshotPath = path.join(runDir, screenshotFilename);
     const screenshot = await page.screenshot({ encoding: 'base64' });
@@ -5797,16 +5812,15 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
     logAction(`Current URL: ${currentUrl}`);
 
     console.log('[Server] Preparing to send intermediateResult for taskId:', taskId);
-    // Send intermediate result update to the front end with proper error handling
     try {
       sendWebSocketUpdate(userId, {
         event: 'intermediateResult',
         taskId,
         result: {
           screenshotUrl,   
-          screenshotPath: screenshotUrl, // Include both for compatibility
+          screenshotPath: screenshotUrl,
           currentUrl,
-          extractedInfo,    // Raw extracted info.
+          extractedInfo,
           navigableElements
         }
       });
@@ -5814,10 +5828,9 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
     } catch (wsError) {
       console.error(`[Server] Error sending websocket update: ${wsError.message}`);
       logAction(`WebSocket update error: ${wsError.message}`);
-      // Continue execution despite WebSocket error
     }
 
-    // Final progress update.
+    // Final progress update
     sendWebSocketUpdate(userId, { 
       event: 'stepProgress', 
       taskId, 
@@ -5827,7 +5840,7 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       log: actionLog
     });
 
-    // Trim action log before returning.
+    // Trim action log
     const trimmedActionLog = actionLog.map(entry => {
       const truncatedMessage = entry.message.length > 700 
         ? entry.message.substring(0, 700) + '...'
@@ -5835,14 +5848,10 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       return { ...entry, message: truncatedMessage };
     });
 
-    // Create an active browser session to be reused
+    // Update browser session
     const browserSession = { browser, agent, page, release, closed: false, hasReleased: false };
-    
-    // For efficiency, update the session in the active browsers map as well
     activeBrowsers.set(taskId, browserSession);
-    
-    // Return full results - now including browserSession for reuse
-    // Note: "state" contains only the assertion result.
+
     return {
       success: true,
       error: null,
@@ -5852,39 +5861,37 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       stepIndex: currentStep,
       actionOutput: `Completed: ${command}`,
       pageTitle: await page.title(),
-      extractedInfo,        // Full extraction data.
-      navigableElements,      // Navigable elements.
+      extractedInfo,
+      navigableElements,
       actionLog: trimmedActionLog,
       screenshotPath: screenshotUrl,
-      // Return the browser session so it can be maintained across steps
       browserSession,
       state: {
         assertion: extractedInfo && extractedInfo.pageContent 
-        ? extractedInfo.pageContent 
-        : 'No content extracted'
+          ? extractedInfo.pageContent 
+          : 'No content extracted'
       }
     };
 
   } catch (error) {
     logAction(`Error in browser action: ${error.message}`, { stack: error.stack });
-    if (typeof release === 'function') release();
-
-    // Trim action log on error.
-    const trimmedActionLog = actionLog.map(entry => {
-      const shortMsg = entry.message.length > 150 
-        ? entry.message.substring(0, 150) + '...'
-        : entry.message;
-      return { ...entry, message: shortMsg };
-    });
-
     return {
       success: false,
       error: error.message,
-      actionLog: trimmedActionLog,
+      actionLog: actionLog.map(entry => ({
+        ...entry,
+        message: entry.message.length > 150 ? entry.message.substring(0, 150) + '...' : entry.message
+      })),
       currentUrl: page ? await page.url() : null,
       task_id: taskId,
       stepIndex: currentStep
     };
+  } finally {
+    // NEW: Ensure semaphore release
+    if (typeof release === 'function' && !existingSession) {
+      release();
+      logAction("Released browser semaphore");
+    }
   }
 }
 
@@ -5902,7 +5909,6 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
  */
 async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentStep = 0, existingSession) {
   console.log(`[BrowserQuery] Received currentStep: ${currentStep}`);
-  // Set up environment variables for midscene based on user preferences
   await setupNexusEnvironment(userId);
   const { query, url: providedUrl } = args;
   let browser, agent, page, release;
@@ -5911,6 +5917,14 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
   const logQuery = (message, data = null) => {
     actionLog.push({ timestamp: new Date().toISOString(), step: currentStep, message, data: data ? JSON.stringify(data) : null });
     console.log(`[BrowserQuery][Step ${currentStep}] ${message}`);
+  };
+
+  // NEW: Define timeout constants
+  const TIMEOUTS = {
+    NAVIGATION: 30000, // 30 seconds for page navigation
+    QUERY: 60000, // 60 seconds for query execution
+    ELEMENT_WAIT: 10000, // 10 seconds for element waiting
+    SEMAPHORE_ACQUIRE: 10000 // 10 seconds to acquire semaphore
   };
 
   await updateTaskInDatabase(taskId, {
@@ -5925,35 +5939,56 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
     const taskKey = taskId;
     let effectiveUrl = providedUrl || 'https://www.google.com';
     
-    // Normalize and validate the URL if provided
     if (effectiveUrl) {
       effectiveUrl = validateAndNormalizeUrl(effectiveUrl);
       logQuery(`Using validated URL: ${effectiveUrl}`);
     }
 
-    if (existingSession) {
+    if (existingSession && !existingSession.closed && !existingSession.hasReleased) {
       logQuery("Using existing browser session");
       ({ browser, agent, page, release } = existingSession);
       if (!page || page.isClosed()) {
         logQuery("Page is invalid or closed, creating a new one");
         page = await browser.newPage();
         agent = new PuppeteerAgent(page);
+        await page.setDefaultTimeout(TIMEOUTS.ELEMENT_WAIT);
         activeBrowsers.set(taskId, { browser, agent, page, release, closed: false, hasReleased: false });
+      }
+      
+      // Handle navigation if a URL is provided and different from current
+      if (effectiveUrl) {
+        const currentUrl = await page.url();
+        if (currentUrl !== effectiveUrl) {
+          logQuery(`Navigating from ${currentUrl} to ${effectiveUrl}`);
+          try {
+            await page.goto(effectiveUrl, { 
+              waitUntil: 'networkidle2', 
+              timeout: TIMEOUTS.NAVIGATION 
+            });
+            logQuery(`Successfully navigated to ${effectiveUrl}`);
+          } catch (err) {
+            logQuery(`Navigation failed: ${err.message}. Falling back to Google`);
+            await page.goto('https://www.google.com', { 
+              waitUntil: 'networkidle2', 
+              timeout: TIMEOUTS.NAVIGATION 
+            });
+          }
+        } else {
+          logQuery(`Already at target URL: ${effectiveUrl}`);
+        }
       }
     } else if (taskKey && activeBrowsers.has(taskKey)) {
       const session = activeBrowsers.get(taskKey);
-      if (!session || !session.browser) {
+      if (!session || !session.browser || session.closed || session.hasReleased) {
         logQuery("Browser session not valid, creating a new one.");
         
-        // Get debug-configured launch options
         const launchOptions = await getPuppeteerLaunchOptions();
-        
         logQuery(`Launching browser with options: ${JSON.stringify(launchOptions, null, 2)}`);
         browser = await puppeteerExtra.launch(launchOptions);
         logQuery("Browser launched successfully");
         page = await browser.newPage();
         logQuery("New page created");
-        await page.setDefaultNavigationTimeout(5000); // 5 seconds
+        await page.setDefaultTimeout(TIMEOUTS.ELEMENT_WAIT);
         agent = new PuppeteerAgent(page);
         release = null;
         activeBrowsers.set(taskKey, { browser, agent, page, release, closed: false, hasReleased: false });
@@ -5961,21 +5996,25 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
         ({ browser, agent, page, release } = session);
       }
     } else {
-      // If we got here, we need to create a new browser session
       logQuery(`Creating new browser session for URL: ${effectiveUrl}`);
-      release = await browserSemaphore.acquire();
+      const semaphorePromise = browserSemaphore.acquire();
+      release = await Promise.race([
+        semaphorePromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Semaphore acquisition timeout')), TIMEOUTS.SEMAPHORE_ACQUIRE))
+      ]).catch(err => {
+        logQuery(`Semaphore acquisition failed: ${err.message}`);
+        throw err;
+      });
       logQuery("Acquired browser semaphore");
       
-      // Get debug-configured launch options
       const launchOptions = await getPuppeteerLaunchOptions();
-      
       logQuery(`Launching browser with options: ${JSON.stringify(launchOptions, null, 2)}`);
       browser = await puppeteerExtra.launch(launchOptions);
       logQuery("Browser launched successfully");
       page = await browser.newPage();
       logQuery("New page created");
-      await page.setDefaultNavigationTimeout(5000); // 5 seconds
-      // Set up event listeners.
+      await page.setDefaultTimeout(TIMEOUTS.ELEMENT_WAIT);
+
       page.on('console', msg => {
         debugLog(`Console: ${msg.text().substring(0, 150)}`);
       });
@@ -5996,16 +6035,12 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       });
       
       logQuery(`Navigating to URL: ${effectiveUrl}`);
-      try {
-        await page.goto(effectiveUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-        logQuery("Navigation completed successfully");
-      } catch (navError) {
-        logQuery(`Navigation error: ${navError.message}. Falling back to Google`);
-        await page.goto('https://www.google.com', { waitUntil: 'domcontentloaded', timeout: 20000 });
-        logQuery("Navigation to fallback URL completed");
-      }
+      await page.goto(effectiveUrl, { waitUntil: 'networkidle2', timeout: TIMEOUTS.NAVIGATION }).catch(err => {
+        logQuery(`Navigation error: ${err.message}. Falling back to Google`);
+        return page.goto('https://www.google.com', { waitUntil: 'networkidle2', timeout: TIMEOUTS.NAVIGATION });
+      });
+      logQuery("Navigation completed successfully");
       
-      // Initialize midscene agent with just the page (reads env vars internally)
       agent = new PuppeteerAgent(page);
       logQuery("PuppeteerAgent initialized");
       activeBrowsers.set(taskKey, { browser, agent, page, release, closed: false, hasReleased: false });
@@ -6022,13 +6057,10 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
     });
     
     logQuery(`Executing query: "${query}"`);
-    // Perform extraction only once.
-    const { pageContent: extractedInfo, navigableElements } = await extractRichPageContext(
-      agent, 
-      page, 
-      "read, scan, extract, and observe",
-      query
-    );
+    const { pageContent: extractedInfo, navigableElements } = await Promise.race([
+      extractRichPageContext(agent, page, "read, scan, extract, and observe", query),
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`Query execution timed out after ${TIMEOUTS.QUERY}ms`)), TIMEOUTS.QUERY))
+    ]);
     logQuery("Query executed successfully");
     
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -6037,24 +6069,29 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       url: window.location.href,
       popupOpened: window.opener !== null,
       numFrames: window.frames.length,
-      alerts: document.querySelectorAll('[role="alert"]').length
+      alerts: document.querySelectorAll('[role="alert"]').length,
+      popups: Array.from(document.querySelectorAll('a[target="_blank"], form[target="_blank"]')).length
     }));
     logQuery("Post-query state check", stateCheck);
     
-    if (stateCheck.popupOpened) {
-      logQuery("Popup detected - checking for new pages");
+    if (stateCheck.popupOpened || stateCheck.popups > 0) {
+      logQuery("Popup or potential popup detected - checking for new pages");
       const pages = await browser.pages();
       if (pages.length > 1) {
         logQuery(`Found ${pages.length} pages, switching to newest`);
-        const newPage = pages[pages.length - 1];
-        if (newPage !== page) {
-          page = newPage;
-          agent = new PuppeteerAgent(page);
-          logQuery("Switched to new page and reinitialized agent");
-        }
+        page = pages[pages.length - 1];
+        agent = new PuppeteerAgent(page);
+        activeBrowsers.set(taskId, { browser, agent, page, release, closed: false, hasReleased: false });
+        logQuery("Switched to new page and reinitialized agent");
       }
     }
-    
+
+    // NEW: Handle obstacles for queries
+    logQuery("Checking for page obstacles");
+    await agent.setAIActionContext(
+      'Close the cookie consent dialog first if it exists. Then, if you see a popup, close it. For a capture try solve it. If you see a CAPTCHA, try to solve it. If adverts are eating up Viewport space scroll them out of view and get to main interesting content User would want to see.',
+    );
+
     const screenshot = await page.screenshot({ encoding: 'base64' });
     const screenshotFilename = `screenshot-${Date.now()}.png`;
     const screenshotPath = path.join(runDir, screenshotFilename);
@@ -6071,7 +6108,7 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
         taskId,
         result: {
           screenshotUrl,
-          screenshotPath: screenshotUrl, // Include both for consistency
+          screenshotPath: screenshotUrl,
           currentUrl,
           extractedInfo: cleanForPrompt(extractedInfo),
           navigableElements: Array.isArray(navigableElements) 
@@ -6083,7 +6120,6 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
     } catch (wsError) {
       console.error(`[BrowserQuery] Error sending WebSocket update: ${wsError.message}`);
       logQuery(`WebSocket update error: ${wsError.message}`);
-      // Continue execution despite WebSocket error
     }
 
     try {
@@ -6099,7 +6135,6 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
     } catch (wsError) {
       console.error(`[BrowserQuery] Error sending step progress update: ${wsError.message}`);
       logQuery(`Step progress WebSocket update error: ${wsError.message}`);
-      // Continue execution despite WebSocket error
     }
 
     const trimmedActionLog = actionLog.map(entry => {
@@ -6112,13 +6147,9 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
     const assertion = 'After execution, this is whats now visible: ' + extractedInfo.substring(0, 150) + '...';
     logQuery("Assertion for query completed", { assertion });
 
-    // Create a browser session object for reuse
     const browserSession = { browser, agent, page, release, closed: false, hasReleased: false };
-    
-    // Update the active browsers map
     activeBrowsers.set(taskId, browserSession);
-    
-    // Return full results with state holding the assertion and browser session for reuse
+
     return {
       success: true,
       error: null,
@@ -6132,31 +6163,28 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       navigableElements,
       actionLog: trimmedActionLog,
       screenshotPath: screenshotUrl,
-      // Include browser session for reuse across steps
       browserSession,
-      state: {
-        assertion // The state now holds the concise summary of the page.
-      }
+      state: { assertion }
     };
   } catch (error) {
     logQuery(`Error in browser query: ${error.message}`, { stack: error.stack });
-    if (typeof release === 'function') release();
-
-    const trimmedActionLog = actionLog.map(entry => {
-      const shortMsg = entry.message.length > 150 
-        ? entry.message.substring(0, 150) + '...'
-        : entry.message;
-      return { ...entry, message: shortMsg };
-    });
-
     return {
       success: false,
       error: error.message,
-      actionLog: trimmedActionLog,
+      actionLog: actionLog.map(entry => ({
+        ...entry,
+        message: entry.message.length > 150 ? entry.message.substring(0, 150) + '...' : entry.message
+      })),
       currentUrl: page ? await page.url() : null,
       task_id: taskId,
       stepIndex: currentStep
     };
+  } finally {
+    // NEW: Ensure semaphore release
+    if (typeof release === 'function' && !existingSession) {
+      release();
+      logQuery("Released browser semaphore");
+    }
   }
 }
 
@@ -8200,6 +8228,14 @@ GENERAL SITE DETECTED: Be comprehensive in finding all interactive elements to n
   }
 }
 
+async function waitForPageStability(page, timeout = 10000) {
+  await page.waitForFunction(() => {
+    return document.readyState === 'complete' && 
+           !document.querySelector('[aria-busy="true"]') &&
+           window.jQuery ? window.jQuery.active === 0 : true;
+  }, { timeout, polling: 200 });
+}
+
 /**
  * Advanced popup and obstacle handler for web browsing
  * @param {Object} page - Puppeteer page object
@@ -8215,12 +8251,19 @@ async function handlePageObstacles(page, agent) {
   };
 
   try {
+    // Wait for page to be stable
+    await waitForPageStability(page);
+
     // Listen for any dialogs (alerts, confirms, prompts) and auto-accept them.
     page.on('dialog', async (dialog) => {
-      console.log(`🔔 [Obstacles] Dialog detected: ${dialog.type()} - ${dialog.message()}`);
-      results.obstacles.push(`Dialog: ${dialog.type()} - ${dialog.message()}`);
-      await dialog.accept();
-      results.actionsAttempted.push(`Accepted ${dialog.type()} dialog`);
+      try {
+        console.log(`🔔 [Obstacles] Dialog detected: ${dialog.type()} - ${dialog.message()}`);
+        results.obstacles.push(`Dialog: ${dialog.type()} - ${dialog.message()}`);
+        await dialog.accept();
+        results.actionsAttempted.push(`Accepted ${dialog.type()} dialog`);
+      } catch (e) {
+        console.warn('Failed to dismiss dialog:', e.message);
+      }
     });
 
     // Prepare a text instruction prompt for obstacles.

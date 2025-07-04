@@ -3515,7 +3515,7 @@ export function CommandCenter(props = {}) {
     
     // Transition all thought messages that haven't been completed yet
     console.log('[DEBUG] NLI response persisted, updating any active thought messages')
-    transitionThoughtBubbles(null, true); // all and force
+    transitionThoughtBubbles(); // all and force
   };
   
   // Enhanced function to transition thought bubbles from thinking state to completed state
