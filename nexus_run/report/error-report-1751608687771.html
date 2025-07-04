@@ -1,0 +1,68 @@
+
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Nexus Error Report</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #eee;
+            background-color: #1a1a2e;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+          }
+          .error-box {
+            background-color: #272741;
+            border-left: 5px solid #fd3259;
+            padding: 1rem 2rem;
+            margin: 2rem 0;
+            border-radius: 0 5px 5px 0;
+          }
+          pre {
+            background-color: #0f0f1b;
+            padding: 1rem;
+            border-radius: 5px;
+            overflow-x: auto;
+          }
+          h1, h2 {
+            color: #4cc9f0;
+          }
+          .nexus-logo {
+            text-align: center;
+            margin-bottom: 2rem;
+          }
+          .timestamp {
+            color: #aaa;
+            font-size: 0.9rem;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="nexus-logo">
+          <h1>Nexus</h1>
+        </div>
+        
+        <h2>Task Error Report</h2>
+        <p class="timestamp">Generated on: 4/7/2025, 07:58:07</p>
+        
+        <div class="error-box">
+          <h3>Error Details</h3>
+          <pre>Protocol error (Page.captureScreenshot): Session closed. Most likely the page has been closed.</pre>
+          <h3>Stack Trace</h3><pre>TargetCloseError: Protocol error (Page.captureScreenshot): Session closed. Most likely the page has been closed.
+    at CdpCDPSession.send (c:\Users\cosyc\Nexus\node_modules\puppeteer\node_modules\puppeteer-core\src\cdp\CdpSession.ts:98:9)
+    at next (c:\Users\cosyc\Nexus\node_modules\puppeteer-extra-plugin-stealth\evasions\sourceurl\index.js:34:41)
+    at CdpCDPSession.send (c:\Users\cosyc\Nexus\node_modules\puppeteer-extra-plugin-stealth\evasions\sourceurl\index.js:67:18)
+    at CdpPage._screenshot (c:\Users\cosyc\Nexus\node_modules\puppeteer\node_modules\puppeteer-core\src\cdp\Page.ts:1037:52)
+    at CdpPage.screenshot (c:\Users\cosyc\Nexus\node_modules\puppeteer\node_modules\puppeteer-core\src\api\Page.ts:2672:29)
+    at CdpPage.<anonymous> (c:\Users\cosyc\Nexus\node_modules\puppeteer\node_modules\puppeteer-core\src\util\decorators.ts:139:14)
+    at processTaskCompletion (file:///c:/Users/cosyc/Nexus/server.js:4069:27)
+    at processTask (file:///c:/Users/cosyc/Nexus/server.js:7730:41)
+    at file:///c:/Users/cosyc/Nexus/server.js:1850:9</pre>
+        </div>
+      </body>
+    </html>
+    

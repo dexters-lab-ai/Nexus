@@ -311,7 +311,7 @@ export async function editMidsceneReport(reportPath) {
   const parser = new Parser({
     onopentag(name, attrs) {
       if (name === 'title') {
-        writeStream.write('<title>VLM Run Report | O.P.E.R.A.T.O.R.</title>');
+        writeStream.write('<title>Report - Nexus</title>');
         insideTitle = true;
 
       } else if (name === 'link' && attrs.rel === 'icon') {
@@ -349,11 +349,15 @@ export async function editMidsceneReport(reportPath) {
     },
 
     ontext(text) {
-      if (insideScript) {
-        scriptContent += text;
-      } else if (!insideTitle) {
-        writeStream.write(text);
+      if (insideTitle) {
+        // Skip writing the original title text since we already wrote our custom title
+        return;
+      } else if (text.includes('Report - Midscene.js')) {
+        // Replace any dynamic title text that might be set by React
+        writeStream.write(text.replace('Report - Midscene.js', 'Report - Nexus'));
+        return;
       }
+      writeStream.write(text);
     },
 
     onclosetag(name) {

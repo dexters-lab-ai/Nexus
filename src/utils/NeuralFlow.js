@@ -540,37 +540,40 @@ export default class NeuralFlow {
   updateNodePositions() {
     if (!this.nodes.length) return;
     
-    // Layout parameters
-    const verticalSpacing = 100;
-    const horizontalSpacing = 200; // Horizontal distance for zig-zag
-    const startY = this.topPadding + 40;
-    const centerX = this.width / 2;
+    // Find main (non-sub) nodes
+    const mainNodes = this.nodes.filter(node => !node.isSubStep);
     
-    // Position nodes in a diagonal zig-zag pattern
-    this.nodes.forEach((node, idx) => {
-      // Alternate direction for each node
-      const direction = idx % 2 === 0 ? 1 : -1;
-      // Calculate horizontal offset - more pronounced for even/odd positions
-      const xOffset = direction * horizontalSpacing * 0.8;
+    // Calculate layout dimensions
+    const mainNodesPerRow = Math.max(3, Math.min(5, Math.floor(this.width / 250))); // More space between nodes
+    const verticalSpacing = 100; // Increased vertical spacing
+    const subNodeOffset = { x: 40, y: 36 }; // Offset for sub-steps
+    
+    // Calculate starting Y position (lower on the canvas)
+    const startY = 150;
+    
+    // Position main nodes first
+    mainNodes.forEach((node, mainIdx) => {
+      const idx = this.nodes.indexOf(node);
+      const row = Math.floor(mainIdx / mainNodesPerRow);
+      const col = mainIdx % mainNodesPerRow;
+
+      // For alternating rows, reverse direction for organic brain feel
+      const x = row % 2 === 0 
+        ? 100 + col * ((this.width - 200) / (mainNodesPerRow - 1 || 1))
+        : this.width - 100 - col * ((this.width - 200) / (mainNodesPerRow - 1 || 1));
       
-      // Calculate position - diagonal zig-zag
-      const x = centerX + (idx > 0 ? xOffset : 0);
-      const y = startY + (idx * verticalSpacing);
+      // Position all nodes with 80px padding from top
+      const y = (row === 0) ? 80 : (80 + row * verticalSpacing);
       
-      // Set target position
-      node.tx = x;
-      node.ty = y;
+      // Set target position with slight random variation (less for plan node)
+      const randomJitter = node.isPlanNode ? 5 : 15;
+      node.tx = x + (Math.random() - 0.5) * randomJitter;
+      node.ty = y + (Math.random() - 0.5) * randomJitter;
       
-      // Initialize position for animation if not set
       if (!node.x) {
-        // Animate from the side based on direction
-        node.x = x + (direction * 100);
-        node.y = y - 50;
-      }
-      
-      if (!node.x) {
-        node.x = x;
-        node.y = y - 50; // Animate from above
+        // Initial position for animation
+        node.x = node.isPlanNode ? node.tx : node.tx;
+        node.y = node.isPlanNode ? node.ty - 80 : -50; // Plan node comes from top
       }
       
       // Now position any sub-steps related to this main node
@@ -595,17 +598,6 @@ export default class NeuralFlow {
       });
     });
     
-    // Special positioning for plan node if it exists
-    const planNode = this.nodes.find(node => node.isPlanNode);
-    if (planNode) {
-      // Always position plan node prominently with top padding
-      planNode.tx = 90;
-      planNode.ty = this.topPadding + 40; // Position below top padding
-      if (!planNode.x) {
-        planNode.x = planNode.tx;
-        planNode.y = -50; // Start from above
-      }
-    }
   }
   
   addNode(text) {
