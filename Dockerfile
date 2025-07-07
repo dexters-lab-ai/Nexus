@@ -292,7 +292,11 @@ ENV CHROME_BIN=/usr/bin/chromium \
     no_proxy=* \
     # Force English output for error messages
     LANG=C.UTF-8 \
-    LC_ALL=C.UTF-8
+    LC_ALL=C.UTF-8 \
+    # webkit
+    WEBKIT_DISABLE_DMABUF_RASTERIZER=1 \
+    WEBKIT_DISABLE_COMPOSITING_MODE_TIMEOUT=1 \
+    WEBKIT_IGNORE_GPU_SYNCHRONIZATION=1
 
 # Create necessary directories and set permissions
 RUN mkdir -p /tmp/chrome-user-data /tmp/chrome /home/node/.cache/puppeteer/chrome/linux-* \

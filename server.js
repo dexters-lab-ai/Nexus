@@ -4779,6 +4779,9 @@ GUIDELINES:
 7. EXTRACTING DATA: Always provide instructions to extract all necessary page data.
 8. NAVIGATION EFFICIENCY: Check the current page before navigating.
 9. NEXT STEP PRECISION: Plan incremental steps based on the latest state and data.
+10. ERROR HANDLING: Always handle errors, review if elements are available before interacting with them and adjust approach on retry.
+11. KEEP TRACKING: Always keep track of the current state and data gathered towards main Task accomplishment. Retrace to last step if needed or elements required are not visible.
+12. FINAL RESULT: Use all tracked data to compile a final result of the task, in great detail to offer what the user needs exactly from the results.
 
 TIPS:
 - browser_action and browser_query can handle complex instructions like "look for BTC and click it", "click search bar, type 'cats', press enter or click search button"
@@ -5034,19 +5037,20 @@ class PlanStep {
       // Only clean up browser session if unrecoverable (e.g., browser disconnected)
       if (plan.browserSession && plan.browserSession.browser && !plan.browserSession.browser.isConnected()) {
         try {
+          this.log('[PlanStep] Cleaning up browser session due to unrecoverable error');
           if (typeof plan.browserSession.release === 'function') {
             plan.browserSession.release();
-            this.log('Released semaphore due to disconnected browser');
+            this.log('[PlanStep] Released semaphore due to disconnected browser');
           }
           await plan.browserSession.browser.close();
           plan.browserSession = null;
           activeBrowsers.delete(this.taskId);
-          this.log('Cleaned up browser session due to unrecoverable error');
+          this.log('[PlanStep] Cleaned up browser session due to unrecoverable error');
         } catch (cleanupError) {
-          this.log(`Error during browser session cleanup: ${cleanupError.message}`);
+          this.log(`[PlanStep] Error during browser session cleanup: ${cleanupError.message}`);
         }
       } else {
-        this.log('Preserving browser session for next step');
+        this.log('[PlanStep] Preserving browser session for next step');
       }
 
       return {
@@ -5755,26 +5759,39 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
         logAction("Action executed successfully");
       } catch (actionError) {
         logAction(`Action execution error: ${actionError.message}`);
-        
-        // Attempt AI-assisted recovery
-        if (agent && agent.aiAction) {
-          try {
-            logAction("Attempting AI-assisted recovery from error");
-            const recoveryResult = await agent.aiAction(
-              `The previous action: "${command}", failed with error: "${actionError.message}". ` +
-              "Please analyze the current page state and either: " +
-              "1) Complete the original action if possible, or " +
-              "2) Provide a detailed error message explaining what went wrong and suggestions for how to proceed."
-            );
-            logAction("AI recovery result:", recoveryResult);
-          } catch (recoveryError) {
-            logAction(`AI recovery attempt failed: ${recoveryError.message}`);
-          }
-        }
-        throw actionError;
       }
     }
 
+    // Check for popups.
+    const popupCheck = await page.evaluate(() => {
+      return {
+        url: window.location.href,
+        popupOpened: window.opener !== null,
+        numFrames: window.frames.length,
+        alerts: document.querySelectorAll('[role="alert"]').length
+      };
+    });
+    logAction("Post-action popup check", popupCheck);
+
+    if (popupCheck.popupOpened) {
+      logAction("Popup detected - checking for new pages");
+      const pages = await browser.pages();
+      if (pages.length > 1) {
+        logAction(`Found ${pages.length} pages, switching to newest`);
+        const newPage = pages[pages.length - 1];
+        if (newPage !== page) {
+          page = newPage;
+          agent = new PuppeteerAgent(page);
+          logAction("Switched to new page and reinitialized agent");
+        }
+      }
+      
+      // Handle page obstacles.
+      logAction("Checking for page obstacles");
+      const obstacleResults = await handlePageObstacles(page, agent);
+      logAction("Obstacle check results", obstacleResults);
+    }
+    
     const currentUrl = await page.url();
     logAction(`Current URL: ${currentUrl}`);
 
@@ -5792,14 +5809,6 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       navigableElements: navigableElements.length
     });
 
-    // Capture screenshot
-    const screenshotFilename = `screenshot-${Date.now()}.png`;
-    const screenshotPath = path.join(runDir, screenshotFilename);
-    const screenshot = await page.screenshot({ encoding: 'base64' });
-    fs.writeFileSync(screenshotPath, Buffer.from(screenshot, 'base64'));
-    const screenshotUrl = `/nexus_run/${runId}/${screenshotFilename}`;
-    logAction("Screenshot captured and saved", { path: screenshotPath });
-
     // Log screenshot if the agent supports it
     if (agent && agent.logScreenshot) {
       try {
@@ -5812,7 +5821,21 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       }
     }
 
-    console.log('[Server] Preparing to send intermediateResult for taskId:', taskId);
+    // Capture if page is available & log error without crashing task
+    let screenshotUrl = '';
+    if (page) {
+      try {
+        const screenshot = await page.screenshot({ encoding: 'base64' });
+        const screenshotFilename = `screenshot-${Date.now()}.png`;
+        const screenshotPath = path.join(runDir, screenshotFilename);
+        fs.writeFileSync(screenshotPath, Buffer.from(screenshot, 'base64'));
+        screenshotUrl = `/nexus_run/${runId}/${screenshotFilename}`;  // Removed 'const' to use the outer scoped variable
+        logAction("Screenshot captured and saved", { path: screenshotPath, url: screenshotUrl });
+      } catch (error) {
+        logAction(`Warning: Failed to capture screenshot: ${error.message}`);
+      }
+    }
+    console.log('[BrowserAction - Server] Preparing to send intermediateResult for taskId:', taskId);
     try {
       sendWebSocketUpdate(userId, {
         event: 'intermediateResult',
@@ -5858,15 +5881,15 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       error: null,
       task_id: taskId,
       closed: false,
-      currentUrl,
+      currentUrl: currentUrl,
       stepIndex: currentStep,
       actionOutput: `Completed: ${command}`,
       pageTitle: await page.title(),
-      extractedInfo,
-      navigableElements,
+      extractedInfo: extractedInfo,
+      navigableElements: navigableElements,
       actionLog: trimmedActionLog,
       screenshotPath: screenshotUrl,
-      browserSession,
+      browserSession: browserSession,
       state: {
         assertion: extractedInfo && extractedInfo.pageContent 
           ? extractedInfo.pageContent 
@@ -5883,7 +5906,7 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
         ...entry,
         message: entry.message.length > 150 ? entry.message.substring(0, 150) + '...' : entry.message
       })),
-      currentUrl: page ? currentUrl : null,
+      currentUrl: page ? await page.url() : null,
       task_id: taskId,
       stepIndex: currentStep
     };
@@ -6050,40 +6073,78 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       message: `Querying: ${query}`,
       log: actionLog
     });
+
+    // Popup check - on arrival to page there may be popups or we are in a new tab
+    const stateCheck = await page.evaluate(() => ({
+      url: window.location.href,
+      popupOpened: window.opener !== null,
+      numFrames: window.frames.length,
+      alerts: document.querySelectorAll('[role="alert"]').length
+    }));
+    logQuery("Post-query state check", stateCheck);
     
+    if (stateCheck.popupOpened) {
+      logQuery("Popup detected - checking for new pages");
+      const pages = await browser.pages();
+      if (pages.length > 1) {
+        logQuery(`Found ${pages.length} pages, switching to newest`);
+        const newPage = pages[pages.length - 1];
+        if (newPage !== page) {
+          page = newPage;
+          agent = new PuppeteerAgent(page);
+          logQuery("Switched to new page and reinitialized agent");
+        }
+      }
+      // Handle page obstacles.
+      logQuery("Checking for page obstacles");
+      const obstacleResults = await handlePageObstacles(page, agent);
+      logQuery("Obstacle check results", obstacleResults);
+    }
+
     const currentUrl = await page.url();
     logQuery(`Current URL: ${currentUrl}`);
+
+    // Execute the query with AI-powered handling of dialogs and obstacles
+    const queryResult = await agent.aiQuery({ domIncluded: true }, query);
+    logQuery("Query executed successfully");
     
-    logQuery(`Executing query: "${query}"`);
+    // Extract rich context
+    logQuery(`Extracting rich page context from: ${currentUrl}`);
     const { pageContent: extractedInfo, navigableElements } = await extractRichPageContext(
       agent, 
       page, 
       currentUrl, 
-      "read, scan, extract, and observe", 
-      query
+      query, 
+      "Read, scan and observe the page. Then state - What information is now visible on the page? What can be clicked or interacted with?"
     );
-    logQuery("Query executed successfully");
 
-    // Log screenshot
-    // Log screenshot if the agent supports it
+    // Log screenshot in Mian report file if the agent supports it
     if (agent && agent.logScreenshot) {
       try {
-        logAction("Logging screenshot to Nexus report");
+        logQuery("Logging screenshot to Nexus report");
         await agent.logScreenshot(`Step ${currentStep}: ${currentUrl}`, {
-          content: `${command}`,
+          content: `${query}`,
         });
       } catch (error) {
-        logAction(`Warning: Failed to log screenshot to Nexus report: ${error.message}`);
+        logQuery(`Warning: Failed to log screenshot to Nexus report: ${error.message}`);
       }
     }
 
-    const screenshot = await page.screenshot({ encoding: 'base64' });
-    const screenshotFilename = `screenshot-${Date.now()}.png`;
-    const screenshotPath = path.join(runDir, screenshotFilename);
-    fs.writeFileSync(screenshotPath, Buffer.from(screenshot, 'base64'));
-    const screenshotUrl = `/nexus_run/${runId}/${screenshotFilename}`;
-    logQuery("Screenshot captured and saved", { path: screenshotPath });
-
+    // Capture if page is available & log error without crashing task
+    let screenshotUrl = '';
+    if (page) {
+      try {
+        const screenshot = await page.screenshot({ encoding: 'base64' });
+        const screenshotFilename = `screenshot-${Date.now()}.png`;
+        const screenshotPath = path.join(runDir, screenshotFilename);
+        fs.writeFileSync(screenshotPath, Buffer.from(screenshot, 'base64'));
+        screenshotUrl = `/nexus_run/${runId}/${screenshotFilename}`;  // Removed 'const' to use the outer scoped variable
+        logQuery("Screenshot captured and saved", { path: screenshotPath, url: screenshotUrl });
+      } catch (error) {
+        logQuery(`Warning: Failed to capture screenshot: ${error.message}`);
+      }
+    }
+    console.log('[BrowserQuery - Server] Preparing to send intermediateResult for taskId:', taskId);
     try {
       sendWebSocketUpdate(userId, {
         event: 'intermediateResult',
@@ -6126,7 +6187,7 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       return { ...entry, message: truncatedMessage };
     });
 
-    const assertion = 'After execution, this is whats now visible: ' + extractedInfo.substring(0, 150) + '...';
+    const assertion = 'After execution, this is whats now visible: ' + extractedInfo;
     logQuery("Assertion for query completed", { assertion });
 
     const browserSession = { browser, agent, page, release, closed: false, hasReleased: false };
@@ -6137,16 +6198,20 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       error: null,
       task_id: taskId,
       closed: false,
-      currentUrl,
+      currentUrl: currentUrl,
       stepIndex: currentStep,
       actionOutput: `Completed: ${query}`,
       pageTitle: await page.title(),
-      extractedInfo,
-      navigableElements,
+      extractedInfo: queryResult,
+      navigableElements: navigableElements,
       actionLog: trimmedActionLog,
       screenshotPath: screenshotUrl,
-      browserSession,
-      state: { assertion }
+      browserSession: browserSession,
+      state: {
+        assertion: extractedInfo && extractedInfo.pageContent 
+          ? extractedInfo.pageContent 
+          : 'No content extracted'
+      }
     };
   } catch (error) {
     logQuery(`Error in browser query: ${error.message}`, { stack: error.stack });
@@ -6157,7 +6222,7 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
         ...entry,
         message: entry.message.length > 150 ? entry.message.substring(0, 150) + '...' : entry.message
       })),
-      currentUrl: page ? currentUrl : null,
+      currentUrl: page ? await page.url() : null,
       task_id: taskId,
       stepIndex: currentStep
     };
@@ -7700,8 +7765,8 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
                     
                     if (consecutiveFailures >= 3) {
                       plan.log("Triggering recovery due to consecutive failures");
-                      const recoveryStep = plan.createStep('query', 'Suggest a new approach to achieve the Main Task', {
-                        query: 'Suggest a new approach to achieve the Main Task',
+                      const recoveryStep = plan.createStep('query', 'Suggest a new approach to achieve this command: ', {
+                        query: parsedArgs.command,
                         task_id: taskId,
                         url: plan.currentUrl
                       });
@@ -8055,7 +8120,7 @@ async function addIntermediateResult(userId, taskId, result) {
       success: result.success,
       currentUrl: result.currentUrl,
       extractedInfo: typeof result.extractedInfo === 'string'
-        ? result.extractedInfo.substring(0, 1500) + '...'
+        ? result.extractedInfo
         : 'Complex data omitted',
       navigableElements: Array.isArray(result.navigableElements) 
         ? result.navigableElements.slice(0, 30) 
@@ -8107,17 +8172,20 @@ After executing "${command}", thoroughly analyze the page and return a JSON obje
 
 ${domainSpecificPrompt}
 
-Always detail main page content on center of page.  List any products or tokens lists if available on page.
+Always outline in Great Detail the main page content on center of page.  
+Always read Key information in the sidebars if present.
+For news and documents focus on main content.
+For products and cryptocurrency focus on Description, Symbols, Names, Prices, Lists, and any other relevant information.
 
 IGNORE ALL IMAGES of phones, laptops, devices, billboards, or any marketing images simulating data presentation.
-Detail charts or graphs including chart type (line/bar/candlestick)
+Describe charts or graphs including Chart heading, chart type (line/bar/candlestick), time frame, and any other relevant information.
 Ensure you return valid JSON. If any field is not present, return an empty string or an empty array as appropriate.
 [END OF INSTRUCTION]
 ${query}
   `;
  
   try {
-    let extractedInfo = await agent.aiQuery(combinedQuery);
+    let extractedInfo = await agent.aiQuery(combinedQuery, { domIncluded: true },);
     if (typeof extractedInfo !== 'string') {
       if (extractedInfo && typeof extractedInfo === 'object') {
         const pageContent = extractedInfo.main_content || "No content extracted";

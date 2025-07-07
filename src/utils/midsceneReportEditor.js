@@ -352,9 +352,13 @@ export async function editMidsceneReport(reportPath) {
       if (insideTitle) {
         // Skip writing the original title text since we already wrote our custom title
         return;
-      } else if (text.includes('Report - Midscene.js')) {
-        // Replace any dynamic title text that might be set by React
-        writeStream.write(text.replace('Report - Midscene.js', 'Report - Nexus'));
+      } else if (text.includes('Midscene')) {
+        // Replace any Midscene references with Nexus
+        writeStream.write(text
+          .replace(/Report - Midscene(\.js)?/g, 'O.P.E.R.A.T.O.R – Sentinel Report')
+          .replace(/Midscene(\.js)? Report/g, 'O.P.E.R.A.T.O.R – Sentinel Report')
+          .replace(/Midscene/g, 'Nexus')
+        );
         return;
       }
       writeStream.write(text);

@@ -598,6 +598,17 @@ export default class NeuralFlow {
       });
     });
     
+    // Special positioning for plan node if it exists
+    const planNode = this.nodes.find(node => node.isPlanNode);
+    if (planNode) {
+      // Always position plan node prominently with top padding
+      planNode.tx = 90;
+      planNode.ty = this.topPadding + 40; // Position below top padding
+      if (!planNode.x) {
+        planNode.x = planNode.tx;
+        planNode.y = -50; // Start from above
+      }
+    }
   }
   
   addNode(text) {
@@ -668,7 +679,7 @@ export default class NeuralFlow {
       y: initialY,
       tx: 0, // target x (will be set in updateNodePositions)
       ty: 0, // target y (will be set in updateNodePositions)
-      radius: isPlanNode ? 12 : 8,
+      radius: isPlanNode ? 10 : 8,
       dendrites: [],
       dendriteCount: isPlanNode ? 9 : (Math.floor(Math.random() * 4) + 4),
       alpha: 0, // for fade-in
@@ -696,30 +707,27 @@ export default class NeuralFlow {
     const nodeIdx = this.nodes.length;
     this.nodes.push(node);
     
-    // Create branch connections
+    // Create branch connection if this is a sub-step
     if (parentStepId >= 0) {
-      // This is a sub-step or step with a parent
       this.branches.push({
         fromIdx: parentStepId,
         toIdx: nodeIdx,
-        type: isStepNode ? 'main-flow' : 'sub-step'
+        type: 'sub-step'
       });
     } 
-    // Connect to previous node if not a plan node and not already connected
+    // Otherwise, connect to previous node if not a plan node
     else if (nodeIdx > 0 && !isPlanNode) {
-      // Find the most recent non-sub-step to connect to
+      // Find the most recent non-sub-step to connect to, or connect to plan node
       let connectToIdx = nodeIdx - 1;
-      while (connectToIdx >= 0 && this.nodes[connectToIdx].isSubStep) {
+      while (connectToIdx > 0 && this.nodes[connectToIdx].isSubStep) {
         connectToIdx--;
       }
       
-      if (connectToIdx >= 0) {
-        this.branches.push({
-          fromIdx: connectToIdx,
-          toIdx: nodeIdx,
-          type: 'main-flow'
-        });
-      }
+      this.branches.push({
+        fromIdx: connectToIdx,
+        toIdx: nodeIdx,
+        type: 'main-flow'
+      });
     }
     
     // Update the "isFinal" flag to be true only for the last node
