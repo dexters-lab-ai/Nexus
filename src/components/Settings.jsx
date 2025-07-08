@@ -39,12 +39,12 @@ function loadStylesheets() {
     },
     { 
       dev: '/src/styles/components/settings-advanced.css',
-      prod: '/css/components/settings-advanced.css',
+      prod: '/css/settings-advanced.css',
       name: 'settings-advanced'
     },
     { 
       dev: '/src/styles/components/settings-modal-enhancements.css',
-      prod: '/css/components/settings-modal-enhancements.css',
+      prod: '/css/settings-modal-enhancements.css',
       name: 'settings-modal-enhancements'
     },
     // Footer styles (loaded separately to maintain order)
