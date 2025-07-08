@@ -1,0 +1,109 @@
+/* Dexter Away Popup - Futuristic Theme */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto:wght@300;400;500&display=swap');
+
+.dexter-away-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(135deg, rgba(20, 25, 40, 0.95), rgba(15, 20, 35, 0.98));
+  border: 1px solid var(--primary);
+  border-radius: 12px;
+  padding: 30px 40px;
+  z-index: 9999;
+  box-shadow: 0 0 30px rgba(110, 122, 255, 0.3), 
+              inset 0 0 15px rgba(255, 255, 255, 0.05);
+  font-family: 'Roboto', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  text-align: center;
+  max-width: 420px;
+  width: 90%;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: bounceIn 0.6s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  border: 1px solid rgba(110, 122, 255, 0.3);
+}
+
+.dexter-away-popup h2 {
+  color: var(--primary);
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.8rem;
+  margin: 0 0 15px 0;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-shadow: 0 0 10px rgba(110, 122, 255, 0.5);
+}
+
+.dexter-away-popup p {
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  margin: 0 0 20px 0;
+  line-height: 1.6;
+  font-weight: 300;
+}
+
+.dexter-away-popup .emoji {
+  font-size: 2.8rem;
+  display: block;
+  margin: 0 auto 20px;
+  animation: float 3s ease-in-out infinite;
+  text-shadow: 0 0 15px var(--primary-glow);
+  width: 80px;
+  height: 80px;
+  line-height: 80px;
+  border-radius: 50%;
+  background: rgba(110, 122, 255, 0.1);
+  backdrop-filter: blur(5px);
+  border: 1px solid rgba(110, 122, 255, 0.3);
+  box-shadow: 0 0 20px rgba(110, 122, 255, 0.2);
+}
+
+/* Enhanced disabled button style */
+.cyberpunk-launch-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  filter: grayscale(0.8) brightness(0.7);
+  animation: none;
+  overflow: hidden;
+}
+
+.cyberpunk-launch-btn:disabled::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, 
+    transparent 45%, 
+    rgba(255, 255, 255, 0.1) 48%, 
+    rgba(255, 255, 255, 0.1) 52%, 
+    transparent 55%);
+  background-size: 200% 100%;
+  animation: shine 2s infinite;
+  pointer-events: none;
+}
+
+@keyframes shine {
+  0% { background-position: -100% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Animations */
+@keyframes bounceIn {
+  0% { transform: translate(-50%, -70%) scale(0.3); opacity: 0; }
+  50% { transform: translate(-50%, -55%) scale(1.1); }
+  70% { transform: translate(-50%, -50%) scale(0.9); }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+@keyframes bounceOut {
+  0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  20% { transform: translate(-50%, -50%) scale(1.1); }
+  100% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+}
