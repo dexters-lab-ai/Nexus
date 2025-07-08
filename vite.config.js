@@ -341,33 +341,37 @@ export default defineConfig(({ mode }) => {
               const path = await import('path');
               const { glob } = await import('glob');
               
-              // Find all files in src/styles
-              const files = await glob('src/styles/**/*', { nodir: true });
-              
-              // Specific CSS files that need to be in the root css/ directory
-              const specificFiles = [
+              // Define all CSS files that need to be processed
+              const cssFiles = [
+                // Main CSS files
+                ...(await glob('src/styles/*.css', { nodir: true })),
+                
+                // Component CSS files
+                ...(await glob('src/styles/components/*.css', { nodir: true })),
+                
+                // Explicitly include these files to ensure they're processed
                 'src/styles/components/settings-advanced.css',
                 'src/styles/components/settings-modal-enhancements.css',
                 'src/styles/components/dexter-away-popup.css'
               ];
               
-              // Process all files
-              for (const file of [...files, ...specificFiles]) {
+              // Remove duplicates
+              const uniqueFiles = [...new Set(cssFiles)];
+              
+              // Process each file
+              for (const file of uniqueFiles) {
                 try {
                   const content = await fs.readFile(file, 'utf-8');
                   const fileName = path.basename(file);
                   
-                  // Only process CSS files that don't start with _ (Sass partials)
-                  if (!file.endsWith('.css') || path.basename(file).startsWith('_')) {
+                  // Skip non-CSS files and Sass partials
+                  if (!file.endsWith('.css') || fileName.startsWith('_')) {
                     continue;
                   }
                   
-                  // Determine output path based on file location
+                  // Determine output path
                   let outputPath;
-                  if (specificFiles.includes(file)) {
-                    // Specific files go to root css/ directory
-                    outputPath = `css/${fileName}`;
-                  } else if (file.includes('src/styles/components/')) {
+                  if (file.includes('components/')) {
                     // Component CSS goes to components subdirectory
                     outputPath = `css/components/${fileName}`;
                   } else {
@@ -381,8 +385,10 @@ export default defineConfig(({ mode }) => {
                     fileName: outputPath,
                     source: content
                   });
+                  
+                  console.log(`[vite:copy-styles] Processed ${file} -> ${outputPath}`);
                 } catch (error) {
-                  console.warn(`[vite:copy-styles] Could not process ${file}:`, error.message);
+                  console.error(`[vite:copy-styles] Error processing ${file}:`, error.message);
                 }
               }
             }

@@ -1306,11 +1306,22 @@ export default class RoomExperience extends EventEmitter {
     `;
     document.body.appendChild(popup);
 
-    // Add CSS for the popup
+    // Add CSS for the popup - works in both dev and prod
     const styleLink = document.createElement('link');
     styleLink.rel = 'stylesheet';
-    styleLink.href = '/src/styles/components/dexter-away-popup.css';
-    document.head.appendChild(styleLink);
+    
+    // Check if we're in development or production
+    const isProduction = process.env.NODE_ENV === 'production';
+    styleLink.href = isProduction 
+      ? '/css/components/dexter-away-popup.css' 
+      : '/src/styles/components/dexter-away-popup.css';
+      
+    styleLink.id = 'dexter-popup-styles';
+    
+    // Only add if not already added
+    if (!document.getElementById('dexter-popup-styles')) {
+      document.head.appendChild(styleLink);
+    }
 
     // Remove popup when clicking anywhere
     document.addEventListener('click', function handleClick() {
