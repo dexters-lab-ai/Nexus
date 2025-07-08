@@ -341,69 +341,48 @@ export default defineConfig(({ mode }) => {
               const path = await import('path');
               const { glob } = await import('glob');
               
-              // Track processed files to prevent duplicates
-              const processedFiles = new Set();
-              
               // Find all files in src/styles
               const files = await glob('src/styles/**/*', { nodir: true });
               
-              // Process files in smaller batches to reduce memory usage
-              const BATCH_SIZE = 10; // Process 10 files at a time
+              // Specific CSS files that need to be in the root css/ directory
+              const specificFiles = [
+                'src/styles/components/settings-advanced.css',
+                'src/styles/components/settings-modal-enhancements.css',
+                'src/styles/components/dexter-away-popup.css'
+              ];
               
-              // Filter and batch CSS files
-              const cssFiles = files.filter(file => {
-                const fileName = path.basename(file);
-                return file.endsWith('.css') && !fileName.startsWith('_');
-              });
-              
-              console.log(`[vite:copy-styles] Found ${cssFiles.length} CSS files to process`);
-              
-              // Process files in batches
-              for (let i = 0; i < cssFiles.length; i += BATCH_SIZE) {
-                const batch = cssFiles.slice(i, i + BATCH_SIZE);
-                console.log(`[vite:copy-styles] Processing batch ${i / BATCH_SIZE + 1} of ${Math.ceil(cssFiles.length / BATCH_SIZE)}`);
-                
-                // Process each file in the current batch
-                await Promise.all(batch.map(async (file) => {
-                  try {
-                    const fileName = path.basename(file);
-                    
-                    // Skip already processed files (double-check)
-                    if (processedFiles.has(fileName)) {
-                      console.warn(`[vite:copy-styles] Skipping duplicate file in batch: ${file}`);
-                      return;
-                    }
-                    
-                    // Read and process the file
-                    const content = await fs.readFile(file, 'utf-8');
-                    
-                    // Determine output path based on file location
-                    let outputPath;
-                    if (file.includes('src/styles/components/')) {
-                      outputPath = `css/components/${fileName}`;
-                    } else {
-                      outputPath = `css/${fileName}`;
-                    }
-                    
-                    // Mark file as processed
-                    processedFiles.add(fileName);
-                    
-                    // Add file to the bundle
-                    this.emitFile({
-                      type: 'asset',
-                      fileName: outputPath,
-                      source: content
-                    });
-                    
-                    console.log(`[vite:copy-styles] Processed ${file} -> ${outputPath}`);
-                  } catch (error) {
-                    console.error(`[vite:copy-styles] Error processing ${file}:`, error.message);
+              // Process all files
+              for (const file of [...files, ...specificFiles]) {
+                try {
+                  const content = await fs.readFile(file, 'utf-8');
+                  const fileName = path.basename(file);
+                  
+                  // Only process CSS files that don't start with _ (Sass partials)
+                  if (!file.endsWith('.css') || path.basename(file).startsWith('_')) {
+                    continue;
                   }
-                }));
-                
-                // Add a small delay between batches to free up memory
-                if (i + BATCH_SIZE < cssFiles.length) {
-                  await new Promise(resolve => setTimeout(resolve, 100));
+                  
+                  // Determine output path based on file location
+                  let outputPath;
+                  if (specificFiles.includes(file)) {
+                    // Specific files go to root css/ directory
+                    outputPath = `css/${fileName}`;
+                  } else if (file.includes('src/styles/components/')) {
+                    // Component CSS goes to components subdirectory
+                    outputPath = `css/components/${fileName}`;
+                  } else {
+                    // Other CSS files go to root css/ directory
+                    outputPath = `css/${fileName}`;
+                  }
+                  
+                  // Add file to the bundle
+                  this.emitFile({
+                    type: 'asset',
+                    fileName: outputPath,
+                    source: content
+                  });
+                } catch (error) {
+                  console.warn(`[vite:copy-styles] Could not process ${file}:`, error.message);
                 }
               }
             }

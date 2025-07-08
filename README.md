@@ -98,6 +98,90 @@ npm run serve:dev
 
 ---
 
+## 📱 Device Automation
+
+O.P.E.R.A.T.O.R provides powerful Android device automation capabilities through multiple connection methods. Choose the option that best fits your needs:
+
+### Connection Methods
+
+#### 1. USB Connection (Recommended)
+**Best for:** Local development and debugging  
+**Speed:** ⚡⚡⚡⚡⚡ (Fastest)  
+**Stability:** ⭐⭐⭐⭐⭐ (Most stable)
+
+**Setup Instructions:**
+1. Enable USB Debugging on your Android device:
+   - Go to **Settings** > **About Phone**
+   - Tap **Build Number** 7 times to enable Developer Options
+   - Go to **System** > **Developer Options**
+   - Enable **USB Debugging**
+2. Connect your device via USB
+3. In O.P.E.R.A.T.O.R, select **USB** as the connection type
+4. Click **Connect** and authorize the connection on your device
+
+#### 2. Network Connection
+**Best for:** Wireless testing and multi-device setups  
+**Speed:** ⚡⚡⚡ (Depends on network)  
+**Convenience:** ⭐⭐⭐⭐⭐ (No cables needed)
+
+**Setup Instructions:**
+1. First, connect your device via USB and enable USB debugging
+2. Open a command prompt/terminal and run: `adb tcpip 5555`
+3. Note your device's IP address in **Settings** > **About Phone** > **Status**
+4. In O.P.E.R.A.T.O.R, select **Network** as the connection type
+5. Enter your device's IP address (port defaults to 5555)
+6. Click **Connect**
+7. You can now disconnect the USB cable
+
+#### 3. Remote ADB (Advanced)
+**Best for:** Teams and CI/CD pipelines  
+**Flexibility:** ⭐⭐⭐⭐⭐ (Access anywhere)  
+**Setup:** ⚙️⚙️⚙️ (Advanced configuration)
+
+**Setup Instructions:**
+1. On the computer with your Android device connected:
+   - Open a command prompt/terminal as administrator
+   - Navigate to your ADB directory (e.g., `cd C:\platform-tools`)
+   - Start the ADB server: `adb -a -P 5037 nodaemon server`
+   - Note the computer's IP address
+2. In O.P.E.R.A.T.O.R:
+   - Select **Remote ADB** as the connection type
+   - Enter the ADB server's IP and port (default: 5037)
+   - If needed, specify the path to ADB executable
+   - Click **Save Settings** then **Test Connection**
+
+### Troubleshooting
+
+#### Device Not Found
+- Verify USB debugging is enabled
+- Try a different USB cable/port
+- Run: `adb kill-server && adb start-server`
+- Ensure proper USB drivers are installed
+
+#### Connection Drops
+- Check WiFi/network stability
+- Ensure device IP hasn't changed (for network connections)
+- Verify port 5555 is open (network mode)
+- Check for firewall/antivirus blocking the connection
+
+#### Docker Limitation
+When running in a Docker container, network ADB connections may not work due to network namespace isolation. For development and testing, run the app directly on your host machine.
+
+### Requirements
+- Android device with USB debugging enabled
+- ADB (Android Debug Bridge) installed
+- For USB: Proper USB drivers for your device
+- For network: Device and computer on the same network
+- For remote ADB: ADB server running on the host machine
+
+### Security Notes
+- Only enable USB debugging for trusted computers
+- Be cautious when connecting to public networks
+- Use secure connections for remote ADB access
+- Keep your ADB version updated to the latest release
+
+---
+
 ## 🧪 Production Build & Run
 
 ### Build Frontend
@@ -175,17 +259,50 @@ O.P.E.R.A.T.O.R relies on WebSocket connections to deliver real-time features su
 > If the Neural Canvas or other real-time features do not update, it is almost always a user connection/WebSocket issue.
 
 
-### Production Deployment
+### Production in Docker - DigitalOcean
 
-```bash
-# Build frontend assets
-npm run build
+1. **Create a DigitalOcean Account**
+   - Sign up at [DigitalOcean](https://cloud.digitalocean.com/)
+   - Complete email verification and account setup
 
-# Start production server
-npm start
-```
+2. **Create a New App**
+   - Go to the Apps section
+   - Click "Create" > "Apps"
+   - Choose GitHub as the source
+   - Select your repository with this codebase
+   - Select the main branch
 
-Access the application at `http://localhost:3400`
+3. **Configure App Settings**
+   - Under "App Name", enter your preferred name
+   - Select the region closest to your users
+   - Click "Next" to continue
+
+4. **Environment Variables**
+   - Go to the "Settings" tab
+   - Click "Edit" in the "App-Level Environment Variables" section
+   - Copy and paste the contents of your `.env.production` file
+   - Click "Save"
+
+5. **Configure Ports**
+   - In the "App" section of Settings, click "Edit"
+   - Add the following HTTP ports:
+     - `3000` (Frontend)
+     - `3420` (Backend API)
+   - Set the health check to use TCP protocol
+
+6. **Run Command**
+   - In the "App" section, find "Run Command"
+   - Enter: `node server.js`
+   - Click "Save"
+
+7. **Deploy**
+   - Go to the "Deployments" tab
+   - Click "Deploy"
+   - Wait for the deployment to complete
+
+8. **Access Your App**
+   - Once deployed, find your app's URL in the "Domains" section
+   - The app will be available at `https://your-app-name.ondigitalocean.app`
 
 ## 🧩 Features in Detail
 
