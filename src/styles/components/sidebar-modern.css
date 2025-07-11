@@ -703,7 +703,7 @@
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
-    top: 70px;
+    top: 65px !important;
     right: 0px;
     height: calc(100vh - var(--header-height) - var(--footer-height)) !important;
     transform: translateX(100%);
@@ -716,10 +716,18 @@
   }
   
   .sidebar.collapsed {
-    transform: translateX(calc(100% - var(--sidebar-collapsed-width) - 50px)) !important;
+    transform: translateX(calc(100% - var(--sidebar-collapsed-width) + 50px)) !important;
   }
   .sidebar:not(.collapsed) {
     transform: translateX(0) !important;
+  }
+  .sidebar-header {
+    right: -15px;
+    border: 1px solid rgb(100, 180, 255);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(100, 180, 255, 0.2);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
 }
 
