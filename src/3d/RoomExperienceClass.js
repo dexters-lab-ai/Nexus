@@ -1287,50 +1287,13 @@ export default class RoomExperience extends EventEmitter {
   }
 
   showLaunchButton() {
-    // Create and style the launch button (disabled)
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.id = 'launch-btn';
     btn.innerText = 'Launch O.P.E.R.A.T.O.R';
     btn.className = 'cyberpunk-launch-btn';
-    btn.disabled = true; // Disable the button
     document.body.appendChild(btn);
-
-    // Create the Dexter away popup
-    const popup = document.createElement('div');
-    popup.className = 'dexter-away-popup';
-    popup.innerHTML = `
-      <div class="emoji">👨‍💻</div>
-      <h2>Dexter is away...</h2>
-      <p>Stay in the Room and look around, and wait for Dexter to release the App</p>
-    `;
-    document.body.appendChild(popup);
-
-    // Add CSS for the popup - works in both dev and prod
-    const styleLink = document.createElement('link');
-    styleLink.rel = 'stylesheet';
-    
-    // Check if we're in development or production
-    const isProduction = process.env.NODE_ENV === 'production';
-    styleLink.href = isProduction 
-      ? '/css/components/dexter-away-popup.css' 
-      : '/src/styles/components/dexter-away-popup.css';
-      
-    styleLink.id = 'dexter-popup-styles';
-    
-    // Only add if not already added
-    if (!document.getElementById('dexter-popup-styles')) {
-      document.head.appendChild(styleLink);
-    }
-
-    // Remove popup when clicking anywhere
-    document.addEventListener('click', function handleClick() {
-      popup.style.animation = 'bounceOut 0.5s ease forwards';
-      setTimeout(() => {
-        popup.remove();
-      }, 500);
-      document.removeEventListener('click', handleClick);
-    });
+    btn.addEventListener('click', () => eventBus.emit('launch-application'));
   }
 
   // Generic camera animation utility for all transitions
