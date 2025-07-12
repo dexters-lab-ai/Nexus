@@ -5436,6 +5436,7 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
     const isNavigationCommand = command.toLowerCase().startsWith('navigate to ');
     let effectiveUrl;
     
+    // Determine the effective URL**
     if (isNavigationCommand) {
       const navigateMatch = command.match(/navigate to (\S+)/i);
       if (navigateMatch) {
@@ -5443,25 +5444,24 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
         logAction(`Extracted URL from command: ${effectiveUrl}`);
         effectiveUrl = validateAndNormalizeUrl(effectiveUrl);
         if (!effectiveUrl) {
-          effectiveUrl = providedUrl || 'https://www.google.com';
-          logAction('Extracted URL is invalid, using provided URL or defaulting to Google');
+          throw new Error(`Invalid URL extracted from command: ${navigateMatch[1]}`);
         }
       } else {
-        effectiveUrl = providedUrl || 'https://www.google.com';
-        logAction('No URL found in navigate command, using provided URL or defaulting to Google');
+        throw new Error('No URL found in navigate command');
       }
     } else {
-      effectiveUrl = providedUrl || 'https://www.google.com';
-    }
-    logAction(`Using URL: ${effectiveUrl} for navigation`);
-    if (!effectiveUrl) {
-      effectiveUrl = 'https://www.google.com';
-      logAction('Falling back to Google due to invalid URL');
+      effectiveUrl = providedUrl ? validateAndNormalizeUrl(providedUrl) : null;
+      if (effectiveUrl) {
+        logAction(`Using provided URL: ${effectiveUrl}`);
+      } else if (providedUrl) {
+        throw new Error(`Invalid provided URL: ${providedUrl}`);
+      }
     }
 
     args.task_id = taskId;
     existingSession = activeBrowsers.get(sessionKey);
 
+    // Handle browser session**
     if (existingSession && await isSessionValid(existingSession)) {
       logAction("Using existing browser session");
       ({ browser, agent, page, release } = existingSession);
@@ -5471,22 +5471,28 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
         agent = new PuppeteerAgent(page);
         activeBrowsers.set(sessionKey, { browser, agent, page, release, closed: false, hasReleased: false });
       }
-      if (isNavigationCommand) {
+      if (isNavigationCommand || (effectiveUrl && await page.url() !== effectiveUrl)) {
+        const targetUrl = isNavigationCommand ? effectiveUrl : effectiveUrl;
         const currentUrl = await page.url();
-        if (currentUrl !== effectiveUrl) {
-          logAction(`Navigating from ${currentUrl} to ${effectiveUrl}`);
+        if (currentUrl !== targetUrl) {
+          logAction(`Navigating from ${currentUrl} to ${targetUrl}`);
           try {
-            await page.goto(effectiveUrl, { waitUntil: 'networkidle2' });
-            logAction(`Successfully navigated to ${effectiveUrl}`);
+            await page.goto(targetUrl, { waitUntil: 'networkidle2' });
+            logAction(`Successfully navigated to ${targetUrl}`);
           } catch (err) {
-            logAction(`Navigation failed: ${err.message}. Falling back to Google`);
-            await page.goto('https://www.google.com', { waitUntil: 'networkidle2' });
+            logAction(`Navigation failed: ${err.message}`);
+            throw new Error(`Failed to navigate to ${targetUrl}: ${err.message}`);
           }
         } else {
-          logAction(`Already at target URL: ${effectiveUrl}`);
+          logAction(`Already at target URL: ${targetUrl}`);
         }
+      } else {
+        logAction("No navigation needed, staying on current page");
       }
     } else {
+      if (!effectiveUrl) {
+        throw new Error('No valid URL provided for new browser session');
+      }
       logAction(`Creating new browser session and navigating to URL: ${effectiveUrl}`);
       release = await browserSemaphore.acquire().catch(err => {
         logAction(`Semaphore acquisition failed: ${err.message}`);
@@ -5499,11 +5505,13 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       logAction("Browser launched successfully");
       page = await browser.newPage();
       logAction("New page created");
-      await page.goto(effectiveUrl, { waitUntil: 'networkidle2' }).catch(err => {
-        logAction(`Navigation failed: ${err.message}. Falling back to Google`);
-        return page.goto('https://www.google.com', { waitUntil: 'networkidle2' });
-      });
-      logAction("Navigation completed successfully");
+      try {
+        await page.goto(effectiveUrl, { waitUntil: 'networkidle2' });
+        logAction("Navigation completed successfully");
+      } catch (err) {
+        logAction(`Navigation failed: ${err.message}`);
+        throw new Error(`Failed to navigate to ${effectiveUrl}: ${err.message}`);
+      }
       agent = new PuppeteerAgent(page);
       logAction("PuppeteerAgent initialized");
       activeBrowsers.set(sessionKey, { browser, agent, page, release, closed: false, hasReleased: false });
@@ -5519,6 +5527,7 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       log: actionLog
     });
 
+    // Execute non-navigation actions**
     if (agent && agent.setAIActionContext) {
       try {
         logAction("Setting AI action context");
@@ -5538,6 +5547,7 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       }
     }
 
+    // Handle popups and page context**
     const popupCheck = await page.evaluate(() => {
       return {
         url: window.location.href,
@@ -5581,6 +5591,7 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       navigableElements: navigableElements.length
     });
 
+    // Capture screenshot and send updates**
     if (agent && agent.logScreenshot) {
       try {
         logAction("Logging screenshot to Nexus report");
@@ -5664,7 +5675,7 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
     logAction(`Error in browser action: ${error.message}`, { stack: error.stack });
     if (error.message.includes('Target closed') || 
         error.message.includes('disconnected') || 
-        error.message.includes('Connection closed')) {  // Add this
+        error.message.includes('Connection closed')) {
       if (existingSession) {
         existingSession.closed = true;
         if (typeof existingSession.release === 'function' && !existingSession.hasReleased) {
@@ -5672,7 +5683,7 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
           existingSession.hasReleased = true;
           logAction("Released semaphore due to browser disconnection");
         }
-        activeBrowsers.delete(taskId);
+        activeBrowsers.delete(sessionKey);
         logAction("Removed crashed session from activeBrowsers");
       }
     }
