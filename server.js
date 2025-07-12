@@ -3048,63 +3048,29 @@ const browserSemaphore = new Semaphore(MAX_CONCURRENT_BROWSERS);
  */
 async function getOrCreateBrowserSession(taskId, userId) {
   const sessionKey = `${userId}:${taskId}`;
-  
-  // Check if we have a valid existing session
   const existingSession = activeBrowsers.get(sessionKey);
-  if (existingSession) {
-    try {
-      // Verify the session is still valid and browser is connected
-      if (existingSession.browser && existingSession.browser.isConnected()) {
-        const pages = await existingSession.browser.pages();
-        if (pages && pages.length >= 0) {
-          existingSession.lastActivity = Date.now();
-          logger.debug(`[BrowserSession] Reusing existing session for task ${taskId}`);
-          return existingSession;
-        }
-      }
-    } catch (error) {
-      logger.warn(`[BrowserSession] Existing session invalid (${error.message}), creating new one`);
-      await cleanupBrowserSession(sessionKey).catch(e => 
-        logger.error('Error during session cleanup:', e)
-      );
-    }
+  
+  if (existingSession && await isSessionValid(existingSession)) {
+    console.log(`[getOrCreateBrowserSession] Reusing existing session for task ${taskId}`);
+    existingSession.lastActivity = Date.now();
+    return existingSession;
   }
 
-  // Acquire semaphore to limit concurrent browsers
+  // Create a new session
   let release;
   try {
     release = await browserSemaphore.acquire();
-    logger.debug(`[BrowserSession] Acquired semaphore for task ${taskId}`);
+    console.log(`[getOrCreateBrowserSession] Acquired semaphore for task ${taskId}`);
   } catch (error) {
-    logger.error(`[BrowserSession] Failed to acquire semaphore for task ${taskId}:`, error);
+    console.error(`[getOrCreateBrowserSession] Failed to acquire semaphore for task ${taskId}:`, error);
     throw new Error('Server busy. Please try again later.');
   }
-  
+
   try {
-    // Double check if another request created a session while we were waiting
-    const currentSession = activeBrowsers.get(sessionKey);
-    if (currentSession) {
-      logger.debug(`[BrowserSession] Found new session created by another request for task ${taskId}`);
-      release();
-      return currentSession;
-    }
-
-    logger.info(`[BrowserSession] Launching new browser for task ${taskId}`);
     const launchOptions = await getPuppeteerLaunchOptions();
+    const browser = await puppeteerExtra.launch(launchOptions);
+    console.log(`[getOrCreateBrowserSession] Launched new browser for task ${taskId}`);
     
-    // Add additional debugging for launch options
-    logger.debug('[BrowserSession] Launch options:', {
-      headless: launchOptions.headless,
-      args: launchOptions.args.filter(arg => !arg.includes('--disable-dev-shm-usage')),
-      executablePath: launchOptions.executablePath
-    });
-
-    const browser = await puppeteerExtra.launch(launchOptions).catch(error => {
-      logger.error(`[BrowserSession] Failed to launch browser:`, error);
-      throw new Error(`Failed to start browser: ${error.message}`);
-    });
-    
-    // Create a new session object with proper cleanup
     const session = {
       browser,
       page: null,
@@ -3116,7 +3082,7 @@ async function getOrCreateBrowserSession(taskId, userId) {
       closing: false,
       release: () => {
         if (!session.hasReleased) {
-          logger.debug(`[BrowserSession] Releasing semaphore for task ${taskId}`);
+          console.log(`[getOrCreateBrowserSession] Releasing semaphore for task ${taskId}`);
           session.hasReleased = true;
           release();
         }
@@ -3124,70 +3090,42 @@ async function getOrCreateBrowserSession(taskId, userId) {
       close: async () => {
         if (session.closing) return;
         session.closing = true;
-        
-        logger.info(`[BrowserSession] Closing session for task ${taskId}`);
+        console.log(`[getOrCreateBrowserSession] Closing session for task ${taskId}`);
         try {
-          if (session.page && typeof session.page.close === 'function' && !session.page.isClosed()) {
-            await session.page.close().catch(e => 
-              logger.error(`[BrowserSession] Error closing page for task ${taskId}:`, e)
-            );
+          if (session.page && !session.page.isClosed()) {
+            await session.page.close();
           }
           if (session.browser && session.browser.isConnected()) {
-            await session.browser.close().catch(e => 
-              logger.error(`[BrowserSession] Error closing browser for task ${taskId}:`, e)
-            );
+            await session.browser.close();
           }
         } finally {
           session.release();
           activeBrowsers.delete(sessionKey);
-          logger.info(`[BrowserSession] Session closed for task ${taskId}`);
+          console.log(`[getOrCreateBrowserSession] Session closed for task ${taskId}`);
         }
       },
-      // Helper method to create a new page with error handling
       newPage: async () => {
         try {
           const page = await browser.newPage();
           session.page = page;
-          
-          // Add basic error handling to the page
-          page.on('error', error => {
-            logger.error(`[BrowserSession] Page error in task ${taskId}:`, error);
-          });
-          
-          // Log page creation for debugging
-          logger.debug(`[BrowserSession] Created new page for task ${taskId}`);
+          console.log(`[getOrCreateBrowserSession] Created new page for task ${taskId}`);
           return page;
         } catch (error) {
-          logger.error(`[BrowserSession] Failed to create page for task ${taskId}:`, error);
+          console.error(`[getOrCreateBrowserSession] Failed to create page for task ${taskId}:`, error);
           throw new Error(`Failed to create new page: ${error.message}`);
         }
       }
     };
 
-    // Store the session
     activeBrowsers.set(sessionKey, session);
-    logger.info(`[BrowserSession] New session created for task ${taskId}, total active sessions: ${activeBrowsers.size}`);
-    
-    // Set up cleanup on browser close
-    browser.once('disconnected', () => {
-      logger.info(`[BrowserSession] Browser disconnected for task ${taskId}`);
-      cleanupBrowserSession(sessionKey).catch(e => 
-        logger.error('Error in browser disconnect handler:', e)
-      );
-    });
-
+    console.log(`[getOrCreateBrowserSession] New session created for task ${taskId}`);
     return session;
   } catch (error) {
-    logger.error(`[BrowserSession] Failed to create browser session for task ${taskId}:`, error);
-    
-    // Ensure we always release the semaphore on error
+    console.error(`[getOrCreateBrowserSession] Failed to create browser session for task ${taskId}:`, error);
     if (release && typeof release === 'function') {
       release();
     }
-    
-    // Rethrow with more context
-    const errorMessage = error.message || 'Unknown error creating browser session';
-    throw new Error(`Browser session creation failed: ${errorMessage}`);
+    throw new Error(`Browser session creation failed: ${error.message}`);
   }
 }
 
@@ -3195,64 +3133,26 @@ async function getOrCreateBrowserSession(taskId, userId) {
  * Clean up browser session
  * @param {string} sessionKeyOrTaskId - Either a session key (userId:taskId) or just taskId for backward compatibility
  */
-async function cleanupBrowserSession(sessionKeyOrTaskId) {
-  // Check if this is a full session key (userId:taskId) or just taskId
-  const sessionKey = sessionKeyOrTaskId.includes(':') 
-    ? sessionKeyOrTaskId 
-    : Array.from(activeBrowsers.keys()).find(key => key.endsWith(`:${sessionKeyOrTaskId}`)) || sessionKeyOrTaskId;
-
+async function cleanupBrowserSession(userId, taskId) {
+  const sessionKey = `${userId}:${taskId}`;
   const session = activeBrowsers.get(sessionKey);
-  if (!session) {
-    logger.debug(`[BrowserSession] No active session found for ${sessionKeyOrTaskId}`);
-    return;
-  }
-
-  // Mark session as closing to prevent multiple cleanups
-  if (session.closing) {
-    logger.debug(`[BrowserSession] Session ${sessionKey} is already being closed`);
-    return;
-  }
-  session.closing = true;
-
-  logger.info(`[BrowserSession] Cleaning up session ${sessionKey}`);
-  
-  try {
-    // Close page if it exists and is not already closed
-    if (session.page && typeof session.page.close === 'function' && !session.page.isClosed()) {
-      try {
-        await session.page.close();
-        logger.debug(`[BrowserSession] Closed page for session ${sessionKey}`);
-      } catch (error) {
-        logger.error(`[BrowserSession] Error closing page for session ${sessionKey}:`, error);
-      }
-    }
-
-    // Close browser if it exists and is connected
-    if (session.browser && typeof session.browser.close === 'function' && session.browser.isConnected()) {
-      try {
+  if (session) {
+    try {
+      if (session.browser && session.browser.isConnected()) {
         await session.browser.close();
-        logger.debug(`[BrowserSession] Closed browser for session ${sessionKey}`);
-      } catch (error) {
-        logger.error(`[BrowserSession] Error closing browser for session ${sessionKey}:`, error);
+        console.log(`[Cleanup] Closed browser for session ${sessionKey}`);
       }
+    } catch (error) {
+      console.error(`[Cleanup] Error closing browser for session ${sessionKey}:`, error);
     }
-
-    // Call release function if it exists and hasn't been called yet
     if (typeof session.release === 'function' && !session.hasReleased) {
-      try {
-        await session.release();
-        session.hasReleased = true;
-        logger.debug(`[BrowserSession] Released resources for session ${sessionKey}`);
-      } catch (error) {
-        logger.error(`[BrowserSession] Error releasing resources for session ${sessionKey}:`, error);
-      }
+      session.release();
+      session.hasReleased = true;
+      console.log(`[Cleanup] Released semaphore for session ${sessionKey}`);
     }
-  } catch (error) {
-    logger.error(`[BrowserSession] Error during cleanup of session ${sessionKey}:`, error);
-  } finally {
-    // Always remove from active sessions, even if cleanup failed
+    session.closed = true; // Mark as closed for consistency
     activeBrowsers.delete(sessionKey);
-    logger.info(`[BrowserSession] Session ${sessionKey} cleanup completed`);
+    console.log(`[Cleanup] Removed session for session ${sessionKey} from activeBrowsers`);
   }
 }
 
@@ -4069,11 +3969,9 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
         finalScreenshot = await page.screenshot({ encoding: 'base64' });
         agent = activeAgent;
       }
-      // Only use lastResult.screenshot if it's not a base64 string (should be a URL)
       if (lastResult.screenshot && !lastResult.screenshot.startsWith('data:image')) {
         finalScreenshotUrl = lastResult.screenshot; // It's already a URL, just use it
       } else if (lastResult.screenshot) {
-        // If it's a base64 string, we'll save it to a file below
         finalScreenshot = lastResult.screenshot;
       }
     }
@@ -4085,48 +3983,35 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
       finalScreenshotUrl = `/nexus_run/${runId}/${path.basename(finalScreenshotPath)}`;
     }
 
-    // NEW FLOW: First process the midscene report to get URLs, then generate the landing report
-    
-    // 1. Initialize URL variables
     let midsceneReportPath = null;
     let nexusReportUrl = null;
-    let reportRawUrl = null; // Use a different variable name to avoid redeclaration
-    
-    // 2. First, handle the midscene report if available
+    let reportRawUrl = null;
+
     if (agent) {
       await agent.writeOutActionDumps();
       midsceneReportPath = agent.reportFile;
-      
       if (midsceneReportPath && fs.existsSync(midsceneReportPath)) {
         try {
-          // Edit the midscene report first
           midsceneReportPath = await editMidsceneReport(midsceneReportPath);
           console.log(`[NexusReport] Updated report at ${midsceneReportPath}`);
-          // Update Nexus Report Url
           nexusReportUrl = `/external-report/${path.basename(midsceneReportPath)}`;
         } catch (error) {
           console.warn(`[NexusReport] Error editing report: ${error.message}`);
         }
       }
     }
-    
-    // 3. Now generate the landing report with the URLs from the midscene report
+
     console.log(`[TaskCompletion] Generating landing report with URLs:`, nexusReportUrl, reportRawUrl);
-    
-    // Prepare plan logs for the report if taskPlan is provided
+
     const planLogs = taskPlan && taskPlan.planLog ? taskPlan.planLog : [];
-    
-    // Create a sanitized version of taskPlan without extractedInfo
     let sanitizedTaskPlan = null;
     if (taskPlan) {
-      // Create a shallow copy of the taskPlan
       sanitizedTaskPlan = { ...taskPlan };
-      // Remove extractedInfo and other potentially sensitive data
       delete sanitizedTaskPlan.extractedInfo;
       delete sanitizedTaskPlan.userOpenaiKey;
       delete sanitizedTaskPlan.browserSession;
     }
-    
+
     const reportResult = await generateReport(
       originalPrompt,
       intermediateResults,
@@ -4135,43 +4020,30 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
       REPORT_DIR,
       nexusReportUrl,
       reportRawUrl,
-      planLogs,  // Pass plan logs to the report generator
-      sanitizedTaskPlan  // Pass sanitized task plan data
+      planLogs,
+      sanitizedTaskPlan
     );
-    
-    // 4. Extract the report path
-    const landingReportPath = reportResult.reportPath;
 
+    const landingReportPath = reportResult.reportPath;
     const rawPageText = intermediateResults
       .map(step => (step && step.result && step.result.extractedInfo) || '')
       .join('\n');
-
     const currentUrl = (intermediateResults[intermediateResults.length - 1]?.result?.currentUrl) || 'N/A';
-    
-    // Instead of generating a new summary, extract the summary from the task_complete call
-    // Look for the task_complete summary in the last steps
+
     let summary = '';
-    
-    // First, try to get the summary from the task_complete call (most reliable)
-    const lastSteps = [...intermediateResults].reverse().slice(0, 3); // Look at last 3 steps
-    
-    // Try to find a task_complete call summary
+    const lastSteps = [...intermediateResults].reverse().slice(0, 3);
     for (const step of lastSteps) {
       if (step && step.action === 'task_complete' && step.result && step.result.summary) {
         summary = step.result.summary;
         console.log(`[TaskCompletion] Using summary from task_complete call: ${summary}`);
         break;
       }
-      
-      // Also check other formats the summary might be in
       if (step && step.action && step.action.includes('complete') && step.summary) {
         summary = step.summary;
         console.log(`[TaskCompletion] Using summary from task completion step: ${summary}`);
         break;
       }
     }
-    
-    // If we couldn't find a task_complete summary, check if a summary exists in markCompleted call
     if (!summary) {
       for (const step of lastSteps) {
         if (step && step.type === 'completion' && step.message) {
@@ -4181,8 +4053,6 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
         }
       }
     }
-    
-    // Still no summary? Check if any step has a completion marker
     if (!summary) {
       for (const step of intermediateResults) {
         if (step && ((step.markCompleted === true) || (step.completed === true))) {
@@ -4194,8 +4064,6 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
         }
       }
     }
-    
-    // Final fallback: use the last step output
     if (!summary) {
       const lastStep = intermediateResults[intermediateResults.length - 1];
       if (lastStep) {
@@ -4207,25 +4075,18 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
           summary = lastStep.message;
         }
       }
-      
-      // If we still have nothing, use the prompt as a fallback
       if (!summary) {
         summary = `Task execution completed for: ${originalPrompt}`;
       }
-      
       console.log(`[TaskCompletion] Using fallback summary: ${summary}`);
     }
 
-    // Enhanced logging for report URLs - helps with debugging
-    // Use the new external-report endpoint instead of direct paths to avoid React Router interference
-    const landingReportUrl = landingReportPath && typeof landingReportPath === 'string' ? 
-      `/external-report/${path.basename(landingReportPath)}` : 
+    const landingReportUrl = landingReportPath && typeof landingReportPath === 'string' ?
+      `/external-report/${path.basename(landingReportPath)}` :
       (reportResult.landingReportUrl || null);
-    
-    // Get the raw report URL from the report result if available
     let rawReportUrl = reportResult?.rawReportUrl || null;
-    
-    console.log(`[TaskCompletion] Enhanced report links for task ${taskId}:`, { 
+
+    console.log(`[TaskCompletion] Enhanced report links for task ${taskId}:`, {
       landingReportPath,
       midsceneReportPath,
       landingReportUrl,
@@ -4235,39 +4096,26 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
       reportExists: landingReportPath ? fs.existsSync(landingReportPath) : false,
       midsceneExists: midsceneReportPath ? fs.existsSync(midsceneReportPath) : false
     });
-    
-    // Make sure we have at least one valid report URL
-    let primaryReportUrl = null;
-    
-    // Check and verify each possible report URL in order of preference
-    if (nexusReportUrl) {
-      // Extract the basename from the URL - ensure it's a string first
-      const reportName = typeof nexusReportUrl === 'string' ? 
-        path.basename(nexusReportUrl) : 
-        nexusReportUrl.includes?.('/') ? nexusReportUrl.substring(nexusReportUrl.lastIndexOf('/') + 1) : 'report.html';
 
-      // Check if the file exists in the report directory
+    let primaryReportUrl = null;
+    if (nexusReportUrl) {
+      const reportName = typeof nexusReportUrl === 'string' ?
+        path.basename(nexusReportUrl) :
+        nexusReportUrl.includes?.('/') ? nexusReportUrl.substring(nexusReportUrl.lastIndexOf('/') + 1) : 'report.html';
       const absPath = path.join(process.cwd(), 'nexus_run', 'report', reportName);
-      
       if (fs.existsSync(absPath)) {
         primaryReportUrl = nexusReportUrl;
         console.log(`[TaskCompletion] Using verified nexusReportUrl: ${nexusReportUrl}`);
       } else if (midsceneReportPath && fs.existsSync(midsceneReportPath)) {
-        // If the nexus file doesn't exist but the midscene one does, use that
-        primaryReportUrl = nexusReportUrl; // Still use the nexus URL but it will be redirected
+        primaryReportUrl = nexusReportUrl;
         console.log(`[TaskCompletion] Using midscene file for nexusReportUrl: ${nexusReportUrl}`);
       } else {
         console.warn(`[TaskCompletion] nexusReportUrl points to non-existent file: ${absPath}`);
       }
     }
-    
     if (!primaryReportUrl && landingReportUrl) {
-      // Extract the basename from the URL
       const reportName = path.basename(landingReportUrl);
-      
-      // Check if the file exists in the report directory
       const absPath = path.join(process.cwd(), 'nexus_run', 'report', reportName);
-      
       if (fs.existsSync(absPath)) {
         primaryReportUrl = landingReportUrl;
         console.log(`[TaskCompletion] Using verified landingReportUrl: ${landingReportUrl}`);
@@ -4275,126 +4123,83 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
         console.warn(`[TaskCompletion] landingReportUrl points to non-existent file: ${absPath}`);
       }
     }
-    
-    // Check and verify raw report URL
     let verifiedRawReportUrl = null;
     if (rawReportUrl) {
-      // Extract the basename from the URL
-      const rawReportName = typeof rawReportUrl === 'string' ? 
-        path.basename(rawReportUrl) : 
+      const rawReportName = typeof rawReportUrl === 'string' ?
+        path.basename(rawReportUrl) :
         rawReportUrl.includes?.('/') ? rawReportUrl.substring(rawReportUrl.lastIndexOf('/') + 1) : 'raw-report.html';
-      
-      // Check if the file exists in the report directory
       const rawReportPath = path.join(process.cwd(), 'nexus_run', 'report', rawReportName);
-      
       if (fs.existsSync(rawReportPath)) {
         verifiedRawReportUrl = rawReportUrl;
         console.log(`[TaskCompletion] Using verified rawReportUrl: ${rawReportUrl}`);
       } else {
-        // Try fallback in the run directory
         const runReportPath = path.join(process.cwd(), 'nexus_run', runId, 'report', rawReportName);
         if (fs.existsSync(runReportPath)) {
           verifiedRawReportUrl = rawReportUrl;
           console.log(`[TaskCompletion] Found raw report in run directory: ${runReportPath}`);
         } else {
           console.warn(`[TaskCompletion] rawReportUrl points to non-existent file: ${rawReportPath}`);
-          // If not found, will be kept as null
         }
       }
     }
-    
-    // Final fallback to screenshot
     if (!primaryReportUrl && finalScreenshotUrl) {
       primaryReportUrl = finalScreenshotUrl;
       console.log(`[TaskCompletion] Falling back to screenshot URL: ${finalScreenshotUrl}`);
     }
-    
-    // Compose a lean result object for success (only essential fields, no raw page content)
-    // Only include urls and metadata, not full page content to save DB space
+
     let finalResult = {
       success: true,
       taskId,
-      raw: {
-        // Don't store the full page text to save DB space
-        pageText: rawPageText, 
-        url: currentUrl
-      },
+      raw: { pageText: rawPageText, url: currentUrl },
       aiPrepared: {
         summary: summary,
-        // Include report URLs in the AI-prepared section for easier access
         nexusReportUrl: nexusReportUrl,
         landingReportUrl: landingReportUrl,
         rawReportUrl: verifiedRawReportUrl,
-        // Get actual result data from the intermediateResults if available
-        rawResult: intermediateResults && intermediateResults.length > 0 && 
+        rawResult: intermediateResults && intermediateResults.length > 0 &&
           intermediateResults[intermediateResults.length - 1]?.result?.result || null,
-        // Extract a clean, readable result message from the potentially nested object
-        // This extracts just the weather description or other important content
         cleanResult: (function() {
-          const resultObj = intermediateResults && intermediateResults.length > 0 && 
+          const resultObj = intermediateResults && intermediateResults.length > 0 &&
             intermediateResults[intermediateResults.length - 1]?.result?.result;
-          
           if (!resultObj) return 'No result data available';
-          
-          // Handle nested structure common in YAML results
           if (resultObj && typeof resultObj === 'object') {
-            // For weather results which are often in format {0: {description: 'Weather info...'}}  
             if (resultObj['0'] && resultObj['0'].description) {
               return resultObj['0'].description;
             }
-            
-            // Try to access first property if it has a description
             const firstValue = Object.values(resultObj)[0];
             if (firstValue && typeof firstValue === 'object' && firstValue.description) {
               return firstValue.description;
             }
           }
-          
-          // Fallback to string representation
-          return typeof resultObj === 'object' ? 
-            JSON.stringify(resultObj) : String(resultObj);
+          return typeof resultObj === 'object' ? JSON.stringify(resultObj) : String(resultObj);
         })(),
-        // Add a combined summary with report URLs and clean result data for AI memory and chat model context
         enhancedSummary: `${summary}\n\nActual Result: ${(function() {
-          const resultObj = intermediateResults && intermediateResults.length > 0 && 
+          const resultObj = intermediateResults && intermediateResults.length > 0 &&
             intermediateResults[intermediateResults.length - 1]?.result?.result;
-          
           if (!resultObj) return 'No result data available';
-          
-          // Handle nested structure common in YAML results
           if (resultObj && typeof resultObj === 'object') {
-            // For weather results which are often in format {0: {description: 'Weather info...'}}  
             if (resultObj['0'] && resultObj['0'].description) {
               return resultObj['0'].description;
             }
-            
-            // Try to access first property if it has a description
             const firstValue = Object.values(resultObj)[0];
             if (firstValue && typeof firstValue === 'object' && firstValue.description) {
               return firstValue.description;
             }
           }
-          
-          // Fallback to string representation
-          return typeof resultObj === 'object' ? 
-            JSON.stringify(resultObj) : String(resultObj);
+          return typeof resultObj === 'object' ? JSON.stringify(resultObj) : String(resultObj);
         })()}\n\nTask Reports Available:\n${nexusReportUrl ? `- Analysis Report: ${nexusReportUrl}` : ''}${landingReportUrl ? `\n- Landing Page Report: ${landingReportUrl}` : ''}${verifiedRawReportUrl ? `\n- Raw Report: ${verifiedRawReportUrl}` : ''}`
       },
       screenshot: finalScreenshotUrl,
-      // Only store essential step data, not full content or large objects
       steps: intermediateResults.map(step => {
         if (step.getSummary) {
           return step.getSummary();
         } else {
-          // Make sure we're not storing large objects in steps
           const { result, ...stepData } = step;
           return {
             ...stepData,
-            // Only keep success, currentUrl, and essential fields from result
             result: result ? {
               success: result.success,
               currentUrl: result.currentUrl,
-              // Don't store full extractedInfo or navigableElements
               extractedInfo: null,
               navigableElements: null
             } : null
@@ -4403,25 +4208,20 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
       }),
       landingReportUrl: landingReportUrl,
       nexusReportUrl: nexusReportUrl || null,
-      runReport: landingReportUrl, // alias for frontend
-      // Don't store full intermediate results to save DB space
-      intermediateResults: [], 
+      runReport: landingReportUrl,
+      intermediateResults: [],
       error: null,
-      // For compatibility, always provide a reportUrl with verified URL
       reportUrl: primaryReportUrl
     };
-    
-    // Apply size limiting to the entire finalResult object to ensure it fits in MongoDB's 16MB limit
+
     console.log('[TaskCompletion] Applying database size limits to task result...');
     finalResult = handleLargeContent(finalResult);
     console.log('[TaskCompletion] Size limiting complete');
 
-    // Explicitly update the Task document with the report URLs to ensure they are stored in the database
-    // This prevents the URLs from being lost during polling
     try {
       await Task.updateOne(
         { _id: taskId },
-        { 
+        {
           $set: {
             'result.nexusReportUrl': finalResult.nexusReportUrl,
             'result.landingReportUrl': finalResult.landingReportUrl,
@@ -4439,16 +4239,14 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
     return finalResult;
   } catch (error) {
     console.error(`[TaskCompletion] Error in task completion for task ${taskId}:`, error);
-    
-    // Send error notification
+
     sendWebSocketUpdate(userId, {
       event: 'taskError',
       taskId: taskId.toString(),
       error: `Error generating reports: ${error.message}`,
       timestamp: new Date().toISOString()
     });
-    
-    // Also send taskComplete with error status
+
     sendWebSocketUpdate(userId, {
       event: 'taskComplete',
       taskId: taskId.toString(),
@@ -4456,13 +4254,11 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
       error: error.message,
       timestamp: new Date().toISOString()
     });
-    
-    // Create error report file
+
     const errorReportFile = `error-report-${Date.now()}.html`;
     const errorReportPath = path.join(REPORT_DIR, errorReportFile);
     const errorReportUrl = `/external-report/${path.basename(errorReportPath)}`;
-    
-    // Create a proper HTML error report
+
     const errorHtml = `
     <!DOCTYPE html>
     <html>
@@ -4510,10 +4306,8 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
         <div class="nexus-logo">
           <h1>Nexus</h1>
         </div>
-        
         <h2>Task Error Report</h2>
         <p class="timestamp">Generated on: ${new Date().toLocaleString()}</p>
-        
         <div class="error-box">
           <h3>Error Details</h3>
           <pre>${error.message || 'Unknown error'}</pre>
@@ -4522,29 +4316,43 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
       </body>
     </html>
     `;
-    
+
     fs.writeFileSync(errorReportPath, errorHtml);
-    
-    // Compose a full result object for error (all fields, nulls for missing, error fields set)
-    // Try to extract any available screenshot or report URLs from intermediate results
+
     let errorScreenshot = null;
     let errorLandingReportUrl = null;
-    let errornexusReportUrl = null;
+    let errorNexusReportUrl = null;
     let errorRunReport = null;
-    
-    // Safely access intermediate results with null/undefined checks
+
     if (Array.isArray(intermediateResults) && intermediateResults.length > 0) {
       const lastResult = intermediateResults[intermediateResults.length - 1];
       if (lastResult && typeof lastResult === 'object') {
-        // Safely check each property
         if (lastResult.screenshot) errorScreenshot = lastResult.screenshot;
         if (lastResult.landingReportUrl) errorLandingReportUrl = lastResult.landingReportUrl;
-        if (lastResult.nexusReportUrl) errornexusReportUrl = lastResult.nexusReportUrl;
+        if (lastResult.nexusReportUrl) errorNexusReportUrl = lastResult.nexusReportUrl;
         if (lastResult.runReport) errorRunReport = lastResult.runReport;
       }
     }
-    // Return a minimal error result with no raw page content
-    // Log the error result structure for debugging
+
+    // Define errorResult here to fix the "errorResult is not defined" error
+    const errorResult = {
+      success: false,
+      taskId,
+      raw: { pageText: null, url: null },
+      aiPrepared: { summary: null },
+      screenshot: errorScreenshot,
+      screenshotPath: errorScreenshot,
+      screenshotUrl: errorScreenshot,
+      steps: [],
+      landingReportUrl: errorLandingReportUrl,
+      nexusReportUrl: errorNexusReportUrl,
+      runReport: errorRunReport,
+      intermediateResults: [],
+      error: error.message,
+      reportUrl: errorReportUrl,
+      aiSummary: `Error: ${error.message}`
+    };
+
     console.log(`[TaskCompletion] Returning error result structure:`, JSON.stringify({
       success: errorResult.success,
       hasError: !!errorResult.error,
@@ -4555,16 +4363,14 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
         reportUrl: errorResult.reportUrl
       }
     }));
-    
-    return errorResult;
 
+    return errorResult;
   } finally {
     if (activeBrowsers.size > 0) {
       for (const [id, session] of activeBrowsers.entries()) {
         if (!session.closed) {
           try {
             await session.browser.close();
-            // Handle release with better type checking and error handling
             if (session.release !== undefined) {
               if (typeof session.release === 'function') {
                 try {
@@ -4576,10 +4382,8 @@ async function processTaskCompletion(userId, taskId, intermediateResults, origin
               } else {
                 console.warn(`[TaskCompletion] release is ${typeof session.release} for session ${id}, attempting to call anyway`);
                 try {
-                  // Try to call it if it's not undefined (might be a promise or other callable)
                   const result = session.release;
                   if (result && typeof result.then === 'function') {
-                    // Handle if it's a promise
                     result.catch(e => console.debug(`[TaskCompletion] Error from release promise for session ${id}:`, e));
                   }
                 } catch (e) {
@@ -5587,29 +5391,48 @@ When you see these common elements, handle them automatically:
 Focus on completing the main task while managing these elements as needed.
 `;
 
+async function isSessionValid(session) {
+  if (!session || !session.browser || !session.browser.isConnected()) {
+    return false;
+  }
+  try {
+    const pages = await session.browser.pages();
+    return pages.length > 0;
+  } catch (error) {
+    return false;
+  }
+}
+
 async function handleBrowserAction(args, userId, taskId, runId, runDir, currentStep = 0, existingSession) {
   console.log(`[BrowserAction] Received currentStep: ${currentStep}`);
   
-  // Set up environment variables for midscene based on user preferences
   await setupNexusEnvironment(userId);
   
   const { command, url: providedUrl } = args;
   let browser, agent, page, release;
-
+  const sessionKey = `${userId}:${taskId}`; // Unique key for multi-user support
   const actionLog = [];
   const logAction = (message, data = null) => {
     actionLog.push({ timestamp: new Date().toISOString(), step: currentStep, message, data: data ? JSON.stringify(data) : null });
     console.log(`[BrowserAction][Step ${currentStep}] ${message}`, data || '');
   };
 
-  // Using Midscene Puppeteer defaults for timeouts
-  // - waitForNetworkIdleTimeout: 2000ms (2 seconds)
-  // - waitForNavigationTimeout: 5000ms (5 seconds)
-  // - forceSameTabNavigation: true (default)
+  // Helper to check session validity
+  async function isSessionValid(session) {
+    if (!session || !session.browser || !session.browser.isConnected()) {
+      return false;
+    }
+    try {
+      const pages = await session.browser.pages();
+      return pages.length > 0;
+    } catch (error) {
+      return false;
+    }
+  }
 
   try {
     logAction(`Starting action with command: "${command}", URL: "${providedUrl || 'none provided'}"`);
-
+    
     // Determine if it's a navigation command and set effective URL
     const isNavigationCommand = command.toLowerCase().startsWith('navigate to ');
     let effectiveUrl;
@@ -5627,109 +5450,64 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       effectiveUrl = providedUrl || 'https://www.google.com';
     }
 
-    // Normalize and validate the URL
     effectiveUrl = validateAndNormalizeUrl(effectiveUrl);
     logAction(`Using validated URL: ${effectiveUrl}`);
-
-    // If we still don't have a valid URL, use Google as fallback
     if (!effectiveUrl) {
       effectiveUrl = 'https://www.google.com';
       logAction('Falling back to Google due to invalid URL');
     }
 
-    // Override session using taskId to ensure unique session per task
     args.task_id = taskId;
-    existingSession = activeBrowsers.get(taskId);
+    existingSession = activeBrowsers.get(sessionKey);
 
-    // Browser session management
-    if (existingSession && !existingSession.closed && !existingSession.hasReleased) {
+    if (existingSession && await isSessionValid(existingSession)) {
       logAction("Using existing browser session");
       ({ browser, agent, page, release } = existingSession);
-      
-      // Enhanced page validation
       if (!page || page.isClosed()) {
         logAction("Page is invalid or closed, creating a new one");
         page = await browser.newPage();
         agent = new PuppeteerAgent(page);
-        // Using Midscene's default timeouts
-        activeBrowsers.set(taskId, { browser, agent, page, release, closed: false, hasReleased: false });
+        activeBrowsers.set(sessionKey, { browser, agent, page, release, closed: false, hasReleased: false });
       }
-
-      // Handle navigation if this is a navigation command
       if (isNavigationCommand) {
         const currentUrl = await page.url();
         if (currentUrl !== effectiveUrl) {
           logAction(`Navigating from ${currentUrl} to ${effectiveUrl}`);
           try {
-            await page.goto(effectiveUrl, { 
-              waitUntil: 'networkidle2'
-            });
+            await page.goto(effectiveUrl, { waitUntil: 'networkidle2' });
             logAction(`Successfully navigated to ${effectiveUrl}`);
           } catch (err) {
             logAction(`Navigation failed: ${err.message}. Falling back to Google`);
-            await page.goto('https://www.google.com', { 
-              waitUntil: 'networkidle2'
-            });
+            await page.goto('https://www.google.com', { waitUntil: 'networkidle2' });
           }
         } else {
           logAction(`Already at target URL: ${effectiveUrl}`);
         }
       }
     } else {
-      // Create new session with semaphore timeout
       logAction(`Creating new browser session and navigating to URL: ${effectiveUrl}`);
       release = await browserSemaphore.acquire().catch(err => {
         logAction(`Semaphore acquisition failed: ${err.message}`);
         throw err;
       });
       logAction("Acquired browser semaphore");
-
-      // Get debug-configured launch options
       const launchOptions = await getPuppeteerLaunchOptions();
-      
       logAction(`Launching browser with options: ${JSON.stringify(launchOptions, null, 2)}`);
       browser = await puppeteerExtra.launch(launchOptions);
       logAction("Browser launched successfully");
       page = await browser.newPage();
       logAction("New page created");
-      // Using Midscene's default timeouts
-
-      // Set up event listeners
-      /*
-      page.on('console', msg => {
-        debugLog(`Console: ${msg.text().substring(0, 150)}`);
-      });
-      page.on('pageerror', err => {
-        debugLog(`Page error: ${err.message}`);
-      });
-      page.on('request', req => {
-        if (['document', 'script', 'xhr', 'fetch'].includes(req.resourceType()) &&
-            !req.url().includes("challenges.cloudflare.com")) {
-          debugLog(`Request: ${req.method()} ${req.url().substring(0, 100)}`);
-        }
-      });
-      page.on('response', res => {
-        if (['document', 'script', 'xhr', 'fetch'].includes(res.request().resourceType()) &&
-            !res.url().includes("challenges.cloudflare.com")) {
-          debugLog(`Response: ${res.status()} ${res.url().substring(0, 100)}`);
-        }
-      });
-      */
-      // Navigate with enhanced timeout and wait condition
-      logAction(`Navigating to URL: ${effectiveUrl}`);
       await page.goto(effectiveUrl, { waitUntil: 'networkidle2' }).catch(err => {
         logAction(`Navigation failed: ${err.message}. Falling back to Google`);
         return page.goto('https://www.google.com', { waitUntil: 'networkidle2' });
       });
       logAction("Navigation completed successfully");
-      
       agent = new PuppeteerAgent(page);
       logAction("PuppeteerAgent initialized");
-      activeBrowsers.set(taskId, { browser, agent, page, release, closed: false, hasReleased: false });
+      activeBrowsers.set(sessionKey, { browser, agent, page, release, closed: false, hasReleased: false });
       logAction("Browser session stored in active browsers");
     }
 
-    // Progress update
     sendWebSocketUpdate(userId, { 
       event: 'stepProgress', 
       taskId, 
@@ -5739,7 +5517,6 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       log: actionLog
     });
 
-    // Set AI action context for better dialog handling
     if (agent && agent.setAIActionContext) {
       try {
         logAction("Setting AI action context");
@@ -5749,11 +5526,8 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       }
     }
 
-    // Execute the main action with AI-powered handling of dialogs and obstacles
     if (!isNavigationCommand) {
       logAction(`Executing action: "${command}"`);
-
-      // Execute the main action with built-in dialog handling
       try {
         await agent.aiAction(command);
         logAction("Action executed successfully");
@@ -5762,7 +5536,6 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       }
     }
 
-    // Check for popups.
     const popupCheck = await page.evaluate(() => {
       return {
         url: window.location.href,
@@ -5785,8 +5558,6 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
           logAction("Switched to new page and reinitialized agent");
         }
       }
-      
-      // Handle page obstacles.
       logAction("Checking for page obstacles");
       const obstacleResults = await handlePageObstacles(page, agent);
       logAction("Obstacle check results", obstacleResults);
@@ -5795,7 +5566,6 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
     const currentUrl = await page.url();
     logAction(`Current URL: ${currentUrl}`);
 
-    // Extract rich context
     logAction("Extracting rich page context");
     const { pageContent: extractedInfo, navigableElements } = await extractRichPageContext(
       agent, 
@@ -5809,7 +5579,6 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       navigableElements: navigableElements.length
     });
 
-    // Log screenshot if the agent supports it
     if (agent && agent.logScreenshot) {
       try {
         logAction("Logging screenshot to Nexus report");
@@ -5821,7 +5590,6 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       }
     }
 
-    // Capture if page is available & log error without crashing task
     let screenshotUrl = '';
     if (page) {
       try {
@@ -5829,12 +5597,13 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
         const screenshotFilename = `screenshot-${Date.now()}.png`;
         const screenshotPath = path.join(runDir, screenshotFilename);
         fs.writeFileSync(screenshotPath, Buffer.from(screenshot, 'base64'));
-        screenshotUrl = `/nexus_run/${runId}/${screenshotFilename}`;  // Removed 'const' to use the outer scoped variable
+        screenshotUrl = `/nexus_run/${runId}/${screenshotFilename}`;
         logAction("Screenshot captured and saved", { path: screenshotPath, url: screenshotUrl });
       } catch (error) {
         logAction(`Warning: Failed to capture screenshot: ${error.message}`);
       }
     }
+
     console.log('[BrowserAction - Server] Preparing to send intermediateResult for taskId:', taskId);
     try {
       sendWebSocketUpdate(userId, {
@@ -5854,7 +5623,6 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       logAction(`WebSocket update error: ${wsError.message}`);
     }
 
-    // Final progress update
     sendWebSocketUpdate(userId, { 
       event: 'stepProgress', 
       taskId, 
@@ -5864,17 +5632,13 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       log: actionLog
     });
 
-    // Trim action log
     const trimmedActionLog = actionLog.map(entry => {
-      const truncatedMessage = entry.message.length > 700 
-        ? entry.message.substring(0, 700) + '...'
-        : entry.message;
+      const truncatedMessage = entry.message.length > 700 ? entry.message.substring(0, 700) + '...' : entry.message;
       return { ...entry, message: truncatedMessage };
     });
 
-    // Update browser session
     const browserSession = { browser, agent, page, release, closed: false, hasReleased: false };
-    activeBrowsers.set(taskId, browserSession);
+    activeBrowsers.set(sessionKey, browserSession);
 
     return {
       success: true,
@@ -5891,14 +5655,25 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       screenshotPath: screenshotUrl,
       browserSession: browserSession,
       state: {
-        assertion: extractedInfo && extractedInfo.pageContent 
-          ? extractedInfo.pageContent 
-          : 'No content extracted'
+        assertion: extractedInfo && extractedInfo.pageContent ? extractedInfo.pageContent : 'No content extracted'
       }
     };
-
   } catch (error) {
     logAction(`Error in browser action: ${error.message}`, { stack: error.stack });
+    if (error.message.includes('Target closed') || 
+        error.message.includes('disconnected') || 
+        error.message.includes('Connection closed')) {  // Add this
+      if (existingSession) {
+        existingSession.closed = true;
+        if (typeof existingSession.release === 'function' && !existingSession.hasReleased) {
+          existingSession.release();
+          existingSession.hasReleased = true;
+          logAction("Released semaphore due to browser disconnection");
+        }
+        activeBrowsers.delete(taskId);
+        logAction("Removed crashed session from activeBrowsers");
+      }
+    }
     return {
       success: false,
       error: error.message,
@@ -5911,7 +5686,6 @@ async function handleBrowserAction(args, userId, taskId, runId, runDir, currentS
       stepIndex: currentStep
     };
   } finally {
-    // NEW: Ensure semaphore release
     if (typeof release === 'function' && !existingSession) {
       release();
       logAction("Released browser semaphore");
@@ -5943,10 +5717,18 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
     console.log(`[BrowserQuery][Step ${currentStep}] ${message}`);
   };
 
-  // Using Midscene Puppeteer defaults for timeouts
-  // - waitForNetworkIdleTimeout: 2000ms (2 seconds)
-  // - waitForNavigationTimeout: 5000ms (5 seconds)
-  // - forceSameTabNavigation: true (default)
+  // Helper function to validate session
+  async function isSessionValid(session) {
+    if (!session || !session.browser || !session.browser.isConnected()) {
+      return false;
+    }
+    try {
+      const pages = await session.browser.pages();
+      return pages.length > 0;
+    } catch (error) {
+      return false;
+    }
+  }
 
   await updateTaskInDatabase(taskId, {
     status: 'processing',
@@ -5957,7 +5739,7 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
   try {
     logQuery(`Starting query: "${query}"`);
     
-    const taskKey = taskId;
+    const sessionKey = `${userId}:${taskId}`; // Unique key for multi-user support
     let effectiveUrl = providedUrl || 'https://www.google.com';
     
     if (effectiveUrl) {
@@ -5965,54 +5747,15 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       logQuery(`Using validated URL: ${effectiveUrl}`);
     }
 
-    if (existingSession && !existingSession.closed && !existingSession.hasReleased) {
+    existingSession = activeBrowsers.get(sessionKey);
+    if (existingSession && await isSessionValid(existingSession)) {
       logQuery("Using existing browser session");
       ({ browser, agent, page, release } = existingSession);
       if (!page || page.isClosed()) {
         logQuery("Page is invalid or closed, creating a new one");
         page = await browser.newPage();
         agent = new PuppeteerAgent(page);
-        // Using Midscene's default timeouts
-        activeBrowsers.set(taskId, { browser, agent, page, release, closed: false, hasReleased: false });
-      }
-      
-      // Handle navigation if a URL is provided and different from current
-      if (effectiveUrl) {
-        const currentUrl = await page.url();
-        if (currentUrl !== effectiveUrl) {
-          logQuery(`Navigating from ${currentUrl} to ${effectiveUrl}`);
-          try {
-            await page.goto(effectiveUrl, { 
-              waitUntil: 'networkidle2'
-            });
-            logQuery(`Successfully navigated to ${effectiveUrl}`);
-          } catch (err) {
-            logQuery(`Navigation failed: ${err.message}. Falling back to Google`);
-            await page.goto('https://www.google.com', { 
-              waitUntil: 'networkidle2'
-            });
-          }
-        } else {
-          logQuery(`Already at target URL: ${effectiveUrl}`);
-        }
-      }
-    } else if (taskKey && activeBrowsers.has(taskKey)) {
-      const session = activeBrowsers.get(taskKey);
-      if (!session || !session.browser || session.closed || session.hasReleased) {
-        logQuery("Browser session not valid, creating a new one.");
-        
-        const launchOptions = await getPuppeteerLaunchOptions();
-        logQuery(`Launching browser with options: ${JSON.stringify(launchOptions, null, 2)}`);
-        browser = await puppeteerExtra.launch(launchOptions);
-        logQuery("Browser launched successfully");
-        page = await browser.newPage();
-        logQuery("New page created");
-        // Using Midscene's default timeouts
-        agent = new PuppeteerAgent(page);
-        release = null;
-        activeBrowsers.set(taskKey, { browser, agent, page, release, closed: false, hasReleased: false });
-      } else {
-        ({ browser, agent, page, release } = session);
+        activeBrowsers.set(sessionKey, { browser, agent, page, release, closed: false, hasReleased: false });
       }
     } else {
       logQuery(`Creating new browser session for URL: ${effectiveUrl}`);
@@ -6030,28 +5773,6 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       logQuery("New page created");
       await page.setDefaultTimeout(TIMEOUTS.ELEMENT_WAIT);
 
-      // Set up event listeners
-      /*
-      page.on('console', msg => {
-        debugLog(`Console: ${msg.text().substring(0, 150)}`);
-      });
-      page.on('pageerror', err => {
-        debugLog(`Page error: ${err.message}`);
-      });
-      page.on('request', req => {
-        if (['document', 'script', 'xhr', 'fetch'].includes(req.resourceType()) &&
-            !req.url().includes("challenges.cloudflare.com")) {
-          debugLog(`Request: ${req.method()} ${req.url().substring(0, 100)}`);
-        }
-      });
-      page.on('response', res => {
-        if (['document', 'script', 'xhr', 'fetch'].includes(res.request().resourceType()) &&
-            !res.url().includes("challenges.cloudflare.com")) {
-          debugLog(`Response: ${res.status()} ${res.url().substring(0, 100)}`);
-        }
-      });
-      */
-      
       logQuery(`Navigating to URL: ${effectiveUrl}`);
       await page.goto(effectiveUrl, { waitUntil: 'networkidle2' }).catch(err => {
         logQuery(`Navigation error: ${err.message}. Falling back to Google`);
@@ -6061,8 +5782,25 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       
       agent = new PuppeteerAgent(page);
       logQuery("PuppeteerAgent initialized");
-      activeBrowsers.set(taskKey, { browser, agent, page, release, closed: false, hasReleased: false });
+      activeBrowsers.set(sessionKey, { browser, agent, page, release, closed: false, hasReleased: false });
       logQuery("Browser session stored in active browsers");
+    }
+
+    // Handle navigation if URL differs from current
+    if (effectiveUrl) {
+      const currentUrl = await page.url();
+      if (currentUrl !== effectiveUrl) {
+        logQuery(`Navigating from ${currentUrl} to ${effectiveUrl}`);
+        try {
+          await page.goto(effectiveUrl, { waitUntil: 'networkidle2' });
+          logQuery(`Successfully navigated to ${effectiveUrl}`);
+        } catch (err) {
+          logQuery(`Navigation failed: ${err.message}. Falling back to Google`);
+          await page.goto('https://www.google.com', { waitUntil: 'networkidle2' });
+        }
+      } else {
+        logQuery(`Already at target URL: ${effectiveUrl}`);
+      }
     }
 
     sendWebSocketUpdate(userId, { 
@@ -6074,7 +5812,7 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       log: actionLog
     });
 
-    // Popup check - on arrival to page there may be popups or we are in a new tab
+    // Popup check
     const stateCheck = await page.evaluate(() => ({
       url: window.location.href,
       popupOpened: window.opener !== null,
@@ -6095,7 +5833,6 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
           logQuery("Switched to new page and reinitialized agent");
         }
       }
-      // Handle page obstacles.
       logQuery("Checking for page obstacles");
       const obstacleResults = await handlePageObstacles(page, agent);
       logQuery("Obstacle check results", obstacleResults);
@@ -6104,7 +5841,7 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
     const currentUrl = await page.url();
     logQuery(`Current URL: ${currentUrl}`);
 
-    // Execute the query with AI-powered handling of dialogs and obstacles
+    // Execute the query
     const queryResult = await agent.aiQuery({ domIncluded: true }, query);
     logQuery("Query executed successfully");
     
@@ -6118,7 +5855,7 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       "Read, scan and observe the page. Then state - What information is now visible on the page? What can be clicked or interacted with?"
     );
 
-    // Log screenshot in Mian report file if the agent supports it
+    // Log screenshot if supported
     if (agent && agent.logScreenshot) {
       try {
         logQuery("Logging screenshot to Nexus report");
@@ -6130,7 +5867,7 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       }
     }
 
-    // Capture if page is available & log error without crashing task
+    // Capture screenshot
     let screenshotUrl = '';
     if (page) {
       try {
@@ -6138,13 +5875,14 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
         const screenshotFilename = `screenshot-${Date.now()}.png`;
         const screenshotPath = path.join(runDir, screenshotFilename);
         fs.writeFileSync(screenshotPath, Buffer.from(screenshot, 'base64'));
-        screenshotUrl = `/nexus_run/${runId}/${screenshotFilename}`;  // Removed 'const' to use the outer scoped variable
+        screenshotUrl = `/nexus_run/${runId}/${screenshotFilename}`;
         logQuery("Screenshot captured and saved", { path: screenshotPath, url: screenshotUrl });
       } catch (error) {
         logQuery(`Warning: Failed to capture screenshot: ${error.message}`);
       }
     }
-    console.log('[BrowserQuery - Server] Preparing to send intermediateResult for taskId:', taskId);
+
+    // Send intermediate result
     try {
       sendWebSocketUpdate(userId, {
         event: 'intermediateResult',
@@ -6165,6 +5903,7 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       logQuery(`WebSocket update error: ${wsError.message}`);
     }
 
+    // Send step progress update
     try {
       sendWebSocketUpdate(userId, { 
         event: 'stepProgress', 
@@ -6187,11 +5926,11 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       return { ...entry, message: truncatedMessage };
     });
 
-    const assertion = 'After execution, this is whats now visible: ' + extractedInfo;
+    const assertion = 'After execution, this is what\'s now visible: ' + extractedInfo;
     logQuery("Assertion for query completed", { assertion });
 
     const browserSession = { browser, agent, page, release, closed: false, hasReleased: false };
-    activeBrowsers.set(taskId, browserSession);
+    activeBrowsers.set(sessionKey, browserSession);
 
     return {
       success: true,
@@ -6214,7 +5953,21 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       }
     };
   } catch (error) {
-    logQuery(`Error in browser query: ${error.message}`, { stack: error.stack });
+    logAction(`Error in browser action: ${error.message}`, { stack: error.stack });
+    if (error.message.includes('Target closed') || 
+        error.message.includes('disconnected') || 
+        error.message.includes('Connection closed')) {  // Add this
+      if (existingSession) {
+        existingSession.closed = true;
+        if (typeof existingSession.release === 'function' && !existingSession.hasReleased) {
+          existingSession.release();
+          existingSession.hasReleased = true;
+          logAction("Released semaphore due to browser disconnection");
+        }
+        activeBrowsers.delete(taskId);
+        logAction("Removed crashed session from activeBrowsers");
+      }
+    }
     return {
       success: false,
       error: error.message,
@@ -6226,12 +5979,6 @@ async function handleBrowserQuery(args, userId, taskId, runId, runDir, currentSt
       task_id: taskId,
       stepIndex: currentStep
     };
-  } finally {
-    // NEW: Ensure semaphore release
-    if (typeof release === 'function' && !existingSession) {
-      release();
-      logQuery("Released browser semaphore");
-    }
   }
 }
 
