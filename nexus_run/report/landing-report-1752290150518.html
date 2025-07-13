@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>O.P.E.R.A.T.O.R Report</title>
+  <link rel="icon" href="/favicon.ico">
+  <style>
+    :root {
+      --primary: #4e6fff;
+      --secondary: #8a4fff;
+      --accent: #ff4b8a;
+      --background: #0a0c14;
+      --card-bg: #1a1d2d;
+      --text: #e3e5fc;
+      --text-secondary: #a9adc7;
+      --border: #2a2d3d;
+      --glow-primary: 0 0 15px rgba(78, 111, 255, 0.5);
+      --glow-accent: 0 0 15px rgba(255, 75, 138, 0.5);
+    }
+    
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body { 
+      background: linear-gradient(135deg, var(--background), #141b29); 
+      color: var(--text); 
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+      padding: 0;
+      margin: 0;
+    }
+    
+    .container { 
+      max-width: 1200px; 
+      margin: 0 auto; 
+      padding: 30px; 
+      animation: fadeIn 0.5s ease-out;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .header { 
+      display: flex; 
+      align-items: center; 
+      margin-bottom: 40px; 
+      position: relative;
+      padding-bottom: 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      width: 200px;
+      height: 2px;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      box-shadow: var(--glow-primary);
+    }
+    
+    .logo { 
+      width: 60px; 
+      height: 60px;
+      margin-right: 20px; 
+      filter: drop-shadow(0 0 8px rgba(78, 111, 255, 0.6));
+    }
+    
+    .action-buttons {
+      display: flex;
+      gap: 12px;
+      margin-left: auto;
+    }
+    
+    .btn {
+      padding: 12px 24px; 
+      text-decoration: none; 
+      border-radius: 8px; 
+      font-weight: 600; 
+      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #fff;
+    }
+    
+    .primary-btn {
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      box-shadow: var(--glow-primary);
+      border: none;
+    }
+    
+    .secondary-btn {
+      background: rgba(78, 111, 255, 0.15);
+      border: 1px solid var(--primary);
+      color: var(--primary);
+    }
+    
+    .primary-btn::before {
+      content: '⟲';
+      font-size: 18px;
+    }
+    
+    .secondary-btn::before {
+      content: '📄';
+      font-size: 18px;
+    }
+    
+    .btn:hover { 
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(78, 111, 255, 0.7); 
+    }
+    
+    .content { 
+      background: var(--card-bg); 
+      padding: 30px; 
+      border-radius: 16px; 
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      margin-bottom: 30px;
+      animation: slideUp 0.5s ease-out;
+    }
+    
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .screenshot { 
+      max-width: 100%; 
+      border-radius: 8px;
+      margin: 15px 0;
+      border: 1px solid var(--border);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    .screenshot:hover {
+      transform: scale(1.02);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Modal Styles */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(10, 12, 20, 0.95);
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      backdrop-filter: blur(5px);
+    }
+    
+    .modal.open {
+      display: flex;
+      opacity: 1;
+      animation: modalFadeIn 0.3s forwards;
+    }
+    
+    @keyframes modalFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    .modal-content {
+      position: relative;
+      width: 90%;
+      max-width: 1200px;
+      max-height: 90vh;
+      margin: auto;
+      background: var(--card-bg);
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+      transform: translateY(20px);
+      opacity: 0;
+      animation: modalContentFadeIn 0.4s forwards 0.1s;
+    }
+    
+    @keyframes modalContentFadeIn {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px 20px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: white;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .modal-header h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+    }
+    
+    .close-modal {
+      font-size: 28px;
+      font-weight: bold;
+      color: white;
+      cursor: pointer;
+      transition: color 0.2s;
+      line-height: 24px;
+    }
+    
+    .close-modal:hover {
+      color: var(--accent);
+    }
+    
+    .modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 5px;
+      background: #1a1a27;
+      border-radius: 8px;
+      margin: 0 -15px;
+      padding: 15px;
+    }
+    
+    /* Ensure content inside modal is properly styled */
+    .modal-body pre {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-family: 'Fira Code', 'Courier New', monospace;
+      font-size: 0.9em;
+      line-height: 1.5;
+      color: #e0e0e0;
+      margin: 0;
+      padding: 0;
+    }
+    
+    /* Responsive images in modal */
+    .modal-body img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 4px;
+      margin: 10px 0;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Scrollbar styling */
+    .modal-body::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    
+    .modal-body::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+    }
+    
+    .modal-body::-webkit-scrollbar-thumb {
+      background: rgba(100, 120, 250, 0.5);
+      border-radius: 4px;
+    }
+    
+    .modal-body::-webkit-scrollbar-thumb:hover {
+      background: rgba(100, 120, 250, 0.7);
+    }
+    
+    /* Image Modal */
+    .img-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      z-index: 1100;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    
+    .img-modal.open {
+      display: flex;
+      opacity: 1;
+      animation: modalFadeIn 0.3s forwards;
+    }
+    
+    .img-modal-content {
+      max-width: 90%;
+      max-height: 90vh;
+      margin: auto;
+      border-radius: 8px;
+      box-shadow: 0 0 25px rgba(78, 111, 255, 0.5);
+      transform: scale(0.9);
+      transition: transform 0.3s ease;
+      animation: imgZoomIn 0.3s forwards;
+    }
+    
+    @keyframes imgZoomIn {
+      from { transform: scale(0.9); }
+      to { transform: scale(1); }
+    }
+    
+    .img-modal-close {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      color: white;
+      font-size: 40px;
+      font-weight: bold;
+      cursor: pointer;
+      opacity: 0.8;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+    
+    .img-modal-close:hover {
+      opacity: 1;
+      transform: rotate(90deg);
+    }
+    
+    .task { 
+      background: rgba(255, 255, 255, 0.05); 
+      padding: 20px; 
+      margin-bottom: 20px; 
+      border-radius: 12px; 
+      border-left: 3px solid var(--primary);
+      animation-delay: calc(0.1s * var(--idx));
+      animation: fadeIn 0.5s ease-out;
+    }
+    
+    .task.error {
+      border-left-color: var(--accent);
+    }
+    
+    .task-header { 
+      font-weight: 600; 
+      margin-bottom: 12px; 
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .task-header::before {
+      content: '📊';
+      font-size: 20px;
+    }
+    
+    .error .task-header::before {
+      content: '⚠️';
+    }
+    
+    .detail-content { 
+      background: linear-gradient(135deg, rgba(78, 111, 255, 0.1), rgba(138, 79, 255, 0.1)); 
+      border-radius: 12px; 
+      padding: 20px; 
+      color: var(--text); 
+      margin-top: 20px;
+      border: 1px solid rgba(78, 111, 255, 0.2);
+    }
+    
+    h1 {
+      font-size: 28px;
+      font-weight: 600;
+      background: linear-gradient(90deg, #fff, #a9adc7);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: 0.5px;
+    }
+    
+    h2 {
+      font-size: 24px;
+      margin-bottom: 20px;
+      font-weight: 600;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    h2::before {
+      content: '💡';
+      font-size: 24px;
+    }
+    
+    pre {
+      background: rgba(0, 0, 0, 0.2);
+      padding: 15px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 14px;
+      margin-top: 10px;
+      border: 1px solid var(--border);
+    }
+  </style>
+  <script>
+    function renderTaskPlan(plan) {
+      if (!plan) return '';
+      
+      // Handle different plan formats
+      const steps = plan.steps || (Array.isArray(plan) ? plan : []);
+      
+      if (steps.length === 0) {
+        return '<p>No task plan steps available.</p>';
+      }
+      
+      let tableRows = '';
+      steps.forEach(function(step, index) {
+        const status = step.status || 'pending';
+        const statusClass = 'status-' + status;
+        const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+        const action = step.action ? String(step.action).replace(/</g, '&lt;').replace(/>/g, '&gt;') : 'N/A';
+        const details = step.details ? String(step.details).replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+        
+        tableRows += '
+          <tr>
+            <td>' + (index + 1) + '</td>
+' +
+            '            <td>' + action + '</td>
+' +
+            '            <td><span class="status-badge ' + statusClass + '">' + statusLabel + '</span></td>
+' +
+            '            <td>' + details + '</td>
+' +
+            '          </tr>';
+      });
+      
+      return '
+        <table class="task-plan">
+          <thead>
+            <tr>
+              <th>Step</th>
+              <th>Action</th>
+              <th>Status</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>' + tableRows + '
+          </tbody>
+        </table>';
+    }
+    
+    function formatLogEntry(log) {
+      if (typeof log === 'string') return log;
+      
+      try {
+        if (log instanceof Error) {
+          return '[ERROR] ' + (log.message || '') + '
+' + (log.stack || '');
+        }
+        
+        if (typeof log === 'object' && log !== null) {
+          // Handle common log formats
+          if (log.timestamp && log.level && log.message) {
+            const timestamp = new Date(log.timestamp).toISOString();
+            return '[' + timestamp + '] [' + String(log.level).toUpperCase() + '] ' + log.message;
+          }
+          
+          // Fallback to JSON stringify
+          try {
+            return JSON.stringify(log, null, 2);
+          } catch (e) {
+            return String(log);
+          }
+        }
+        
+        return String(log);
+      } catch (e) {
+        return 'Error formatting log entry';
+      }
+    }
+    
+    // Copy logs to clipboard
+    document.addEventListener('DOMContentLoaded', () => {
+      const copyButton = document.querySelector('.copy-logs');
+      if (copyButton) {
+        copyButton.addEventListener('click', () => {
+          const logs = Array.from(document.querySelectorAll('.log-entry'))
+            .map(el => el.textContent)
+            .join('
+');
+          
+          navigator.clipboard.writeText(logs).then(() => {
+            const originalText = copyButton.textContent;
+            copyButton.textContent = 'Copied!';
+            setTimeout(() => {
+              copyButton.textContent = originalText;
+            }, 2000);
+          }).catch(err => {
+            console.error('Failed to copy logs:', err);
+          });
+        });
+      }
+    });
+  </script>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="/favicon.ico" alt="OPERATOR_logo" class="logo"/>
+      <h1>O.P.E.R.A.T.O.R – Sentinel Report</h1>
+      <div class="action-buttons">
+        <a id="replayButton" href="javascript:void(0)" class="btn primary-btn open-link" data-url="null">Replay</a>
+      </div>
+      
+      <!-- Image Modal for viewing screenshots in full size -->
+      <div id="imageModal" class="img-modal">
+        <span class="img-modal-close">×</span>
+        <img class="img-modal-content" id="modalImage">
+      </div>
+
+      <!-- Raw Report Modal (assumed, as referenced in script) -->
+      <div id="rawReportModal" class="modal" style="display: none;">
+        <div class="modal-content">
+          <span class="close-modal">×</span>
+          <div id="rawReportContent"></div>
+        </div>
+      </div>
+    </div>
+    <div class="content">
+      <div class="report-header">
+        <div class="header-content">
+          <h1>Task Execution Report</h1>
+          <div class="task-meta">
+            <div class="meta-item">
+              <span class="meta-label">Run ID:</span>
+              <span class="meta-value">509f7135-2d7e-4e4f-8731-78282ac997fa</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Timestamp:</span>
+              <span class="meta-value">2025-07-12T03:15:22.803Z</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Task Details</h2>
+        <div class="card">
+          <div class="command">
+            <span class="label">Command:</span>
+            <pre>go to youtube and find me the latest song from Tiesto. Open and get the description full info</pre>
+          </div>
+        </div>
+      </div>
+
+      
+      <div class="section">
+        <h2>Task Plan</h2>
+        <div class="card">
+          
+      <style>
+        .task-plan-container {
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+          max-width: 100%;
+          margin: 0 auto;
+          color: #e2e8f0;
+        }
+        
+        .task-plan-steps {
+          display: flex;
+          flex-direction: column;
+          gap: 1.5rem;
+          padding: 1rem 0;
+        }
+        
+        .task-plan-step {
+          background: rgba(19, 7, 30, 0.7);
+          border-radius: 0.75rem;
+          padding: 1.25rem;
+          border-left: 4px solid #7c3aed;
+          transition: all 0.2s ease;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        .task-plan-step.completed {
+          border-left-color:rgb(92, 246, 177);
+          background: rgba(99, 102, 241, 0.15);
+        }
+        
+        .task-plan-step.error {
+          border-left-color: #ec4899;
+          background: rgba(36, 15, 25, 0.15);
+        }
+        
+        .task-plan-step.pending {
+          border-left-color:rgb(249, 222, 85);
+          background: rgba(22, 13, 52, 0.15);
+        }
+        
+        .step-header {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          margin-bottom: 0.75rem;
+          font-weight: 600;
+          color: #94a3b8;
+        }
+        
+        .step-number {
+          color: #60a5fa;
+          font-feature-settings: 'tnum';
+          min-width: 1.5rem;
+          text-align: right;
+        }
+        
+        .step-status {
+          font-size: 0.75rem;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          padding: 0.2rem 0.5rem;
+          border-radius: 9999px;
+          font-weight: 600;
+        }
+        
+        .step-status.completed {
+          background: rgba(16, 185, 129, 0.2);
+          color: #6ee7b7;
+        }
+        
+        .step-status.error {
+          background: rgba(239, 68, 68, 0.2);
+          color: #fca5a5;
+        }
+        
+        .step-status.pending {
+          background: rgba(245, 158, 11, 0.2);
+          color: #fcd34d;
+        }
+        
+        .step-instruction {
+          color: #e2e8f0;
+          margin-bottom: 0.75rem;
+          line-height: 1.6;
+        }
+        
+        .step-result {
+          background: rgba(30, 20, 45, 0.7);
+          border-radius: 0.5rem;
+          padding: 0.875rem;
+          font-family: 'Fira Code', 'Roboto Mono', monospace;
+          font-size: 0.875rem;
+          color: #c7d2fe;
+          white-space: pre-wrap;
+          word-break: break-word;
+          margin-top: 0.75rem;
+          border: 1px solid rgba(124, 58, 237, 0.3);
+          max-height: 300px;
+          overflow-y: auto;
+          line-height: 1.5;
+          box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .step-error {
+          margin-top: 0.75rem;
+          color: #fca5a5;
+          font-size: 0.875rem;
+          padding: 0.75rem;
+          background: rgba(239, 68, 68, 0.1);
+          border-radius: 0.5rem;
+          border-left: 3px solid #ef4444;
+        }
+        
+        .step-separator {
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.3), transparent);
+          margin: 0.5rem 0;
+        }
+        
+        .truncation-note {
+          text-align: center;
+          color: #94a3b8;
+          font-size: 0.875rem;
+          padding: 1rem;
+          background: rgba(30, 41, 59, 0.5);
+          border-radius: 0.5rem;
+          margin-top: 1rem;
+          border: 1px dashed rgba(99, 102, 241, 0.3);
+        }
+      </style>
+      
+      <div class="task-plan-container">
+        <div class="task-plan-steps">
+          
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">1.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">navigate to https://www.youtube.com</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.youtube.com/","stepIndex":0,"actionOutput":"Completed: navigate to https://www.youtube.com","pageTitle":"YouTube","extractedInfo":"Try searching to get started. Start watching videos to help us build a feed of videos you'll love.","navigableElements":["Home","Shorts","Subscriptions","You","History","Sign in"],"actionLog":[{"timestamp":"2025-07-12T03:05:07.707Z","step":0,"message":"Starting action with command: \"navigate to https://www.youtube.com\", URL: \"none provided\"","data":null},{"timestamp":"2025-07-12T03:05:07.730Z","step":0,"message":"Extracted URL from command: https://www.youtube.com","data":null},{"timestamp":"2025-07-12T03:05:07.734Z","step":0,"message":"Using validated URL: https://www.youtube.com/","data":null},{"timestamp":"2025-07-12T03:05:07.748Z","step":0,"message":"Creating new browser session and navigating to URL: https://www.youtube.com/","data":null},{"ti... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">2.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">type Tiesto latest song in search bar and press enter</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.youtube.com/results?search_query=Tiesto+latest+song","stepIndex":1,"actionOutput":"Completed: type Tiesto latest song in search bar and press enter","pageTitle":"Tiesto latest song - YouTube","extractedInfo":"The main content includes a sponsored video titled 'Kxng KO and the Radio Pushers' by GO KxngKO, and a video by Tiësto titled 'Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer)' with 719K views from 2 months ago. Tiësto's channel has 7.02M subscribers and features a song 'OMG w/ Sexyy Red.'","navigableElements":["Watch","Visit site","Subscribe","Filters","All","Shorts","Videos","Unwatched","Watched","Recently uploaded","Live"],"actionLog":[{"timestamp":"2025-07-12T03:05:52.131Z","step":1,"message":"Starting action with command: \"type Tiesto latest song in search bar and press enter\", URL: \"https://www.youtube.com/\"","data":null},{"timestamp":"2025-07-12... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">3.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">click on the video titled 'Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer)'</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.youtube.com/watch?v=5wnPbzUL65Q&list=RD5wnPbzUL65Q&start_radio=1","stepIndex":2,"actionOutput":"Completed: click on the video titled 'Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer)'","pageTitle":"Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer) - YouTube","extractedInfo":"The main content visible on the page is a video titled 'Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer)'. It has 719K views and was uploaded 2 months ago. The channel 'Tiësto' has 7.02M subscribers. The video description mentions 'Won't Be Possible out now: tiesto.lnk.to/wbp'.","navigableElements":["Sign up","Subscribe","Share","Tiësto","https://ts","...more","Hardwell - Sanctuary (Official Video)","I like this"],"actionLog":[{"timestamp":"2025-07-12T03:06:21.195Z","step":2,"message":"Starting action with command: \"click on the video titled 'Tiësto, ... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">4.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">get the full description of the video</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.youtube.com/watch?v=5wnPbzUL65Q&list=RD5wnPbzUL65Q&start_radio=1","stepIndex":3,"actionOutput":"Completed: get the full description of the video","pageTitle":"Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer) - YouTube","extractedInfo":{"domIncluded":true},"navigableElements":["Sign up","Skip","Subscribe","Share","https://ts","...more","Next: Hardwell - Sanctuary (Official Video)","Subscribe to Tiësto.","I like this","Share"],"actionLog":[{"timestamp":"2025-07-12T03:06:51.252Z","step":3,"message":"Starting query: \"get the full description of the video\"","data":null},{"timestamp":"2025-07-12T03:06:51.253Z","step":3,"message":"Using validated URL: https://www.youtube.com/watch?v=5wnPbzUL65Q&list=RD5wnPbzUL65Q&start_radio=1","data":null},{"timestamp":"2025-07-12T03:06:51.263Z","step":3,"message":"Using existing browser session","data":null},{"timestamp":"2025-07-... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">5.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">click on '...more' to reveal full description</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.youtube.com/watch?v=5wnPbzUL65Q&list=RD5wnPbzUL65Q&start_radio=1","stepIndex":4,"actionOutput":"Completed: click on '...more' to reveal full description","pageTitle":"Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer) - YouTube","extractedInfo":"The page is displaying a YouTube video titled 'Tiesto latest song' with a duration of 2:16. There is an advertisement section titled 'Reach your customers on Google' with options like 'Manager accounts', 'Performance max', and 'Achieve your goals'. Below the video, there is a suggestion for the next video titled 'Hardwell - Sanctuary (Official Video)'. Another suggestion is 'Mix - Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer)'.","navigableElements":["Share","No thanks","Check it out","Sign up"],"actionLog":[{"timestamp":"2025-07-12T03:07:15.425Z","step":4,"message":"Starting action with command: \"c... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">6.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">get the full description of the video after clicking '...more'</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.youtube.com/watch?v=5wnPbzUL65Q&list=RD5wnPbzUL65Q&start_radio=1","stepIndex":5,"actionOutput":"Completed: get the full description of the video after clicking '...more'","pageTitle":"Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer) - YouTube","extractedInfo":{"domIncluded":true},"navigableElements":["Share","Next: Hardwell - Sanctuary (Official Video)","Mix - Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer)","No thanks","Check it out"],"actionLog":[{"timestamp":"2025-07-12T03:07:42.930Z","step":5,"message":"Starting query: \"get the full description of the video after clicking '...more'\"","data":null},{"timestamp":"2025-07-12T03:07:42.931Z","step":5,"message":"Using validated URL: https://www.youtube.com/watch?v=5wnPbzUL65Q&list=RD5wnPbzUL65Q&start_radio=1","data":null},{"timestamp":"2025-07-12T03:07:42.934Z","step":5,"message":"Using exis... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">7.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">navigate to the YouTube homepage</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.google.com/sorry/index?continue=https://www.google.com/search%3Fq%3Dthe%2520YouTube%2520homepage%26sei%3DlNFxaMSXHbakhbIP_4vK-Qo&q=EgSbXdHaGJWjx8MGIjAWRWyKY3SHvUqOd2dzSaz91exXjtlTibr-3pfZaWSukZuFzl-ekHZBUYlZ74wJboUyAVJaAUM","stepIndex":6,"actionOutput":"Completed: navigate to the YouTube homepage","pageTitle":"https://www.google.com/search?q=the%20YouTube%20homepage&sei=lNFxaMSXHbakhbIP_4vK-Qo","extractedInfo":"The page displays a message indicating unusual traffic from the user's computer network. It includes the IP address, time of access, and a URL related to a Google search query.","navigableElements":["Why did this happen?","I'm not a robot"],"actionLog":[{"timestamp":"2025-07-12T03:08:02.135Z","step":6,"message":"Starting action with command: \"navigate to the YouTube homepage\", URL: \"https://www.youtube.com/watch?v=5wnPbzUL65Q&list=RD5wnPbzUL65Q&start_radio=1\"","data":nu... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">8.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">navigate to https://www.youtube.com</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.youtube.com/","stepIndex":7,"actionOutput":"Completed: navigate to https://www.youtube.com","pageTitle":"YouTube","extractedInfo":"The main content includes a sponsored ad for PO Trade Broker, a video titled 'Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer)' with 719K views from 2 months ago, and a video titled 'NoZoom Family Guy Season 0032 Episode 0021 Full Episode || Family Guy 2025 Full Episode #1080p' with 201K views from 15 hours ago.","navigableElements":["Home","Shorts","Subscriptions","You","History","All","Music","Tiësto","Deep House","Live","Armin van Buuren","Podcasts","Contemporary R&B","Gaming","Formula 1","News","Get an impeccable experience on any device","Watch","Visit site","Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer)","Tiësto","NoZoom Family Guy Season 0032 Episode 0021 Full Episode || Family Guy 2025 Full Episode #10... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">9.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">click on the video titled 'Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer)'</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.youtube.com/watch?v=5wnPbzUL65Q&list=RD5wnPbzUL65Q&start_radio=1","stepIndex":8,"actionOutput":"Completed: click on the video titled 'Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer)'","pageTitle":"Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer) - YouTube","extractedInfo":"The main content is a YouTube video titled 'Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer)'. It has 719K views and was uploaded 2 months ago. The channel 'Tiësto' has 7.02M subscribers. The video description mentions the release of 'Won't Be Possible' and includes a link to tiesto.lnk.to/wbp.","navigableElements":["Subscribe","Share","Next: OneRepublic - Alesso Vs. OneRepublic - If I Lose Myself ft. Alesso (Remix)","Mix - Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer)","CeraVe Moisturising Lotion","Tiesto - PRISMATIC, Palacio De... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">10.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">click on '...more' to reveal full description</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.youtube.com/watch?v=5wnPbzUL65Q&list=RD5wnPbzUL65Q&start_radio=1","stepIndex":9,"actionOutput":"Completed: click on '...more' to reveal full description","pageTitle":"Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer) - YouTube","extractedInfo":"The main content visible on the page includes the video title 'Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer)', the channel name 'Tiësto' with 7.02M subscribers, the view count '719,672 views', and the upload date 'May 9, 2025'. The description mentions 'Won't Be Possible out now: tiesto.lnk.to/wbp'.","navigableElements":["Tiësto","Subscribe","Share","Next: OneRepublic - Alesso Vs. OneRepublic - If I Lose Myself ft. Alesso (Remix)","Mix - Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer)","CeraVe Moisturising Lotion","CeraVe Skincare","Tiesto - PRISMATIC, Palacio De Los Deportes Me... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">11.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">get the full description of the video after clicking '...more'</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.youtube.com/watch?v=5wnPbzUL65Q&list=RD5wnPbzUL65Q&start_radio=1","stepIndex":10,"actionOutput":"Completed: get the full description of the video after clicking '...more'","pageTitle":"Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer) - YouTube","extractedInfo":{"domIncluded":true},"navigableElements":["Learn more","Tiësto","Subscribe","Share","Next: OneRepublic - Alesso Vs. OneRepublic - If I Lose Myself ft. Alesso (Remix)","Mix - Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer)","CeraVe Moisturising Lotion","CeraVe Skincare","I like this"],"actionLog":[{"timestamp":"2025-07-12T03:10:01.536Z","step":10,"message":"Starting query: \"get the full description of the video after clicking '...more'\"","data":null},{"timestamp":"2025-07-12T03:10:01.537Z","step":10,"message":"Using validated URL: https://www.youtube.com/watch?v=5wnPbzUL65Q&list=RD5w... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">12.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">get the full description of the video</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.youtube.com/watch?v=5wnPbzUL65Q&list=RD5wnPbzUL65Q&start_radio=1","stepIndex":11,"actionOutput":"Completed: get the full description of the video","pageTitle":"Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer) - YouTube","extractedInfo":{"domIncluded":true},"navigableElements":["Learn more","Tiësto","Subscribe","Share","Next: OneRepublic - Alesso Vs. OneRepublic - If I Lose Myself ft. Alesso (Remix)","CeraVe Moisturising Lotion","CeraVe Skincare","Tiesto - PRISMATIC, Palacio De Los Deportes Mexico City, Mexico 14-06-2025","MR HOUSE PARTY","Tiësto 4hr DJ Set Live from New York City","Tiësto, Mathame – Everlight (Official Visualizer)","Subscribe","I like this","Share"],"actionLog":[{"timestamp":"2025-07-12T03:10:24.987Z","step":11,"message":"Starting query: \"get the full description of the video\"","data":null},{"timestamp":"2025-07-12T03:10:24.988Z","step":11,"m... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">13.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">navigate to https://www.youtube.com</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.youtube.com/","stepIndex":12,"actionOutput":"Completed: navigate to https://www.youtube.com","pageTitle":"YouTube","extractedInfo":"The main content includes a sponsored video ad titled 'Family function and stylish form – the Jolion Pro fits every lifestyle' by GWM South Africa. Other videos include 'Won’t Be Possible' by Tiësto with 677K views from 2 months ago, and 'Brad Pitt Drives An F1 Car For The First Time | Full Day With McLaren' by FORMULA 1 with 2M views from 1 day ago.","navigableElements":["Home","Shorts","Subscriptions","You","History","All","Music","Tiësto","Deep House","Gaming","Podcasts","Live","Electropop","Trailers","Formula 1","Albums","News","Watch","Book now"],"actionLog":[{"timestamp":"2025-07-12T03:11:14.060Z","step":12,"message":"Starting action with command: \"navigate to https://www.youtube.com\", URL: \"https://www.youtube.com/watch?v=5wnPbzUL65Q&list=RD... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">14.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">type Tiesto latest song in search bar and press enter</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.youtube.com/results?search_query=Tiesto+latest+song","stepIndex":13,"actionOutput":"Completed: type Tiesto latest song in search bar and press enter","pageTitle":"Tiesto latest song - YouTube","extractedInfo":"The page displays search results for 'Tiesto latest song'. It includes a sponsored video titled 'Kxng KO and the Radio Pushers' by GO KxngKO. Another result is a channel named 'Tiësto' with 7.02M subscribers, featuring a song 'OMG w/ Sexyy Red'. Additionally, there is a video titled 'Clean Bandit x Tiësto x Leony - Tell Me Where U Go (Official Video)' with 1.6M views from 1 month ago.","navigableElements":["Home","Shorts","Subscriptions","You","History","All","Shorts","Videos","Unwatched","Watched","Recently uploaded","Live","Filters","Watch","Visit site","Subscribe","Search filters"],"actionLog":[{"timestamp":"2025-07-12T03:11:49.168Z","step":13,"message":"Starting action w... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">15.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">click on the video titled 'Won’t Be Possible' by Tiësto</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.youtube.com/results?search_query=Tiesto+latest+song","stepIndex":14,"actionOutput":"Completed: click on the video titled 'Won’t Be Possible' by Tiësto","pageTitle":"Tiesto latest song - YouTube","extractedInfo":"The page displays search results for 'Tiesto latest song'. It includes a sponsored video titled 'Kxng KO and the Radio Pushers' by GO KxngKO. There is a section for Tiësto with 7.02M subscribers and a mention of 'OMG w/ Sexyy Red'. Another video titled 'Clean Bandit x Tiësto x Leony - Tell Me Where U Go (Official Video)' is listed with 1.6M views from 1 month ago.","navigableElements":["Home","Shorts","Subscriptions","You","History","All","Shorts","Videos","Unwatched","Watched","Recently uploaded","Live","Filters","Watch","Visit site","Subscribe","Search filters"],"actionLog":[{"timestamp":"2025-07-12T03:13:10.754Z","step":14,"message":"Starting action with command: \"clic... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">16.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">click on the video titled 'Won’t Be Possible' by Tiësto</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.youtube.com/results?search_query=Tiesto+latest+song","stepIndex":15,"actionOutput":"Completed: click on the video titled 'Won’t Be Possible' by Tiësto","pageTitle":"Tiesto latest song - YouTube","extractedInfo":"The main content includes a sponsored video titled 'Kxng KO and the Radio Pushers' by GO KxngKO, a channel section for Tiësto with 7.02M subscribers, and a video titled 'Clean Bandit x Tiësto x Leony - Tell Me Where U Go (Official Video)' with 1.6M views uploaded 1 month ago.","navigableElements":["Home","Shorts","Subscriptions","You","History","All","Shorts","Videos","Unwatched","Watched","Recently uploaded","Live","Filters","Watch","Visit site","Subscribe","Search filters"],"actionLog":[{"timestamp":"2025-07-12T03:13:47.429Z","step":15,"message":"Starting action with command: \"click on the video titled 'Won’t Be Possible' by Tiësto\", URL: \"https://www.youtube.com/resu... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">17.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">click on the video titled 'Clean Bandit x Tiësto x Leony - Tell Me Where U Go (Official Video)'</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.youtube.com/watch?v=Y0oDA7HY16A&list=RDY0oDA7HY16A&start_radio=1","stepIndex":16,"actionOutput":"Completed: click on the video titled 'Clean Bandit x Tiësto x Leony - Tell Me Where U Go (Official Video)'","pageTitle":"Clean Bandit x Tiësto x Leony - Tell Me Where U Go (Official Video) - YouTube","extractedInfo":"The page features a video titled 'Clean Bandit x Tiësto x Leony - Tell Me Where U Go (Official Video)' with 1.6M views and uploaded 1 month ago. The video is by Clean Bandit, who has 10.7M subscribers. There is an advertisement for Prime South Africa's car insurance, offering third-party plus cover from R167pm. The ad includes a link to get a quote and details about comprehensive car cover and third-party plus cover.","navigableElements":["Prime South Africa - How Our Unique Third-Party Plus Car Insurance Works","Quote me","Clean Bandit","Subscribe","Share","http://cleanba... [truncated]</div>
+            
+          </div>
+        
+<div class="step-separator"></div>
+
+          <div class="task-plan-step completed">
+            <div class="step-header">
+              <span class="step-number">18.</span>
+              <span class="step-status completed">completed</span>
+            </div>
+            <div class="step-instruction">click on '...more' to reveal full description</div>
+            <div class="step-result">{"success":true,"error":null,"task_id":"6871d0e1bf0fa3a153aaf6bf","closed":false,"currentUrl":"https://www.youtube.com/watch?v=Y0oDA7HY16A&list=RDY0oDA7HY16A&start_radio=1","stepIndex":17,"actionOutput":"Completed: click on '...more' to reveal full description","pageTitle":"Clean Bandit x Tiësto x Leony - Tell Me Where U Go (Official Video) - YouTube","extractedInfo":"The main content is a YouTube video titled 'Clean Bandit x Tiësto x Leony - Tell Me Where U Go (Official Video)' with 1,617,556 views, uploaded on May 14, 2025. The channel 'Clean Bandit' has 10.7M subscribers. The video has 40K likes. There are links to listen to the song and subscribe to the channel, as well as social media links for Clean Bandit.","navigableElements":["Clean Bandit","Subscribe","Share","http://cleanbandit.lnk.to/TMWYG","http://bit.ly/SubscribeToCleanBandit","‪@cleanbandit‬","http://cleanbandit.co.uk/","/ cleanbandit","/ cleanbandit","/ cleanbandit","#tiesto","#leony","#cleanbandit"],"actionLog":[{"time... [truncated]</div>
+            
+          </div>
+        
+          
+        </div>
+      </div>
+    
+        </div>
+      </div>
+
+      
+      <div class="section">
+        <h2>Execution Logs</h2>
+        <div class="card logs-container">
+          <div class="logs-header">
+            <span>208 log entries</span>
+            <button class="copy-logs">Copy Logs</button>
+          </div>
+          <div class="logs-content">
+            <div class="log-entry">[2025-07-12T03:05:05.914Z] Plan created with engine: gpt-4o and execution mode: step-planning</div><div class="log-entry">[2025-07-12T03:05:05.959Z] taskStart → frontend</div><div class="log-entry">[2025-07-12T03:05:05.960Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:05:05.963Z] No intermediate extraction data available.</div><div class="log-entry">[2025-07-12T03:05:05.964Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:05:05.965Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:05:06.066Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:05:07.512Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-12T03:05:07.554Z] Function call received: browser_action</div><div class="log-entry">[2025-07-12T03:05:07.558Z] Executing step 1: action - navigate to https://www.youtube.com</div><div class="log-entry">[2025-07-12T03:05:48.037Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:05:48.038Z] Step 1 completed</div><div class="log-entry">[2025-07-12T03:05:48.142Z] Task progress updated in DB: 5%</div><div class="log-entry">[2025-07-12T03:05:48.155Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:05:48.164Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:05:48.166Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:05:48.167Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:05:48.225Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:05:51.628Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-12T03:05:52.059Z] Function call received: browser_action</div><div class="log-entry">[2025-07-12T03:05:52.071Z] Executing step 2: action - type Tiesto latest song in search bar and press enter</div><div class="log-entry">[2025-07-12T03:06:18.611Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:06:18.611Z] Step 2 completed</div><div class="log-entry">[2025-07-12T03:06:18.693Z] Task progress updated in DB: 10%</div><div class="log-entry">[2025-07-12T03:06:18.697Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:06:18.704Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:06:18.725Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:06:18.727Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:06:18.777Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:06:20.427Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-12T03:06:21.159Z] Function call received: browser_action</div><div class="log-entry">[2025-07-12T03:06:21.161Z] Executing step 3: action - click on the video titled 'Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer)'</div><div class="log-entry">[2025-07-12T03:06:48.364Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:06:48.365Z] Step 3 completed</div><div class="log-entry">[2025-07-12T03:06:48.443Z] Task progress updated in DB: 15%</div><div class="log-entry">[2025-07-12T03:06:48.443Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:06:48.446Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:06:48.451Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:06:48.451Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:06:48.487Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:06:50.456Z] New tool call started: browser_query</div><div class="log-entry">[2025-07-12T03:06:51.138Z] Function call received: browser_query</div><div class="log-entry">[2025-07-12T03:06:51.141Z] Executing step 4: query - get the full description of the video</div><div class="log-entry">[2025-07-12T03:07:12.644Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:07:12.645Z] Step 4 completed</div><div class="log-entry">[2025-07-12T03:07:12.729Z] Task progress updated in DB: 20%</div><div class="log-entry">[2025-07-12T03:07:12.735Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:07:12.741Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:07:12.747Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:07:12.749Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:07:12.800Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:07:14.653Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-12T03:07:15.388Z] Function call received: browser_action</div><div class="log-entry">[2025-07-12T03:07:15.389Z] Executing step 5: action - click on '...more' to reveal full description</div><div class="log-entry">[2025-07-12T03:07:40.779Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:07:40.781Z] Step 5 completed</div><div class="log-entry">[2025-07-12T03:07:40.845Z] Task progress updated in DB: 25%</div><div class="log-entry">[2025-07-12T03:07:40.847Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:07:40.850Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:07:40.853Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:07:40.853Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:07:40.943Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:07:42.012Z] New tool call started: browser_query</div><div class="log-entry">[2025-07-12T03:07:42.793Z] Function call received: browser_query</div><div class="log-entry">[2025-07-12T03:07:42.796Z] Executing step 6: query - get the full description of the video after clicking '...more'</div><div class="log-entry">[2025-07-12T03:08:00.108Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:08:00.108Z] Step 6 completed</div><div class="log-entry">[2025-07-12T03:08:00.204Z] Task progress updated in DB: 30%</div><div class="log-entry">[2025-07-12T03:08:00.205Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:08:00.208Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:08:00.210Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:08:00.210Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:08:00.294Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:08:01.846Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-12T03:08:02.102Z] Function call received: browser_action</div><div class="log-entry">[2025-07-12T03:08:02.103Z] Executing step 7: action - navigate to the YouTube homepage</div><div class="log-entry">[2025-07-12T03:08:16.137Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:08:16.138Z] Step 7 completed</div><div class="log-entry">[2025-07-12T03:08:16.198Z] Task progress updated in DB: 35%</div><div class="log-entry">[2025-07-12T03:08:16.200Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:08:16.202Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:08:16.202Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:08:16.202Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:08:16.239Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:08:20.771Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-12T03:08:21.155Z] Function call received: browser_action</div><div class="log-entry">[2025-07-12T03:08:21.156Z] Executing step 8: action - navigate to https://www.youtube.com</div><div class="log-entry">[2025-07-12T03:08:45.862Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:08:45.863Z] Step 8 completed</div><div class="log-entry">[2025-07-12T03:08:46.428Z] Task progress updated in DB: 40%</div><div class="log-entry">[2025-07-12T03:08:46.429Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:08:46.432Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:08:46.434Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:08:46.434Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:08:46.477Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:08:47.750Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-12T03:08:48.420Z] Function call received: browser_action</div><div class="log-entry">[2025-07-12T03:08:48.423Z] Executing step 9: action - click on the video titled 'Tiësto, Odd Mob & Goodboys - Won't Be Possible (Official Visualizer)'</div><div class="log-entry">[2025-07-12T03:09:19.114Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:09:19.115Z] Step 9 completed</div><div class="log-entry">[2025-07-12T03:09:19.241Z] Task progress updated in DB: 45%</div><div class="log-entry">[2025-07-12T03:09:19.241Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:09:19.247Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:09:19.944Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:09:19.952Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:09:20.155Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:09:24.264Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-12T03:09:25.020Z] Function call received: browser_action</div><div class="log-entry">[2025-07-12T03:09:25.021Z] Executing step 10: action - click on '...more' to reveal full description</div><div class="log-entry">[2025-07-12T03:09:59.348Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:09:59.349Z] Step 10 completed</div><div class="log-entry">[2025-07-12T03:09:59.410Z] Task progress updated in DB: 50%</div><div class="log-entry">[2025-07-12T03:09:59.410Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:09:59.412Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:09:59.414Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:09:59.414Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:09:59.452Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:10:00.730Z] New tool call started: browser_query</div><div class="log-entry">[2025-07-12T03:10:01.450Z] Function call received: browser_query</div><div class="log-entry">[2025-07-12T03:10:01.452Z] Executing step 11: query - get the full description of the video after clicking '...more'</div><div class="log-entry">[2025-07-12T03:10:21.000Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:10:21.003Z] Step 11 completed</div><div class="log-entry">[2025-07-12T03:10:21.068Z] Task progress updated in DB: 55%</div><div class="log-entry">[2025-07-12T03:10:21.070Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:10:21.072Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:10:21.074Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:10:21.075Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:10:21.141Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:10:23.405Z] New tool call started: browser_query</div><div class="log-entry">[2025-07-12T03:10:24.861Z] Function call received: browser_query</div><div class="log-entry">[2025-07-12T03:10:24.864Z] Executing step 12: query - get the full description of the video</div><div class="log-entry">[2025-07-12T03:11:11.807Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:11:11.816Z] Step 12 completed</div><div class="log-entry">[2025-07-12T03:11:12.152Z] Task progress updated in DB: 60%</div><div class="log-entry">[2025-07-12T03:11:12.167Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:11:12.178Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:11:12.190Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:11:12.191Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:11:12.276Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:11:13.633Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-12T03:11:13.983Z] Function call received: browser_action</div><div class="log-entry">[2025-07-12T03:11:13.984Z] Executing step 13: action - navigate to https://www.youtube.com</div><div class="log-entry">[2025-07-12T03:11:46.885Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:11:46.964Z] Step 13 completed</div><div class="log-entry">[2025-07-12T03:11:47.120Z] Task progress updated in DB: 65%</div><div class="log-entry">[2025-07-12T03:11:47.176Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:11:47.223Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:11:47.304Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:11:47.375Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:11:47.536Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:11:48.242Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-12T03:11:49.051Z] Function call received: browser_action</div><div class="log-entry">[2025-07-12T03:11:49.053Z] Executing step 14: action - type Tiesto latest song in search bar and press enter</div><div class="log-entry">[2025-07-12T03:13:08.615Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:13:08.616Z] Step 14 completed</div><div class="log-entry">[2025-07-12T03:13:08.697Z] Task progress updated in DB: 70%</div><div class="log-entry">[2025-07-12T03:13:08.698Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:13:08.702Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:13:08.709Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:13:08.710Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:13:08.794Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:13:09.993Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-12T03:13:10.708Z] Function call received: browser_action</div><div class="log-entry">[2025-07-12T03:13:10.709Z] Executing step 15: action - click on the video titled 'Won’t Be Possible' by Tiësto</div><div class="log-entry">[2025-07-12T03:13:42.737Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:13:42.738Z] Step 15 completed</div><div class="log-entry">[2025-07-12T03:13:42.806Z] Task progress updated in DB: 75%</div><div class="log-entry">[2025-07-12T03:13:42.806Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:13:42.808Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:13:42.809Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:13:42.809Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:13:43.619Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:13:45.600Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-12T03:13:47.378Z] Function call received: browser_action</div><div class="log-entry">[2025-07-12T03:13:47.379Z] Executing step 16: action - click on the video titled 'Won’t Be Possible' by Tiësto</div><div class="log-entry">[2025-07-12T03:14:05.044Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:14:05.045Z] Step 16 completed</div><div class="log-entry">[2025-07-12T03:14:05.112Z] Task progress updated in DB: 80%</div><div class="log-entry">[2025-07-12T03:14:05.113Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:14:05.116Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:14:05.118Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:14:05.119Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:14:05.179Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:14:05.969Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-12T03:14:06.648Z] Function call received: browser_action</div><div class="log-entry">[2025-07-12T03:14:06.649Z] Executing step 17: action - click on the video titled 'Clean Bandit x Tiësto x Leony - Tell Me Where U Go (Official Video)'</div><div class="log-entry">[2025-07-12T03:14:46.914Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:14:46.915Z] Step 17 completed</div><div class="log-entry">[2025-07-12T03:14:47.000Z] Task progress updated in DB: 85%</div><div class="log-entry">[2025-07-12T03:14:47.002Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:14:47.004Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:14:47.006Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:14:47.006Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:14:47.039Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:14:48.794Z] New tool call started: browser_action</div><div class="log-entry">[2025-07-12T03:14:50.718Z] Function call received: browser_action</div><div class="log-entry">[2025-07-12T03:14:50.742Z] Executing step 18: action - click on '...more' to reveal full description</div><div class="log-entry">[2025-07-12T03:15:20.605Z] Browser session maintained for future steps</div><div class="log-entry">[2025-07-12T03:15:20.605Z] Step 18 completed</div><div class="log-entry">[2025-07-12T03:15:20.685Z] Task progress updated in DB: 90%</div><div class="log-entry">[2025-07-12T03:15:20.685Z] SYSTEM PROMPT generated</div><div class="log-entry">[2025-07-12T03:15:20.687Z] Using extraction from last step</div><div class="log-entry">[2025-07-12T03:15:20.688Z] Using execution mode: step-planning for AI request</div><div class="log-entry">[2025-07-12T03:15:20.688Z] Sending function call request to AI</div><div class="log-entry">[2025-07-12T03:15:20.745Z] Using chat model gpt-4o for task planning/orchestration</div><div class="log-entry">[2025-07-12T03:15:21.659Z] New tool call started: task_complete</div><div class="log-entry">[2025-07-12T03:15:22.790Z] Function call received: task_complete</div><div class="log-entry">[2025-07-12T03:15:22.791Z] Task marked as completed: I successfully found the latest song from Tiësto, which is 'Clean Bandit x Tiësto x Leony - Tell Me Where U Go (Official Video)'. The video has 1,617,556 views and was uploaded on May 14, 2025. The channel 'Clean Bandit' has 10.7M subscribers and the video has 40K likes. The description includes links to listen to the song and subscribe to the channel, as well as social media links for Clean Bandit.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Execution Results</h2>
+      
+            <div class="task">
+              <div class="task-header">Step 1 – Screenshot</div>
+              <img src="/nexus_run/509f7135-2d7e-4e4f-8731-78282ac997fa/screenshot-1752289547972.png" class="screenshot" alt="Step 1 Screenshot"/>
+              
+            </div>
+            <div class="task">
+              <div class="task-header">Step 2 – Screenshot</div>
+              <img src="/nexus_run/509f7135-2d7e-4e4f-8731-78282ac997fa/screenshot-1752289578598.png" class="screenshot" alt="Step 2 Screenshot"/>
+              
+            </div>
+            <div class="task">
+              <div class="task-header">Step 3 – Screenshot</div>
+              <img src="/nexus_run/509f7135-2d7e-4e4f-8731-78282ac997fa/screenshot-1752289608347.png" class="screenshot" alt="Step 3 Screenshot"/>
+              
+            </div>
+            <div class="task">
+              <div class="task-header">Step 4 – Screenshot</div>
+              <img src="/nexus_run/509f7135-2d7e-4e4f-8731-78282ac997fa/screenshot-1752289632174.png" class="screenshot" alt="Step 4 Screenshot"/>
+              
+            </div>
+            <div class="task">
+              <div class="task-header">Step 5 – Screenshot</div>
+              <img src="/nexus_run/509f7135-2d7e-4e4f-8731-78282ac997fa/screenshot-1752289660771.png" class="screenshot" alt="Step 5 Screenshot"/>
+              
+            </div>
+            <div class="task">
+              <div class="task-header">Step 6 – Screenshot</div>
+              <img src="/nexus_run/509f7135-2d7e-4e4f-8731-78282ac997fa/screenshot-1752289680072.png" class="screenshot" alt="Step 6 Screenshot"/>
+              
+            </div>
+            <div class="task">
+              <div class="task-header">Step 7 – Screenshot</div>
+              <img src="/nexus_run/509f7135-2d7e-4e4f-8731-78282ac997fa/screenshot-1752289696109.png" class="screenshot" alt="Step 7 Screenshot"/>
+              
+            </div>
+            <div class="task">
+              <div class="task-header">Step 8 – Screenshot</div>
+              <img src="/nexus_run/509f7135-2d7e-4e4f-8731-78282ac997fa/screenshot-1752289725829.png" class="screenshot" alt="Step 8 Screenshot"/>
+              
+            </div>
+            <div class="task">
+              <div class="task-header">Step 9 – Screenshot</div>
+              <img src="/nexus_run/509f7135-2d7e-4e4f-8731-78282ac997fa/screenshot-1752289759102.png" class="screenshot" alt="Step 9 Screenshot"/>
+              
+            </div>
+            <div class="task">
+              <div class="task-header">Step 10 – Screenshot</div>
+              <img src="/nexus_run/509f7135-2d7e-4e4f-8731-78282ac997fa/screenshot-1752289799333.png" class="screenshot" alt="Step 10 Screenshot"/>
+              
+            </div>
+      
+    </div>
+  </div>
+  </body>
+  
+  <script>
+    // This function safely extracts body content from HTML
+    function extractBodyContent(htmlString) {
+      let content = htmlString;
+      
+      if (typeof htmlString === 'string' && htmlString.indexOf('<body') !== -1) {
+        const bodyStartIndex = htmlString.indexOf('<body');
+        if (bodyStartIndex !== -1) {
+          const bodyContentStartIndex = htmlString.indexOf('>', bodyStartIndex) + 1;
+          const bodyEndIndex = htmlString.indexOf('</body>', bodyContentStartIndex);
+          
+          if (bodyContentStartIndex > 0 && bodyEndIndex !== -1) {
+            content = htmlString.substring(bodyContentStartIndex, bodyEndIndex);
+          }
+        }
+      }
+      
+      return content;
+    }
+
+    // Function to open the raw report modal
+    function openRawReportModal(url) {
+      const modal = document.getElementById('rawReportModal');
+      const contentDiv = document.getElementById('rawReportContent');
+      
+      if (!modal || !contentDiv) {
+        console.error('Modal elements not found');
+        return;
+      }
+      
+      contentDiv.textContent = 'Loading raw report data...';
+      modal.style.display = 'flex';
+      
+      void modal.offsetWidth;
+      modal.classList.add('open');
+      
+      fetch(url)
+        .then(response => {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('text/html')) {
+            return response.text()
+              .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                return doc.body.innerHTML;
+              });
+          }
+          return response.text();
+        })
+        .then(processedContent => {
+          while (contentDiv.firstChild) {
+            contentDiv.removeChild(contentDiv.firstChild);
+          }
+          
+          const container = document.createElement('div');
+          container.style.maxHeight = '80vh';
+          container.style.overflowY = 'auto';
+          container.style.padding = '1rem';
+          container.style.background = '#fff';
+          container.style.borderRadius = '4px';
+          container.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
+          
+          if (typeof processedContent === 'string' && 
+              (processedContent.trim().startsWith('<') || 
+              processedContent.includes('</') || 
+              processedContent.includes('/>'))) {
+            container.innerHTML = processedContent;
+          } else {
+            const pre = document.createElement('pre');
+            pre.style.whiteSpace = 'pre-wrap';
+            pre.textContent = processedContent;
+            container.appendChild(pre);
+          }
+          
+          contentDiv.appendChild(container);
+          
+          container.querySelectorAll('img').forEach(img => {
+            if (img.src.startsWith('/')) {
+              img.src = window.location.origin + img.src;
+            }
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+          });
+        })
+        .catch(error => {
+          while (contentDiv.firstChild) {
+            contentDiv.removeChild(contentDiv.firstChild);
+          }
+          
+          const errorDiv = document.createElement('div');
+          errorDiv.className = 'error';
+          errorDiv.textContent = 'Error loading report: ' + 
+            (error && typeof error.message === 'string' ? error.message : 'Unknown error');
+          contentDiv.appendChild(errorDiv);
+        });
+      
+      const closeBtn = modal.querySelector('.close-modal');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', () => closeModal(modal));
+      }
+      
+      modal.addEventListener('click', event => {
+        if (event.target === modal) {
+          closeModal(modal);
+        }
+      });
+    }
+
+    // Helper function to close any modal
+    function closeModal(modalElement) {
+      if (!modalElement) return;
+      
+      modalElement.classList.remove('open');
+      setTimeout(() => {
+        modalElement.style.display = 'none';
+      }, 300);
+    }
+
+    // Initialize functionality when page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      // Event delegation for open-link (replay button)
+      const container = document.querySelector('.container');
+      if (container) {
+        container.addEventListener('click', event => {
+          const link = event.target.closest('.open-link');
+          if (link) {
+            event.preventDefault();
+            const url = decodeURIComponent(link.getAttribute('data-url'));
+            if (url) {
+              window.open(url, '_blank', 'noopener,noreferrer');
+            } else {
+              console.warn('No URL found for link:', link);
+            }
+          }
+        });
+      }
+
+      // Image modal setup
+      const imgModal = document.getElementById('imageModal');
+      const modalImg = document.getElementById('modalImage');
+      const closeImgBtn = document.querySelector('.img-modal-close');
+      
+      if (!imgModal || !modalImg || !closeImgBtn) {
+        console.error('Image modal elements not found');
+        return;
+      }
+      
+      document.querySelectorAll('.screenshot').forEach(screenshot => {
+        screenshot.addEventListener('click', () => {
+          modalImg.src = screenshot.src;
+          imgModal.style.display = 'flex';
+          void imgModal.offsetWidth;
+          imgModal.classList.add('open');
+        });
+      });
+      
+      closeImgBtn.addEventListener('click', () => closeModal(imgModal));
+      
+      imgModal.addEventListener('click', event => {
+        if (event.target === imgModal) {
+          closeModal(imgModal);
+        }
+      });
+    });
+  </script>
+</body>
+</html>

@@ -46,6 +46,7 @@ async function getPuppeteerLaunchOptions() {
     ...(userDataDir && { userDataDir }),
     defaultViewport: { width: 1280, height: 720, deviceScaleFactor: 1 },
     timeout: 30000,
+    dumpio: true, // Enable browser logs for debugging
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -62,7 +63,6 @@ async function getPuppeteerLaunchOptions() {
       '--disable-default-apps',
       '--disable-hang-monitor',
       '--disable-ipc-flooding-protection',
-      '--disable-popup-blocking',
       '--disable-prompt-on-repost',
       '--disable-renderer-backgrounding',
       '--disable-sync',
@@ -71,9 +71,7 @@ async function getPuppeteerLaunchOptions() {
       '--password-store=basic',
       '--use-mock-keychain',
       '--mute-audio',
-      ...(isProduction
-        ? ['--disable-gpu', '--disable-3d-apis', '--disable-webgl', '--single-process']
-        : ['--enable-gpu', '--enable-webgl', '--use-gl=desktop', '--window-position=0,0']),
+      '--disable-gpu', '--disable-3d-apis', '--disable-webgl',
       '--disable-features=' + (isProduction
         ? 'AudioServiceOutOfProcess,TranslateUI,LazyFrameLoading,GlobalMediaControls,MediaRouter,NetworkService'
         : 'TranslateUI,MediaRouter,NetworkService'),
@@ -102,7 +100,6 @@ async function getPuppeteerLaunchOptions() {
       launchOptions.executablePath = await puppeteer.executablePath();
     }
 
-    launchOptions.dumpio = true;
     launchOptions.pipe = true;
 
     if (launchOptions.executablePath && fs.existsSync(launchOptions.executablePath)) {
@@ -139,8 +136,6 @@ async function getPuppeteerLaunchOptions() {
         console.error('Error setting up Chrome sandbox:', err);
       }
     }
-  } else {
-    launchOptions.dumpio = true;
   }
 
   console.log('Puppeteer launch options:', {
