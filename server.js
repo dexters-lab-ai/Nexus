@@ -979,7 +979,7 @@ const ENGINE_KEY_MAPPING = {
   'gpt-4o': 'openai',
   'qwen-2.5-vl-72b': 'qwen',
   'gemini-2.5-pro': 'google',
-  'ui-tars': 'uitars'
+  'ui-tars': 'uitars',
 };
 
 const KEY_ENGINE_MAPPING = Object.entries(ENGINE_KEY_MAPPING).reduce((acc, [engine, keyType]) => {
@@ -4934,14 +4934,12 @@ async function getUserOpenAiClient(userId, options = {}) {
     'openai': process.env.DEFAULT_GPT4O_KEY || '',
     'qwen': process.env.DEFAULT_OPENROUTER_KEY || '',
     'google': process.env.DEFAULT_GEMINI_KEY || '',
-    'anthropic': process.env.DEFAULT_CLAUDE_KEY || '',
     'xai': process.env.DEFAULT_GROK_KEY || ''
   };
   
   // Define provider-specific base URLs
   const PROVIDER_BASE_URLS = {
     'openai': process.env.CUSTOM_OPENAI_ENDPOINT || undefined,
-    'anthropic': 'https://api.anthropic.com',
     'google': 'https://generativelanguage.googleapis.com/v1beta/openai/',
     'qwen': 'https://openrouter.ai/api/v1',
     'xai': 'https://api.groq.com/openai/v1'
@@ -4953,10 +4951,6 @@ async function getUserOpenAiClient(userId, options = {}) {
     'gpt-4o': 'openai',
     'gpt-4o-mini': 'openai',
     'gpt-3.5-turbo': 'openai',
-    // Claude models
-    'claude-3-opus': 'anthropic',
-    'claude-3-sonnet': 'anthropic',
-    'claude-3-haiku': 'anthropic',
     // Gemini models
     'gemini-1.5-pro': 'google',
     'gemini-1.5-flash': 'google',
@@ -5003,7 +4997,6 @@ async function getUserOpenAiClient(userId, options = {}) {
   // Map from provider to schema key in User model
   const PROVIDER_SCHEMA_MAPPING = {
     'openai': 'gpt4o',
-    'anthropic': 'claude',
     'google': 'gemini',
     'xai': 'grok',
     'qwen': 'qwen'

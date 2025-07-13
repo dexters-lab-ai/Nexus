@@ -60,6 +60,7 @@ async function submitForm() {
       ? await api.auth.login(email, password)
       : await api.auth.register(email, password);
     
+      console.log(response)
     if (response && response.user && response.token) {
       // Update auth state with user data and token
       setAuthState(response.user._id, response.token);

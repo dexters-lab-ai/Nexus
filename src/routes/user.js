@@ -10,7 +10,8 @@ const ENGINE_KEY_MAPPING = {
   'gpt-4o': 'openai',
   'qwen-2.5-vl-72b': 'qwen',
   'gemini-2.5-pro': 'google',
-  'ui-tars': 'uitars'
+  'ui-tars': 'uitars',
+  'claude-3-opus': 'anthropic'
 };
 
 // GET /api/user/available-engines - Get available LLM engines for the user
@@ -244,7 +245,8 @@ function getEngineDisplayName(engineId) {
     'gpt-4o': 'GPT-4',
     'qwen-2.5-vl-72b': 'Qwen 2.5',
     'gemini-2.5-pro': 'Gemini 2.5',
-    'ui-tars': 'UI Tars'
+    'ui-tars': 'UI Tars',
+    'claude-3-opus': 'Claude 3 Opus'
   };
   return displayNames[engineId] || engineId;
 }

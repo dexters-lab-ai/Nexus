@@ -1,30 +1,10 @@
 // src/routes/auth.js
-import express  from 'express';
-import bcrypt   from 'bcrypt';
-import crypto   from 'crypto';
-import User     from '../models/User.js';
+import express from 'express';
+import bcrypt from 'bcrypt';
+import crypto from 'crypto';
+import User from '../models/User.js';
 
 const router = express.Router();
-
-// POST /register
-router.post('/register', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    if (req.useMockAuth) {
-      // Dev fallback: allow any registration and return mock user
-      req.session.user = 'dev-user-id';
-      return res.json({ success: true, userId: 'dev-user-id', mock: true });
-    }
-    // Validation logic
-    if (await User.exists({ email })) throw new Error('Email already exists');
-    const hashed = await bcrypt.hash(password, 10);
-    const user = await User.create({ email, password: hashed });
-    req.session.user = user._id;
-    res.status(201).json({ success: true, userId: user._id.toString() });
-  } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
 
 // GET /api/validate-session - Validate current session
 router.get('/validate-session', async (req, res) => {
@@ -99,7 +79,46 @@ router.get('/me', async (req, res) => {
   }
 });
 
-// POST /login
+// POST /register
+router.post('/register', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (req.useMockAuth) {
+      // Dev fallback: allow any registration and return mock user
+      req.session.user = 'dev-user-id';
+      return res.json({ success: true, userId: 'dev-user-id', mock: true });
+    }
+    // Validation logic
+    if (await User.exists({ email })) throw new Error('Email already exists');
+    const hashed = await bcrypt.hash(password, 10);
+    const user = await User.create({ email, password: hashed });
+
+    // Set user ID in session (logs the user in immediately)
+    req.session.user = user._id;
+
+    // Generate a token (same method as login)
+    const token = crypto.randomBytes(32).toString('hex');
+
+    // Prepare user response (excluding password)
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    // Return consistent format with login
+    res.status(201).json({
+      success: true,
+      user: {
+        ...userResponse,
+        isGuest: false
+      },
+      token,
+      isGuest: false
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// POST /login (unchanged, provided for reference)
 router.post('/login', async (req, res) => {
   console.log('👉 Login request:', {
     headers: req.headers,
@@ -107,66 +126,56 @@ router.post('/login', async (req, res) => {
     sessionID: req.sessionID,
     cookies: req.headers.cookie,
   });
-  
+
   const { email, password } = req.body;
   if (!email || !password) {
     console.log('🚨 Missing credentials:', { email, password });
     return res.status(400).json({ success: false, error: 'Email and password are required' });
   }
-  
+
   try {
-    // Find user by email
     const user = await User.findOne({ email });
     if (!user) {
       console.log('🔍 User not found for email:', email);
       throw new Error('Invalid email or password');
     }
-    
-    // Verify password
+
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) {
       console.log('🔒 Invalid password for user:', email);
       throw new Error('Invalid email or password');
     }
 
-    // Regenerate session to prevent session fixation
     return new Promise((resolve, reject) => {
       req.session.regenerate((err) => {
         if (err) {
           console.error('Session regeneration error:', err);
           return reject(new Error('Failed to create session'));
         }
-        
-        // Set user ID in session
+
         req.session.user = user._id;
-        
-        // Configure session cookie
         req.session.cookie.secure = process.env.NODE_ENV === 'production';
         req.session.cookie.sameSite = process.env.NODE_ENV === 'production' ? 'none' : 'lax';
         req.session.cookie.maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
-        req.session.cookie.domain = process.env.NODE_ENV === 'production' ? 
+        req.session.cookie.domain = process.env.NODE_ENV === 'production' ?
           (process.env.COOKIE_DOMAIN || '.dexter-ai.io') : undefined;
-          
-        // Save the session
+
         req.session.save((err) => {
           if (err) {
             console.error('Session save error:', err);
             return reject(new Error('Failed to save session'));
           }
-          
-          // Generate a new token for the client
+
           const token = crypto.randomBytes(32).toString('hex');
-          
-          // Send success response with user data (excluding password)
           const userResponse = user.toObject();
           delete userResponse.password;
-          
-          console.log('✅ Login successful:', { 
+
+          console.log('✅ Login successful:', {
             userId: user._id,
             email: user.email,
             sessionId: req.sessionID
           });
-          
+
           res.json({
             success: true,
             user: {
@@ -176,13 +185,13 @@ router.post('/login', async (req, res) => {
             token,
             isGuest: false
           });
-          
+
           resolve();
         });
       });
     }).catch(error => {
       console.error('Login error:', error);
-      throw error; // This will be caught by the outer try-catch
+      throw error;
     });
   } catch (error) {
     console.error('❌ Login error:', error);
