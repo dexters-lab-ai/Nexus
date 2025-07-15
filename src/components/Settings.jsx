@@ -98,7 +98,6 @@ const PROVIDER_TO_DOM_ID = {
   qwen: 'qwen',         // Alibaba's Qwen model (key input ID: qwen-key)
   google: 'gemini',     // Google's Gemini model (key input ID: gemini-key)
   uitars: 'uitars',     // ByteDance's UI-TARS model (key input ID: uitars-key)
-  anthropic: 'claude',  // Anthropic's Claude model (key input ID: claude-key)
   xai: 'grok'           // xAI's Grok model (key input ID: grok-key)
 };
 
@@ -113,7 +112,6 @@ const PROVIDER_TO_ENGINE = {
   'qwen': 'qwen-2.5-vl-72b',
   'google': 'gemini-2.5-pro',
   'uitars': 'ui-tars',
-  'anthropic': 'claude-3-opus',
   'xai': 'grok-1'
 };
 
@@ -127,9 +125,6 @@ const ENGINE_TO_PROVIDER = {
   'gemini-1.5-pro': 'google',
   'gemini-1.5-flash': 'google',
   'ui-tars': 'uitars',
-  'claude-3-opus': 'anthropic',
-  'claude-3-sonnet': 'anthropic',
-  'claude-3-haiku': 'anthropic',
   'grok-1': 'xai'
 };
 
@@ -194,16 +189,6 @@ const engines = [
     capabilities: ['UI Design', 'UI Testing', 'UI Analysis'],
     disabled: true,
     tooltip: 'Chat support for UI-TARS will be added in an upcoming update'
-  },
-  { 
-    id: 'claude-3-opus', 
-    name: 'Claude-3 Opus', 
-    description: 'Anthropic\'s most powerful model with superior reasoning and complex task capabilities', 
-    provider: 'Anthropic',
-    icon: 'fa-comment-alt',
-    capabilities: ['Reasoning', 'Safety', 'Instruction-following'],
-    disabled: true,
-    tooltip: 'Chat support for Claude will be added in an upcoming update'
   },
   { 
     id: 'grok-1', 
@@ -418,20 +403,6 @@ function SettingsModal(props = {}) {
 
       <div class="api-key-group">
         <div class="api-key-label">
-          <i class="fas fa-comment-alt"></i> Claude API Key
-        </div>
-        <div class="api-key-input-container">
-          <input type="password" id="claude-key" placeholder="Enter ANTHROPIC API key" autocomplete="off" class="nexus-settings-input text-input">
-          <span id="claude-key-status" class="key-status"></span>
-          <button class="toggle-visibility-btn" data-for="claude-key"><i class="fas fa-eye"></i></button>
-          <button class="save-key-btn" data-provider="claude"><i class="fas fa-save"></i> Save</button>
-          <button class="delete-key-btn" data-provider="claude"><i class="fas fa-trash-alt"></i></button>
-        </div>
-        <div class="api-key-description">Anthropic API key for Claude models - High-quality language models with strong safety and instruction-following capabilities.</div>
-      </div>
-
-      <div class="api-key-group">
-        <div class="api-key-label">
           <i class="fas fa-rocket"></i> Grok API Key
         </div>
         <div class="api-key-input-container">
@@ -477,11 +448,6 @@ function SettingsModal(props = {}) {
         return { 
           valid: value.startsWith('sk-'), 
           message: value.startsWith('sk-') ? 'Valid format' : 'Grok keys should start with sk-' 
-        };
-      case 'claude':
-        return { 
-          valid: value.startsWith('sk-ant-'), 
-          message: value.startsWith('sk-ant-') ? 'Valid format' : 'Claude keys should start with sk-ant-' 
         };
       case 'grok':
         return { 
@@ -607,9 +573,6 @@ function SettingsModal(props = {}) {
           <option value="gpt-4o">GPT-4o (OpenAI)</option>
           <option value="gpt-4o-mini">GPT-4o Mini (OpenAI)</option>
           <option value="gpt-3.5-turbo">GPT-3.5 Turbo (OpenAI)</option>
-          <option value="claude-3-opus">Claude 3 Opus (Anthropic)</option>
-          <option value="claude-3-sonnet">Claude 3 Sonnet (Anthropic)</option>
-          <option value="claude-3-haiku">Claude 3 Haiku (Anthropic)</option>
           <option value="gemini-1.5-pro">Gemini 1.5 Pro (Google)</option>
           <option value="gemini-1.5-flash">Gemini 1.5 Flash (Google)</option>
           <option value="grok-1">Grok-1 (xAI)</option>
@@ -624,7 +587,6 @@ function SettingsModal(props = {}) {
           <option value="gemini-1.5-pro">Gemini 1.5 Pro (Google)</option>
           <option value="qwen-2.5-vl-72b">Qwen 2.5 VL (Alibaba)</option>
           <option value="ui-tars">UI-TARS (ByteDance)</option>
-          <option value="claude-3-opus">Claude 3 Opus (Anthropic)</option>
         </select>
         <div class="llm-tooltip" data-tooltip="Used for browser automation, UI interaction, and visual tasks. Models with strong vision capabilities are recommended for optimal performance.">?</div>
       </div>

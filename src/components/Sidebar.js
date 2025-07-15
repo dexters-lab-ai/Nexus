@@ -43,6 +43,8 @@ export function Sidebar(props = {}) {
       toggleCollapse();
     }
   });
+
+
   
   header.appendChild(toggleButton);
   

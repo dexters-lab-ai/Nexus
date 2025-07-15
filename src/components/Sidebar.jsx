@@ -298,9 +298,35 @@ export default function Sidebar(props = {}) {
   intermediateContainer.id = 'intermediate-results-container';
   intermediateContainer.className = 'intermediate-results';
   
-  // Listen for task events to show/hide the results container
+  // Listen for task events to show/hide the results container and animate the toggle button
+  let taskRunning = false;
+  let animationInterval;
+
+  function startAttentionAnimation() {
+    if (!taskRunning) {
+      taskRunning = true;
+      toggleButton.classList.add('attention');
+      animationInterval = setInterval(() => {
+        if (!toggleButton.classList.contains('attention')) {
+          toggleButton.classList.add('attention');
+        }
+      }, 5000); // Reset animation every 5 seconds
+    }
+  }
+
+  function stopAttentionAnimation() {
+    if (taskRunning) {
+      taskRunning = false;
+      toggleButton.classList.remove('attention');
+      if (animationInterval) {
+        clearInterval(animationInterval);
+      }
+    }
+  }
+
   eventBus.on('taskStart', () => {
     intermediateContainer.classList.add('active');
+    startAttentionAnimation();
   });
   
   eventBus.on('taskComplete', () => {
@@ -311,6 +337,7 @@ export default function Sidebar(props = {}) {
       const activeTasks = (stores.tasks.getState().active || []).filter(task => !task.completed && !task.error);
       if (activeTasks.length === 0) {
         intermediateContainer.classList.remove('active');
+        stopAttentionAnimation();
       }
     }, 5000); // 5 seconds delay before hiding
   });

@@ -960,7 +960,7 @@ tasks:
             <div class="tip-number">03</div>
             <div class="tip-content">
               <h4>Choose the Right Model</h4>
-              <p>Match the language model to your task type. Use more powerful models (GPT-4, Claude 3 Opus) for complex reasoning tasks, and faster models for simpler tasks.</p>
+              <p>Match the language model to your task type. Use more powerful models (GPT-4, UI-TARS, QWEN-VL) for complex reasoning tasks, and faster models for simpler tasks.</p>
             </div>
           </div>
           

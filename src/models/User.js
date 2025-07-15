@@ -14,7 +14,6 @@ const userSchema = new Schema({
     qwen:       { type: String, default: '' },  // For Alibaba Qwen-2.5-VL 72B
     gemini:     { type: String, default: '' },  // For Google Gemini-2.5-Pro
     uitars:     { type: String, default: '' },  // For ByteDance UI-TARS
-    claude:     { type: String, default: '' },  // For Anthropic Claude models
     grok:       { type: String, default: '' }   // For xAI Grok models
   },
   // Model preferences for different task types
