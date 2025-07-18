@@ -4827,7 +4827,7 @@ async function getUserOpenAiClient(userId, options = {}) {
   const provider = MODEL_PROVIDER_MAPPING[preferredModel] || 'openai';
   
   // If model isn't supported, fall back to gpt-4o
-  if (!provider) {
+  if (!MODEL_PROVIDER_MAPPING[preferredModel]) {
     console.warn(`[OpenAIClient] Unsupported model ${preferredModel}, falling back to gpt-4o`);
     preferredModel = 'gpt-4o';
   }
@@ -4842,6 +4842,11 @@ async function getUserOpenAiClient(userId, options = {}) {
     'xai': 'grok',
     'qwen': 'qwen'
   };
+  
+  // Handle Gemini models with Google's API format but through OpenAI compatible endpoint
+  if (provider === 'google') {
+    console.log(`[OpenAIClient] Using Gemini model: ${preferredModel} with Google API compatibility layer`);
+  }
 
   // Get the schema key for the user's API keys
   const schemaKey = PROVIDER_SCHEMA_MAPPING[provider];
@@ -4926,6 +4931,16 @@ async function getUserOpenAiClient(userId, options = {}) {
       provider 
     }
   };
+  
+  // For Google models (Gemini), adjust the default headers for compatibility
+  if (provider === 'google') {
+    clientConfig.defaultHeaders = {
+      'x-goog-api-key': apiKey,
+      'Content-Type': 'application/json'
+    };
+    // Don't pass the API key in the standard auth header for Google APIs
+    clientConfig.apiKey = null;
+  }
 
   return new OpenAI(clientConfig);
 }
@@ -7225,9 +7240,43 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
       
       // Log the model being used for task planning
       const chatModel = client.defaultQuery?.engine || 'gpt-4o';
+      const provider = client.defaultQuery?.provider || 'openai';
       plan.log(`Using chat model ${chatModel} for task planning/orchestration`);
       
-      stream = await client.chat.completions.create(streamConfig);
+      // Adjust stream configuration for Gemini
+      if (provider === 'google') {
+        // Gemini has different parameter requirements
+        streamConfig.temperature = streamConfig.temperature || 0.7;
+        streamConfig.max_output_tokens = streamConfig.max_tokens;
+        delete streamConfig.max_tokens;
+        
+        // Gemini requires a different format for tools/function calling.
+        if (streamConfig.tools && Array.isArray(streamConfig.tools)) {
+          const functionDeclarations = streamConfig.tools
+            .map(tool => tool.function)
+            .filter(Boolean); // Filter out any non-function tools
+
+          if (functionDeclarations.length > 0) {
+            streamConfig.tools = [{ function_declarations: functionDeclarations }];
+          } else {
+            delete streamConfig.tools; // Remove if no valid functions are found
+          }
+        }
+      }
+      
+      // Create different streams based on provider
+      try {
+        stream = await client.chat.completions.create(streamConfig);
+      } catch (err) {
+        // Log detailed information about the error
+        plan.log(`Error creating stream with ${chatModel}: ${err.message}`);
+        if (err.response) {
+          plan.log(`Response status: ${err.response.status}`);
+          plan.log(`Response headers: ${JSON.stringify(err.response.headers)}`);
+          plan.log(`Response data: ${JSON.stringify(err.response.data)}`);
+        }
+        throw err;
+      }
       
       let currentFunctionCall = null;
       let accumulatedArgs = '';

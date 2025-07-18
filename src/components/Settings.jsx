@@ -2782,7 +2782,10 @@ function setupPasswordToggles() {
       // Add change event listener
       preferredEngineSelect.addEventListener('change', (e) => {
         const newEngine = e.target.value;
-        settings.saveEnginePreference(newEngine)
+        
+        // Use the imported API function instead of expecting it on settings object
+        console.log(`Setting engine preference to: ${newEngine}`);
+        settingsApi.saveEnginePreference(newEngine)
           .then(response => {
             if (response.success) {
               showNotification('Engine preference saved', 'success');
@@ -2792,6 +2795,8 @@ function setupPasswordToggles() {
               settings.modelPreferences.preferredEngine = newEngine;
               // For backward compatibility
               settings.preferredEngine = newEngine;
+              // Also update chat model preference to match
+              settings.modelPreferences.chat = newEngine;
             } else {
               showNotification('Failed to save engine preference', 'error');
             }
