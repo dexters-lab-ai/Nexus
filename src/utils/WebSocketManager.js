@@ -250,7 +250,28 @@ class WebSocketManager {
     }
   }
 
-  // Schedule reconnection with backoff
+  // Schedule reconnection with exponential backoff
+  scheduleReconnection() {
+    const delay = this.getNextBackoffDelay();
+    this.reconnectAttempts++;
+    
+    this.log(`Scheduling reconnection in ${delay}ms (attempt ${this.reconnectAttempts}/${this.config.MAX_RETRIES})`);
+    
+    this.reconnectTimeout = setTimeout(() => {
+      this.log('Attempting to reconnect now...');
+      this.connect();
+    }, delay);
+    
+    // Notify of reconnection attempt
+    this.notify({
+      type: 'reconnecting',
+      attempt: this.reconnectAttempts,
+      maxAttempts: this.config.MAX_RETRIES,
+      nextAttemptIn: delay,
+      timestamp: Date.now()
+    });
+  }
+
   /**
    * Get the next backoff delay with jitter
    * @returns {number} Delay in milliseconds
@@ -983,6 +1004,10 @@ class WebSocketManager {
 
   error(...args) {
     console.error('[WebSocket]', ...args);
+  }
+
+  warn(...args) {
+    console.warn('[WebSocket]', ...args);
   }
 
   /**

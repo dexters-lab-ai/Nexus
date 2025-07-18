@@ -207,11 +207,27 @@ router.post('/set-engine', requireAuth, async (req, res) => {
     // Check if the engine is available for this user
     const keyInfo = await checkEngineApiKey(userId, engineId);
     
-    // Update user's preferred engine in database
-    await User.findByIdAndUpdate(userId, { preferredEngine: engineId });
+    // Map engine IDs directly to chat model preferences
+    // This ensures chat model selection respects the user's engine choice
+    const ENGINE_TO_MODEL_MAPPING = {
+      'gpt-4o': 'gpt-4o',
+      'qwen-2.5-vl-72b': 'qwen-2.5-vl-72b',
+      'gemini-2.5-pro': 'gemini-2.5-pro',
+      'ui-tars': 'ui-tars',
+      'grok-1': 'grok-1'
+    };
+    
+    const chatModel = ENGINE_TO_MODEL_MAPPING[engineId] || engineId;
+    
+    // Update user's preferred engine AND model preferences in database
+    await User.findByIdAndUpdate(userId, { 
+      preferredEngine: engineId,
+      'modelPreferences.chat': chatModel
+    });
     
     // Update session
     req.session.preferredEngine = engineId;
+    console.log(`[User] Set preferred engine to ${engineId} and chat model to ${chatModel} for user ${userId}`);
     
     // Prepare response
     const response = {
