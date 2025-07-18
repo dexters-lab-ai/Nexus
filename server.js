@@ -4038,6 +4038,9 @@ export async function processTaskCompletion(
 
     // 12) Persist to database
     try {
+      // Log screenshot URL to verify it's available
+      console.log(`[TaskCompletion] Saving screenshot URL to database: ${finalScreenshotUrl}`);
+      
       await Task.updateOne(
         { _id: taskId },
         {
@@ -4046,6 +4049,8 @@ export async function processTaskCompletion(
             'result.landingReportUrl': landingReportUrl,
             'result.reportUrl': primaryReportUrl,
             'result.runReport': landingReportUrl,
+            'result.screenshot': finalScreenshotUrl,
+            'result.screenshotUrl': finalScreenshotUrl,
             status: 'completed'
           }
         }
@@ -4054,6 +4059,29 @@ export async function processTaskCompletion(
     } catch (dbError) {
       console.error(`[TaskCompletion] Error updating Task document:`, dbError);
     }
+    
+    // Send WebSocket notification about task completion with ALL report URLs
+    sendWebSocketUpdate(userId, {
+      event: 'taskComplete',
+      taskId: taskId.toString(),
+      status: 'completed',
+      summary: finalResult.aiPrepared.summary,
+      // Include all available report URLs
+      reportUrl: finalResult.reportUrl,
+      landingReportUrl: finalResult.landingReportUrl,
+      nexusReportUrl: finalResult.nexusReportUrl,
+      runReport: finalResult.runReport,
+      // Include screenshot URLs if available
+      screenshot: finalResult.screenshot,
+      // Fix: The finalScreenshotUrl is stored in screenshot field not screenshotUrl
+      screenshotUrl: finalResult.screenshot,
+      timestamp: new Date().toISOString()
+    });
+    
+    console.log(`[TaskCompletion] Sending WebSocket with screenshot data:`, {
+      hasScreenshot: !!finalResult.screenshot,
+      screenshotUrl: finalResult.screenshot
+    });
 
     return finalResult;
   } catch (error) {
@@ -4191,6 +4219,29 @@ export async function processTaskCompletion(
   } finally {
     // always remove from livePlans no matter what
     TaskPlan.livePlans.delete(taskPlan);
+    
+    // Clean up browser session resources
+    if (taskPlan?.browserSession) {
+      try {
+        // Close page if it exists and is not already closed
+        if (taskPlan.browserSession.page && !taskPlan.browserSession.page.isClosed()) {
+          await taskPlan.browserSession.page.close();
+          console.log(`[TaskCompletion] Closed browser page for task ${taskId}`);
+        }
+        
+        // Release any semaphore if needed
+        if (taskPlan.browserSession.release && typeof taskPlan.browserSession.release === 'function') {
+          taskPlan.browserSession.release();
+          console.log(`[TaskCompletion] Released semaphore for task ${taskId}`);
+        }
+        
+        // Mark as closed for clarity
+        taskPlan.browserSession.closed = true;
+        console.log(`[TaskCompletion] Cleaned up browser session for task ${taskId}`);
+      } catch (cleanupError) {
+        console.error(`[TaskCompletion] Error cleaning up browser session: ${cleanupError.message}`);
+      }
+    }
   }
 }
 
@@ -4742,8 +4793,8 @@ async function getUserOpenAiClient(userId, options = {}) {
     'gpt-4o-mini': 'openai',
     'gpt-3.5-turbo': 'openai',
     // Gemini models
-    'gemini-1.5-pro': 'google',
-    'gemini-1.5-flash': 'google',
+    'gemini-2.5-pro': 'google',
+    'gemini-2.5-flash': 'google',
     // Grok models
     'grok-1': 'xai'
   };
@@ -7363,6 +7414,13 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
                          cleanForPrompt(finalResult.aiPrepared.summary).length > 0)
                         ? cleanForPrompt(finalResult.aiPrepared.summary)
                         : `Task completed: ${prompt}`;
+                    // Log screenshot information from finalResult for debugging
+                    console.log(`[Task ${taskId}] Final result screenshot data:`, {
+                      screenshot: finalResult.screenshot,
+                      screenshotPath: finalResult.screenshotPath,
+                      hasScreenshot: !!finalResult.screenshot
+                    });
+                    
                     const cleanedFinal = {
                       success: finalResult.success,
                       // Prioritize nexus report URL over current URL for user consumption
@@ -7373,7 +7431,10 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
                       // Original URL is still important for context
                       originalUrl: finalResult.raw?.url || finalResult.currentUrl,
                       extractedInfo: finalExtracted,
-                      screenshotPath: finalResult.screenshot || finalResult.screenshotPath,
+                      // Store screenshot in standard property names
+                      screenshot: finalResult.screenshot,
+                      screenshotUrl: finalResult.screenshot,
+                      screenshotPath: finalResult.screenshot,
                       timestamp: new Date()
                     };
 
@@ -7390,11 +7451,13 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
                     // so it can be accessed later without additional database lookups
                     cleanedFinal.aiSummary = aiSummary;
                     
-                    // CRITICAL FIX: Ensure screenshot and report URLs are consistently available
-                    // This ensures the history.js component can always find and serve these URLs
-                    cleanedFinal.screenshotUrl = finalResult.screenshot || finalResult.screenshotPath || null;
-                    cleanedFinal.screenshotPath = finalResult.screenshotPath || finalResult.screenshot || null;
-                    cleanedFinal.screenshot = finalResult.screenshot || finalResult.screenshotPath || null;
+                    // CRITICAL FIX: Ensure screenshot URLs are properly logged for debugging
+                    console.log(`[Task ${taskId}] Final cleanedFinal screenshot data after processing:`, {
+                      screenshot: cleanedFinal.screenshot,
+                      screenshotUrl: cleanedFinal.screenshotUrl,
+                      screenshotPath: cleanedFinal.screenshotPath,
+                      hasScreenshot: !!cleanedFinal.screenshot
+                    });
                     
                     // Update the task with the complete result including the AI summary
                     await Task.updateOne(

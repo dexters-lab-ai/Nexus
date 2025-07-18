@@ -118,12 +118,9 @@ const PROVIDER_TO_ENGINE = {
 // For LLM selection/preferences - mapping engine IDs to provider IDs
 const ENGINE_TO_PROVIDER = {
   'gpt-4o': 'openai',
-  'gpt-4o-mini': 'openai',
-  'gpt-3.5-turbo': 'openai',
   'qwen-2.5-vl-72b': 'qwen',
   'gemini-2.5-pro': 'google',
-  'gemini-1.5-pro': 'google',
-  'gemini-1.5-flash': 'google',
+  'gemini-2.5-flash': 'google',
   'ui-tars': 'uitars',
   'grok-1': 'xai'
 };
@@ -136,34 +133,16 @@ const engines = [
   { 
     id: 'gpt-4o', 
     name: 'GPT-4o', 
-    description: 'Advanced multimodal LLM with visual processing and superior reasoning capabilities', 
+    description: 'Advanced multimodal LLM with visual understanding and extraction capabilities', 
     provider: 'OpenAI',
     icon: 'fa-brain',
     capabilities: ['Code', 'Vision', 'Reasoning', 'Structured Output'],
     disabled: false
   },
   { 
-    id: 'gpt-4o-mini', 
-    name: 'GPT-4o Mini', 
-    description: 'Smaller, faster version of GPT-4o with good performance at lower cost', 
-    provider: 'OpenAI',
-    icon: 'fa-brain',
-    capabilities: ['Code', 'Vision', 'Reasoning'],
-    disabled: false
-  },
-  { 
-    id: 'gpt-3.5-turbo', 
-    name: 'GPT-3.5 Turbo', 
-    description: 'Efficient model balancing performance and cost', 
-    provider: 'OpenAI',
-    icon: 'fa-brain',
-    capabilities: ['Code', 'Reasoning'],
-    disabled: false
-  },
-  { 
     id: 'qwen-2.5-vl-72b', 
     name: 'Qwen-2.5-VL 72B', 
-    description: 'Visual language model with excellent visual grounding and UI comprehension', 
+    description: 'Visual language model with excellent visual Reasoning and Context understanding', 
     provider: 'Alibaba',
     icon: 'fa-eye',
     capabilities: ['Vision', 'UI Analysis', 'Multimodal'],
@@ -173,7 +152,7 @@ const engines = [
   { 
     id: 'gemini-2.5-pro', 
     name: 'Gemini-2.5-Pro', 
-    description: 'Versatile model with strong multimedia capabilities and reasoning', 
+    description: 'Super versatile model with strong spatial and relational reasoning', 
     provider: 'Google',
     icon: 'fa-gem',
     capabilities: ['Vision', 'Reasoning', 'Multimodal', 'Planning'],
@@ -189,16 +168,6 @@ const engines = [
     capabilities: ['UI Design', 'UI Testing', 'UI Analysis'],
     disabled: true,
     tooltip: 'Chat support for UI-TARS will be added in an upcoming update'
-  },
-  { 
-    id: 'grok-1', 
-    name: 'Grok-1', 
-    description: 'Conversational AI with real-time data access and witty responses', 
-    provider: 'xAI',
-    icon: 'fa-robot',
-    capabilities: ['Reasoning', 'Internet-access', 'Conversational'],
-    disabled: true,
-    tooltip: 'Chat support for Grok will be added in an upcoming update'
   },
 ];
 
@@ -400,20 +369,6 @@ function SettingsModal(props = {}) {
         </div>
         <div class="api-key-description">ByteDance API key for UI-TARS - Specialized for UI tasks & visual interpretation.</div>
       </div>
-
-      <div class="api-key-group">
-        <div class="api-key-label">
-          <i class="fas fa-rocket"></i> Grok API Key
-        </div>
-        <div class="api-key-input-container">
-          <input type="password" id="grok-key" placeholder="Enter GROK API key" autocomplete="off" class="nexus-settings-input text-input">
-          <span id="grok-key-status" class="key-status"></span>
-          <button class="toggle-visibility-btn" data-for="grok-key"><i class="fas fa-eye"></i></button>
-          <button class="save-key-btn" data-provider="grok"><i class="fas fa-save"></i> Save</button>
-          <button class="delete-key-btn" data-provider="grok"><i class="fas fa-trash-alt"></i></button>
-        </div>
-        <div class="api-key-description">xAI API key for Grok models - Conversational AI with real-time data access and innovative reasoning abilities.</div>
-      </div>
     </div>
   `;
   
@@ -571,11 +526,8 @@ function SettingsModal(props = {}) {
         <label for="chat-llm-model" class="llm-dropdown-label">Chat Model</label>
         <select id="chat-llm-model" class="llm-dropdown">
           <option value="gpt-4o">GPT-4o (OpenAI)</option>
-          <option value="gpt-4o-mini">GPT-4o Mini (OpenAI)</option>
-          <option value="gpt-3.5-turbo">GPT-3.5 Turbo (OpenAI)</option>
-          <option value="gemini-1.5-pro">Gemini 1.5 Pro (Google)</option>
-          <option value="gemini-1.5-flash">Gemini 1.5 Flash (Google)</option>
-          <option value="grok-1">Grok-1 (xAI)</option>
+          <option value="gemini-2.5-pro">Gemini 2.5 Pro (Google)</option>
+          <option value="gemini-2.5-flash">Gemini 2.5 Flash (Google)</option>
         </select>
         <div class="llm-tooltip" data-tooltip="Used for general conversation, answering questions, and text generation. Select a model that balances quality and cost for your chat needs.">?</div>
       </div>
@@ -584,7 +536,7 @@ function SettingsModal(props = {}) {
         <label for="browser-llm-model" class="llm-dropdown-label">Browser Automation Model</label>
         <select id="browser-llm-model" class="llm-dropdown">
           <option value="gpt-4o">GPT-4o (OpenAI) - Recommended</option>
-          <option value="gemini-1.5-pro">Gemini 1.5 Pro (Google)</option>
+          <option value="gemini-2.5-pro">Gemini 2.5 Pro (Google)</option>
           <option value="qwen-2.5-vl-72b">Qwen 2.5 VL (Alibaba)</option>
           <option value="ui-tars">UI-TARS (ByteDance)</option>
         </select>

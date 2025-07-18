@@ -858,9 +858,37 @@ export function CommandCenter(props = {}) {
 
       // Handle taskComplete events from WebSocket
       if (message.event === 'taskComplete') {
-        console.log('[DEBUG] taskComplete WebSocket event received, routing to handler');
-        // Call the same handler that SSE events use
-        handleTaskComplete(message);
+        console.log('[DEBUG] taskComplete WebSocket event received');
+        
+        // Extract important data
+        const tid = message.taskId || message.task_id;
+        const reportUrls = {
+          reportUrl: message.reportUrl,
+          landingReportUrl: message.landingReportUrl,
+          nexusReportUrl: message.nexusReportUrl,
+          runReport: message.runReport
+        };
+        
+        if (!tid) {
+          console.warn('[taskComplete] Missing taskId in message:', message);
+          return;
+        }
+        
+        // Add all report URLs to the task store
+        if (Object.values(reportUrls).some(url => url)) {
+          console.log('[taskComplete] Adding report URLs to task store:', reportUrls);
+          tasksStore.addTaskReports(tid, reportUrls);
+        }
+        
+        // Emit thoughtComplete event with completion flag to mark thought bubbles as complete
+        // This reuses the existing thoughtComplete handler logic
+        eventBus.emit('thoughtComplete', {
+          taskId: tid,
+          thought: message.aiSummary || message.summary || '',
+          isCompleted: true,
+          reportUrls: reportUrls
+        });
+        
         return; // Stop processing this message
       }
 
@@ -868,31 +896,6 @@ export function CommandCenter(props = {}) {
       if (message.event === 'nliResponsePersisted') {
         console.log('[DEBUG] nliResponsePersisted event received - transitioning any active thought messages');
         
-        // Find all thought messages and update their appearance
-        document.querySelectorAll('.msg-thought-item').forEach(thoughtMessage => {
-          console.log('[DEBUG] Transforming thought message:', thoughtMessage);
-          
-          // Remove inline styles that make the message look like it's thinking
-          thoughtMessage.style.opacity = '1';
-          thoughtMessage.style.fontStyle = 'normal';
-          
-          // Add a class to indicate it's complete
-          thoughtMessage.classList.add('thought-complete');
-          
-          // Find the message type label and update it
-          const msgTypeEl = thoughtMessage.querySelector('.msg-type.msg-thought');
-          if (msgTypeEl) {
-            msgTypeEl.textContent = 'Thought';
-            msgTypeEl.classList.add('complete');
-          }
-        });
-      }
-      
-      // Handle thought complete events for commands
-      // Handle incremental thought updates (streaming thoughts to original thought bubble)
-      if (message.event === 'thoughtUpdate') {
-        console.log('[Event] thoughtUpdate', message);
-        // Use exactly the attribute names from the logs
         const tid = message.taskId; // Logs show this exact attribute name
         const thought = message.thought; // Logs show this exact attribute name
         
@@ -1062,7 +1065,27 @@ export function CommandCenter(props = {}) {
           const errorMessage = errorData.message || 'An error occurred';
           
           // Update the thought bubble with error styling
-          const thoughtBubble = document.querySelector(`.thought-bubble[data-task-id="${tid}"]`);
+          // First try with data-task-id
+          let thoughtBubble = document.querySelector(`.thought-bubble[data-task-id="${tid}"]`);
+          
+          // If not found, look for any thought bubble with data-message-id that starts with "thought-"
+          // and contains the task ID as part of the message content
+          if (!thoughtBubble) {
+            console.log(`[thoughtComplete] Looking for thought bubbles for task ${tid}...`);
+            const allThoughtBubbles = document.querySelectorAll('.msg-thought-item');
+            
+            // Convert to array and find the most recent one
+            const matchingBubbles = Array.from(allThoughtBubbles).filter(el => {
+              const messageId = el.getAttribute('data-message-id') || '';
+              return messageId.startsWith('thought-');
+            });
+            
+            if (matchingBubbles.length > 0) {
+              // Use the most recently created one (assuming it's the active one)
+              thoughtBubble = matchingBubbles[matchingBubbles.length - 1];
+              console.log(`[thoughtComplete] Found matching thought bubble with ID: ${thoughtBubble.getAttribute('data-message-id')}`);
+            }  
+          }
           if (thoughtBubble) {
             thoughtBubble.classList.add(errorClass);
             const errorElement = document.createElement('div');
@@ -1115,10 +1138,40 @@ export function CommandCenter(props = {}) {
           // Fallback: search in DOM as a last resort
           console.log('[thoughtComplete] No active stream found, searching DOM for task:', tid);
           
-          // First try using data attributes
+          // Try all possible selectors to find the thought bubble
           thoughtContainer = document.querySelector(`[data-message-id="thought-${tid}"]`) ||
-                          document.querySelector(`.msg-thought[data-task-id="${tid}"]:not(.task-complete-card)`) ||
-                          document.querySelector(`.msg-thought-item[data-task-id="${tid}"]`);
+                           document.querySelector(`.msg-thought[data-task-id="${tid}"]:not(.task-complete-card)`) ||
+                           document.querySelector(`.msg-thought-item[data-task-id="${tid}"]`);
+          
+          // If still not found, try finding any thought bubble with a randomly generated ID
+          if (!thoughtContainer) {
+            console.log('[thoughtComplete] Searching for any thought bubble with random ID...');
+            // Get all thought bubbles
+            const allThoughtBubbles = document.querySelectorAll('.msg-thought-item');
+            
+            // Look for the most recently created one that's not already completed
+            const incompleteThoughtBubbles = Array.from(allThoughtBubbles).filter(el => {
+              // Check if it has a message-id that starts with "thought-"
+              const messageId = el.getAttribute('data-message-id') || '';
+              const hasThoughtId = messageId.startsWith('thought-');
+              
+              // Check if it's not already marked as complete
+              const notComplete = !el.classList.contains('thought-complete') && 
+                                !el.classList.contains('complete') && 
+                                !el.classList.contains('task-complete-card');
+              
+              return hasThoughtId && notComplete;
+            });
+            
+            if (incompleteThoughtBubbles.length > 0) {
+              // Use the most recently created one (should be the active one)
+              thoughtContainer = incompleteThoughtBubbles[incompleteThoughtBubbles.length - 1];
+              console.log(`[thoughtComplete] Found incomplete thought bubble with ID: ${thoughtContainer.getAttribute('data-message-id')}`);
+              
+              // Associate this thought bubble with the task ID for future reference
+              thoughtContainer.setAttribute('data-task-id', tid);
+            }
+          }
           
           if (!thoughtContainer && isNliTask) {
             // For NLI tasks with no container, do a more aggressive search
@@ -2286,7 +2339,23 @@ export function CommandCenter(props = {}) {
     }
   };
   
-  // Function to set the selected engine
+  /**
+   * Get the API base URL based on environment
+   * @returns {string} API base URL
+   */
+  const getApiBaseUrl = () => {
+    if (import.meta.env.VITE_API_URL) {
+      return import.meta.env.VITE_API_URL;
+    } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return `http://${window.location.hostname}:3420`; // Development port
+    }
+    return window.location.origin; // Production
+  };
+
+  /**
+   * Set the AI engine
+   * @param {string} engineId - Engine ID
+   */
   const setEngine = async (engineId) => {
     // Show loading state
     const loadingId = `engine-loading-${Date.now()}`;
@@ -2318,7 +2387,10 @@ export function CommandCenter(props = {}) {
         return;
       }
       
-      const response = await fetch('/api/user/set-engine', {
+      const apiBase = getApiBaseUrl();
+      console.log(`Using API base URL: ${apiBase} for engine selection`);
+      
+      const response = await fetch(`${apiBase}/api/user/set-engine`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

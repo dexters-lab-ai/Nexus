@@ -425,14 +425,8 @@ function SettingsModal(props = {}) {
         <label for="chat-llm-model" class="llm-dropdown-label">Chat Model</label>
         <select id="chat-llm-model" class="llm-dropdown">
           <option value="gpt-4o">GPT-4o (OpenAI)</option>
-          <option value="gpt-4o-mini">GPT-4o Mini (OpenAI)</option>
-          <option value="gpt-3.5-turbo">GPT-3.5 Turbo (OpenAI)</option>
-          <option value="claude-3-opus">Claude 3 Opus (Anthropic)</option>
-          <option value="claude-3-sonnet">Claude 3 Sonnet (Anthropic)</option>
-          <option value="claude-3-haiku">Claude 3 Haiku (Anthropic)</option>
-          <option value="gemini-1.5-pro">Gemini 1.5 Pro (Google)</option>
-          <option value="gemini-1.5-flash">Gemini 1.5 Flash (Google)</option>
-          <option value="grok-1">Grok-1 (xAI)</option>
+          <option value="gemini-2.5-pro">Gemini 2.5 Pro (Google)</option>
+          <option value="gemini-2.5-flash">Gemini 2.5 Flash (Google)</option>
         </select>
         <div class="llm-tooltip" data-tooltip="Used for general conversation, answering questions, and text generation. Select a model that balances quality and cost for your chat needs.">?</div>
       </div>
@@ -444,7 +438,6 @@ function SettingsModal(props = {}) {
           <option value="gemini-1.5-pro">Gemini 1.5 Pro (Google)</option>
           <option value="qwen-2.5-vl-72b">Qwen 2.5 VL (Alibaba)</option>
           <option value="ui-tars">UI-TARS (ByteDance)</option>
-          <option value="claude-3-opus">Claude 3 Opus (Anthropic)</option>
         </select>
         <div class="llm-tooltip" data-tooltip="Used for browser automation, UI interaction, and visual tasks. Models with strong vision capabilities are recommended for optimal performance.">?</div>
       </div>
