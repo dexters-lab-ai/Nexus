@@ -982,18 +982,7 @@ const MAX_CONCURRENT_BROWSERS = 5;
 const OPENAI_API_KAIL = process.env.OPENAI_API_KAIL;
 
 // Track active browser sessions (singleton instance)
-// Engine configuration
-const ENGINE_KEY_MAPPING = {
-  'gpt-4o': 'openai',
-  'qwen-2.5-vl-72b': 'qwen',
-  'gemini-2.5-pro': 'google',
-  'ui-tars': 'uitars',
-};
 
-const KEY_ENGINE_MAPPING = Object.entries(ENGINE_KEY_MAPPING).reduce((acc, [engine, keyType]) => {
-  acc[keyType] = engine;
-  return acc;
-}, {});
 
 // ======================================
 // 6. LOGGER SETUP
@@ -1738,10 +1727,10 @@ app.get('/api/nli', requireAuth, async (req, res) => {
     req.session.save();
   }
 
-  // Classify prompt
+  // Classify prompt using preferred model
   let classification;
   try {
-    classification = await openaiClassifyPrompt(prompt, userId);
+    classification = await classifyPrompt(prompt, userId);
   } catch (err) {
     console.error('Classification error:', err);
     
@@ -2283,7 +2272,7 @@ app.post('/api/nli', requireAuth, async (req, res) => {
 
   let classification;
   try {
-    classification = await openaiClassifyPrompt(prompt, userId);
+    classification = await classifyPrompt(prompt, userId);
   } catch (err) {
     console.error('Classification error', err);
     classification = 'task';
@@ -3527,7 +3516,7 @@ const completedTasks = new Set();
 
 // Track free tier usage (users without API keys)
 const freeTierUsage = new Map(); // userId -> { count: number, lastReset: Date }
-const MAX_FREE_PROMPTS = 3; // Maximum number of free prompts per user
+const MAX_FREE_PROMPTS = 10; // Maximum number of free prompts per user
 const FREE_TIER_RESET_HOURS = 24; // Reset counter after 24 hours
 
 /**
@@ -4769,35 +4758,65 @@ class PlanStep {
  * @param {number} [options.timeout=30000] - Request timeout in milliseconds (default: 30000)
  * @returns {Promise<OpenAI>} Configured OpenAI client
  */
+// Define standard default keys for different providers
+const DEFAULT_KEYS = {
+  'openai': process.env.DEFAULT_GPT4O_KEY || '',
+  'qwen': process.env.DEFAULT_OPENROUTER_KEY || '',
+  'google': process.env.DEFAULT_GEMINI_KEY || '',
+  'xai': process.env.DEFAULT_GROK_KEY || ''
+};
+
+// Define provider-specific base URLs
+const PROVIDER_BASE_URLS = {
+  'openai': process.env.CUSTOM_OPENAI_ENDPOINT || undefined,
+  'google': 'https://generativelanguage.googleapis.com/v1beta/openai/',
+  'qwen': 'https://openrouter.ai/api/v1',
+  'xai': 'https://api.groq.com/openai/v1'
+};
+
+// Map from model to provider
+const MODEL_PROVIDER_MAPPING = {
+  'gpt-4o': 'openai',
+  'gpt-4o-mini': 'openai', 
+  'gpt-3.5-turbo': 'openai',
+  'qwen-2.5-vl-72b': 'qwen',
+  'gemini-2.5-pro': 'google',
+  'gemini-1.5-pro': 'google',
+  'gemini-1.5-flash': 'google',
+  'ui-tars': 'uitars',
+  'claude-3-opus': 'anthropic',
+  'claude-3-sonnet': 'anthropic',
+  'claude-3-haiku': 'anthropic',
+  'grok-1': 'xai'
+};
+
+// Map from engine ID to API key type in user.apiKeys
+const ENGINE_KEY_MAPPING = {
+  'gpt-4o': 'gpt4o',
+  'gpt-4o-mini': 'gpt4o',
+  'gpt-3.5-turbo': 'gpt4o',
+  'qwen-2.5-vl-72b': 'qwen',
+  'gemini-2.5-pro': 'gemini',
+  'gemini-1.5-pro': 'gemini',
+  'gemini-1.5-flash': 'gemini',
+  'ui-tars': 'uitars',
+  'claude-3-opus': 'anthropic',
+  'claude-3-sonnet': 'anthropic',
+  'claude-3-haiku': 'anthropic',
+  'grok-1': 'xai'
+};
+
+// Reverse mapping from API key type to engine ID
+const KEY_ENGINE_MAPPING = {
+  'gpt4o': 'gpt-4o',
+  'qwen': 'qwen-2.5-vl-72b',
+  'gemini': 'gemini-2.5-pro',
+  'uitars': 'ui-tars',
+  'anthropic': 'claude-3-opus',
+  'xai': 'grok-1'
+};
+
 async function getUserOpenAiClient(userId, options = {}) {
-  // Define standard default keys for different providers
-  const DEFAULT_KEYS = {
-    'openai': process.env.DEFAULT_GPT4O_KEY || '',
-    'qwen': process.env.DEFAULT_OPENROUTER_KEY || '',
-    'google': process.env.DEFAULT_GEMINI_KEY || '',
-    'xai': process.env.DEFAULT_GROK_KEY || ''
-  };
-  
-  // Define provider-specific base URLs
-  const PROVIDER_BASE_URLS = {
-    'openai': process.env.CUSTOM_OPENAI_ENDPOINT || undefined,
-    'google': 'https://generativelanguage.googleapis.com/v1beta/openai/',
-    'qwen': 'https://openrouter.ai/api/v1',
-    'xai': 'https://api.groq.com/openai/v1'
-  };
-  
-  // Map from model to provider
-  const MODEL_PROVIDER_MAPPING = {
-    // OpenAI models
-    'gpt-4o': 'openai',
-    'gpt-4o-mini': 'openai',
-    'gpt-3.5-turbo': 'openai',
-    // Gemini models
-    'gemini-2.5-pro': 'google',
-    'gemini-2.5-flash': 'google',
-    // Grok models
-    'grok-1': 'xai'
-  };
   
   // Track whether we're using a default key
   let usingDefaultKey = false;
@@ -4820,15 +4839,15 @@ async function getUserOpenAiClient(userId, options = {}) {
   }
 
   // Get the user's preferred chat model, defaulting to gpt-4o if not set
-  let preferredModel = user?.modelPreferences?.chat || 'gpt-4o';
+  let preferredModel = user?.modelPreferences?.default || user?.preferredEngine || 'gpt-4o';
   console.log(`[Chat] Using chat model preference: ${preferredModel}`);
   
   // Determine the provider for this model
   const provider = MODEL_PROVIDER_MAPPING[preferredModel] || 'openai';
   
-  // If model isn't supported, fall back to gpt-4o
-  if (!provider) {
-    console.warn(`[OpenAIClient] Unsupported model ${preferredModel}, falling back to gpt-4o`);
+  // If model isn't supported or provider is not 'openai' for OpenAI API client, fall back to gpt-4o
+  if (!provider || (provider !== 'openai')) {
+    console.warn(`[OpenAIClient] ${preferredModel} cannot be used with OpenAI client, falling back to gpt-4o`);
     preferredModel = 'gpt-4o';
   }
   
@@ -4930,6 +4949,309 @@ async function getUserOpenAiClient(userId, options = {}) {
   return new OpenAI(clientConfig);
 }
 
+/**
+ * Import Google's Generative AI SDK
+ */
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
+
+/**
+ * Get a Gemini client for a user using Google's official SDK
+ *
+ * @param {string} userId - The user ID
+ * @param {string} [model='gemini-2.5-pro'] - The Gemini model to use
+ * @returns {Promise<Object>} Configured Gemini client with wrapped chat completions interface
+ */
+async function getUserGeminiClient(userId, model = 'gemini-2.5-pro') {
+  // Verify the model is a Gemini model
+  if (!model.startsWith('gemini-')) {
+    console.warn(`[GeminiClient] Model ${model} is not a Gemini model, falling back to gemini-2.5-pro`);
+    model = 'gemini-2.5-pro';
+  }
+  
+  // Track whether we're using a default key
+  let usingDefaultKey = false;
+  let keySource = 'user';
+  
+  // Fetch user API keys
+  const user = await User
+    .findById(userId)
+    .select('apiKeys')
+    .lean();
+
+  // Determine which API key to use
+  let apiKey;
+  
+  if (!user) {
+    console.error(`[GeminiClient] User ${userId} not found, using default Gemini key`);
+    usingDefaultKey = true;
+    keySource = 'system-default';
+    
+    // Check if we have a default key
+    const defaultKey = DEFAULT_KEYS['google'];
+    if (!defaultKey) {
+      console.error(`[GeminiClient] No default Gemini API key available`);
+      return null;
+    }
+    
+    apiKey = defaultKey;
+  } else {
+    // Try user's stored key for Gemini
+    if (user?.apiKeys?.gemini && user.apiKeys.gemini.trim().length > 0) {
+      apiKey = user.apiKeys.gemini.trim();
+      keySource = 'user';
+      usingDefaultKey = false;
+      
+      // Check API key format
+      if (!apiKey.startsWith('AIza')) {
+        console.warn(`[GeminiClient] Gemini API key may be in incorrect format! Google API keys typically start with 'AIza'`);
+      }
+    }
+    // If no user key, try default key
+    else if (DEFAULT_KEYS['google'] && DEFAULT_KEYS['google'].trim().length > 0) {
+      apiKey = DEFAULT_KEYS['google'];
+      keySource = 'system-default';
+      usingDefaultKey = true;
+    }
+    // If no key available, return null
+    else {
+      console.error(`[GeminiClient] No API key available for Gemini, cannot create client`);
+      return null;
+    }
+  }
+  
+  // Log the client creation (with key masking)
+  const maskedKey = apiKey.length > 8 
+    ? `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}` 
+    : '[none]';
+  console.log(
+    `[ChatClient] Using ${model} with key ${maskedKey} for user ${userId} ` +
+    `(source: ${keySource}, default: ${usingDefaultKey})`
+  );
+  
+  // Create the actual Google Generative AI client
+  const googleGenAI = new GoogleGenerativeAI(apiKey);
+  const geminiModel = googleGenAI.getGenerativeModel({ model });
+  
+  // Safety settings (moderate filtering)
+  const safetySettings = [
+    {
+      category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+      threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+    },
+    {
+      category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+      threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+    }
+  ];
+  
+  // Create a wrapper that provides an OpenAI-like interface for compatibility
+  const geminiClient = {
+    chat: {
+      completions: {
+        create: async (params) => {
+          console.log(`[GeminiClient] Creating chat completion with model ${model}`);
+          
+          try {
+            // Convert OpenAI format messages to Gemini format
+            const geminiMessages = params.messages.map(msg => ({
+              role: msg.role === 'system' ? 'user' : msg.role, // Gemini doesn't have system role
+              parts: [{ text: msg.content }]
+            }));
+            
+            // Build Gemini generation config from OpenAI params
+            const generationConfig = {
+              temperature: params.temperature || 0.7,
+              topP: params.top_p || 0.95,
+              topK: params.top_k || 40,
+              maxOutputTokens: params.max_tokens || 1024,
+              stopSequences: params.stop || []
+            };
+            
+            // Handle tools/functions if provided
+            const systemMessage = params.messages.find(m => m.role === 'system');
+            let tools = [];
+            
+            if (params.tools && params.tools.length > 0) {
+              console.log(`[GeminiClient] Processing ${params.tools.length} tools for Gemini`);
+              tools = params.tools.map(tool => {
+                if (tool.type === 'function') {
+                  return {
+                    functionDeclarations: [{
+                      name: tool.function.name,
+                      description: tool.function.description,
+                      parameters: tool.function.parameters
+                    }]
+                  };
+                }
+                return null;
+              }).filter(Boolean);
+            }
+            
+            // Handle streaming separately
+            if (params.stream === true) {
+              console.log('[GeminiClient] Creating streaming response');
+              
+              // Create a chat session
+              const chat = geminiModel.startChat({
+                generationConfig,
+                safetySettings,
+                tools: tools.length > 0 ? tools : undefined
+              });
+              
+              // Process all messages except the last one (user message)
+              const historyMessages = geminiMessages.slice(0, -1);
+              if (historyMessages.length > 0) {
+                console.log(`[GeminiClient] Processing ${historyMessages.length} history messages`);
+                // We need to add these to history manually
+                for (const historyMsg of historyMessages) {
+                  await chat.sendMessage(historyMsg.parts[0].text);
+                }
+              }
+              
+              // Get the user message (last message)
+              const userMessage = geminiMessages[geminiMessages.length - 1].parts[0].text;
+              
+              // Send the message and get stream
+              const streamResult = await chat.sendMessageStream(userMessage);
+              
+              // Create an async iterable that converts Gemini's format to OpenAI's
+              return {
+                [Symbol.asyncIterator]: async function* () {
+                  try {
+                    let functionCallStarted = false;
+                    let currentFunctionName = null;
+                    let currentFunctionArgs = '';
+                    
+                    // Process the entire response first to check for tool calls
+                    const response = await streamResult.response;
+                    const hasFunctionCalls = response.candidates[0]?.content?.parts?.some(
+                      part => part.functionCall
+                    );
+                    
+                    if (hasFunctionCalls) {
+                      console.log('[GeminiClient] Detected function calls in response');
+                      // Handle function calls separately since Gemini doesn't stream them chunk by chunk
+                      
+                      // First yield any text content that comes before function calls
+                      const textContent = response.candidates[0]?.content?.parts
+                        .filter(part => part.text && !part.functionCall)
+                        .map(part => part.text)
+                        .join('');
+                        
+                      if (textContent) {
+                        yield {
+                          choices: [{
+                            delta: { content: textContent },
+                            index: 0
+                          }]
+                        };
+                      }
+                      
+                      // Then yield the function calls
+                      for (const part of response.candidates[0].content.parts) {
+                        if (part.functionCall) {
+                          const functionName = part.functionCall.name;
+                          const functionArgs = JSON.stringify(part.functionCall.args);
+                          
+                          // Start function call
+                          yield {
+                            choices: [{
+                              delta: { 
+                                tool_calls: [{
+                                  index: 0,
+                                  id: `call_${Date.now()}`,
+                                  function: { name: functionName }
+                                }]
+                              },
+                              index: 0
+                            }]
+                          };
+                          
+                          // Send function args
+                          yield {
+                            choices: [{
+                              delta: {
+                                tool_calls: [{
+                                  index: 0,
+                                  function: { arguments: functionArgs }
+                                }]
+                              },
+                              index: 0
+                            }]
+                          };
+                        }
+                      }
+                    } else {
+                      // Regular text streaming if no function calls
+                      for await (const chunk of streamResult.stream) {
+                        const text = chunk.text();
+                        if (text) {
+                          yield {
+                            choices: [{
+                              delta: { content: text },
+                              index: 0
+                            }]
+                          };
+                        }
+                      }
+                    }
+                  } catch (err) {
+                    console.error('[GeminiClient] Streaming error:', err);
+                    throw err;
+                  }
+                }
+              };
+            } else {
+              // Non-streaming response
+              const chat = geminiModel.startChat({
+                generationConfig,
+                safetySettings,
+                tools: tools.length > 0 ? tools : undefined
+              });
+              
+              // Process all messages except the last one
+              const historyMessages = geminiMessages.slice(0, -1);
+              for (const historyMsg of historyMessages) {
+                await chat.sendMessage(historyMsg.parts[0].text);
+              }
+              
+              // Get the user message (last message)
+              const userMessage = geminiMessages[geminiMessages.length - 1].parts[0].text;
+              
+              // Send the message and get response
+              const result = await chat.sendMessage(userMessage);
+              const response = result.response;
+              
+              // Convert to OpenAI-like format
+              return {
+                choices: [{
+                  message: {
+                    role: 'assistant',
+                    content: response.text()
+                  },
+                  index: 0
+                }]
+              };
+            }
+          } catch (err) {
+            console.error('[GeminiClient] Error in chat completion:', err);
+            throw err;
+          }
+        }
+      }
+    },
+    // Store metadata for access by other functions
+    defaultQuery: { 
+      usingDefaultKey, 
+      keySource, 
+      engine: model, 
+      provider: 'google' 
+    }
+  };
+  
+  return geminiClient;
+}
+
 
 /**
  * Check if a user has a valid API key for the specified engine
@@ -4938,6 +5260,7 @@ async function getUserOpenAiClient(userId, options = {}) {
  * @returns {Object} - Object containing whether key exists and source
  */
 export async function checkEngineApiKey(userId, engineName) {
+  console.log(`[API Key Check] Checking API key for engine ${engineName}`);
   // Validate the engine name is one we support
   if (!Object.keys(ENGINE_KEY_MAPPING).includes(engineName)) {
     console.warn(`Unsupported engine requested: ${engineName}, falling back to gpt-4o`);
@@ -5862,12 +6185,12 @@ process.on('unhandledRejection', (reason, promise) => {
 // Token usage tracking is implemented further down in the file
 
 /**
- * Classifies user prompts as either 'task' or 'chat' using an LLM
+ * Classifies user prompts as either 'task' or 'chat' using the user's preferred LLM
  * @param {string} prompt - The user's input prompt
  * @param {string} userId - The ID of the user making the request
  * @returns {Promise<string|Object>} - Returns 'task' or 'chat' on success, or an error object
  */
-async function openaiClassifyPrompt(prompt, userId) {
+async function classifyPrompt(prompt, userId) {
   /**
    * Checks if an error is a quota/rate limit error
    * @param {Error|Object} err - The error to check
@@ -5909,12 +6232,32 @@ async function openaiClassifyPrompt(prompt, userId) {
   let client;
   
   try {
-    // Get the appropriate OpenAI client with a 10s timeout for classification
-    client = await getUserOpenAiClient(userId, { timeout: 10000 });
+    // Get the user's preferred engine
+    const user = await User.findById(userId).select('preferredEngine').lean();
+    const preferredEngine = user?.preferredEngine || 'gpt-4o';
+    const provider = MODEL_PROVIDER_MAPPING[preferredEngine] || 'openai';
     
-    // Use a small, fast model for classification to save tokens
-    const resp = await client.chat.completions.create({
-      model: 'gpt-4o-mini', 
+    console.log(`[ClassifyPrompt] Using preferred engine: ${preferredEngine} (provider: ${provider})`);
+    
+    // Select the appropriate client based on the provider
+    if (provider === 'google') {
+      client = await getUserGeminiClient(userId, preferredEngine);
+      console.log(`[ClassifyPrompt] Selected Gemini client for classification`);
+    } else if (provider === 'anthropic') {
+      client = await getUserClaudeClient(userId, preferredEngine);
+      console.log(`[ClassifyPrompt] Selected Claude client for classification`);
+    } else if (provider === 'qwen') {
+      client = await getUserQwenClient(userId, preferredEngine);
+      console.log(`[ClassifyPrompt] Selected Qwen client for classification`);
+    } else {
+      // Default to OpenAI
+      client = await getUserOpenAiClient(userId, { timeout: 10000 });
+      console.log(`[ClassifyPrompt] Selected OpenAI client for classification`);
+    }
+    
+    // Prepare classification config
+    let classificationConfig = {
+      model: preferredEngine,
       messages: [
         { 
           role: 'system', 
@@ -5927,7 +6270,16 @@ async function openaiClassifyPrompt(prompt, userId) {
       ],
       temperature: 0,
       max_tokens: 5
-    });
+    };
+    
+    // Provider-specific adaptations for the classification request
+    if (provider === 'google') {
+      console.log('[ClassifyPrompt] Adapting request for Gemini API with native SDK');
+      // When using our native Gemini client, it will handle the format adaptations
+    }
+    
+    console.log(`[ClassifyPrompt] Sending classification request with ${preferredEngine}`);
+    const resp = await client.chat.completions.create(classificationConfig);
     
     // Estimate token usage (approximate calculation)
     const promptTokens = Math.ceil(prompt.length / 4); // ~4 chars per token
@@ -5941,7 +6293,7 @@ async function openaiClassifyPrompt(prompt, userId) {
     return responseText.includes('task') ? 'task' : 'chat';
     
   } catch (err) {
-    console.error('Error in openaiClassifyPrompt:', err);
+    console.error('Error in ClassifyPrompt:', err);
     
     // Handle quota/rate limit errors
     if (isQuotaError(err)) {
@@ -7119,10 +7471,24 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
       plan.log(`Using execution mode: ${executionMode} for AI request`);
       
       plan.log("Sending function call request to AI", { messages });
+
+      // Use the appropriate client based on the selected engine
+      let stream;
+  
+      // Get user information to determine the preferred engine
+      const user = await User.findById(userId);
+      if (!user) {
+        throw new Error(`User ${userId} not found`);
+      }
       
-      // Configure the AI request based on execution mode
-      const streamConfig = {
-        model: "gpt-4o-mini",
+      // Use the engine that was determined at the start of processTask
+      // This ensures consistency with what we've already logged
+      const preferredEngine = engineToUse || user?.preferredEngine || 'gpt-4o';
+      console.log(`[ProcessTask] Using engine for orchestration: ${preferredEngine}`);
+      
+      // Base configuration that works for OpenAI-compatible APIs
+      let streamConfig = {
+        model: preferredEngine, // Use the actual preferred engine
         messages,
         stream: true,
         temperature: 0.3,
@@ -7208,26 +7574,61 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
         });
       }
       
-      // Use the appropriate client based on the selected engine
-      let stream;
+      // Get the appropriate client based on the engine
+      let client;
+      const provider = MODEL_PROVIDER_MAPPING[preferredEngine] || 'openai';
+      console.log(`[ProcessTask] Detected provider: ${provider} for engine: ${preferredEngine}`);
       
-      // Note: We don't need to call setupNexusEnvironment here since it's already called
-      // in the lower-level functions (handleBrowserAction and handleBrowserQuery)
-      // This avoids redundancy and potential issues with multiple environment setups
+      // Check for API key before proceeding
+      const keyCheck = await checkEngineApiKey(userId, preferredEngine);
+      console.log(`[ProcessTask] API key check for ${preferredEngine}: ${JSON.stringify(keyCheck)}`);
       
-      // Get a chat client for the orchestration/planning part
-      // This client is only used for the planning conversations, not the actual browser automation
-      const client = await getUserOpenAiClient(userId);
+      if (provider === 'openai') {
+        client = await getUserOpenAiClient(userId);
+      } else if (provider === 'google') {
+        client = await getUserGeminiClient(userId, preferredEngine);
+      } else if (provider === 'anthropic') {
+        client = await getUserClaudeClient(userId, preferredEngine);
+      } else if (provider === 'qwen') {
+        client = await getUserQwenClient(userId);
+      } else {
+        // Fallback to OpenAI if provider is not supported
+        console.warn(`[ProcessTask] Provider ${provider} not supported for orchestration, falling back to OpenAI`);
+        client = await getUserOpenAiClient(userId);
+      }
       
       if (!client) {
         throw new Error(`No chat client available for user ${userId}`);
       }
       
       // Log the model being used for task planning
-      const chatModel = client.defaultQuery?.engine || 'gpt-4o';
+      const chatModel = preferredEngine;
       plan.log(`Using chat model ${chatModel} for task planning/orchestration`);
       
-      stream = await client.chat.completions.create(streamConfig);
+      // No need for provider-specific adaptations for Gemini since we're using native SDK
+      if (provider === 'google') {
+        console.log('[ProcessTask] Using native Google Gemini SDK client - no need for payload adaptations');
+      }
+      
+      // Log the final configuration (redact sensitive information)
+      const redactedConfig = { ...streamConfig };
+      delete redactedConfig.messages; // Don't log all messages for brevity
+      console.log(`[ProcessTask] Final streamConfig for ${provider}: ${JSON.stringify(redactedConfig)}`);
+      
+      try {
+        stream = await client.chat.completions.create(streamConfig);
+      } catch (err) {
+        console.error(`[ProcessTask] Error creating stream with ${provider}:`, err);
+        
+        if (provider === 'google') {
+          console.log('[ProcessTask] Gemini request failed with native SDK');
+          // For Gemini, we're already using the native SDK which should handle the request properly
+          // If it still fails, it's likely an authentication or quota issue
+          throw new Error(`Failed to create stream with Google Gemini: ${err.message}`);
+        } else {
+          throw err;
+        }
+      }
       
       let currentFunctionCall = null;
       let accumulatedArgs = '';
@@ -8175,11 +8576,40 @@ async function* streamNliThoughts(userId, prompt) {
   let buffer = '';
   let fullReply = '';
   
-  const openaiClient = await getUserOpenAiClient(userId);
+  // Get user preferences to determine which client to use
+  const user = await User.findById(userId).select('preferredEngine modelPreferences').lean();
+  const preferredEngine = user?.preferredEngine || 'gpt-4o';
+  const provider = MODEL_PROVIDER_MAPPING[preferredEngine] || 'openai';
   
-  let chatModel = 'gpt-4o';
-  if (openaiClient.defaultQuery?.engine) {
-    chatModel = openaiClient.defaultQuery.engine;
+  console.log(`[Chat] Using preferred engine: ${preferredEngine} (provider: ${provider})`);
+  
+  // Select the appropriate client based on provider
+  let client;
+  let chatModel = preferredEngine;
+  
+  if (provider === 'google') {
+    client = await getUserGeminiClient(userId, preferredEngine);
+    console.log(`[Chat] Selected Gemini client for user ${userId}`);
+  } else if (provider === 'anthropic') {
+    client = await getUserClaudeClient(userId, preferredEngine);
+    console.log(`[Chat] Selected Claude client for user ${userId}`);
+  } else if (provider === 'qwen') {
+    client = await getUserQwenClient(userId, preferredEngine);
+    console.log(`[Chat] Selected Qwen client for user ${userId}`);
+  } else {
+    // Default to OpenAI
+    client = await getUserOpenAiClient(userId);
+    console.log(`[Chat] Selected OpenAI client for user ${userId}`);
+    
+    // Use the model from the client's defaultQuery if available
+    if (client.defaultQuery?.engine) {
+      chatModel = client.defaultQuery.engine;
+    }
+  }
+  
+  if (!client) {
+    console.error(`[Chat] Failed to initialize client for engine: ${preferredEngine}`);
+    throw new Error(`No client available for the selected engine: ${preferredEngine}`);
   }
   
   console.log(`[Chat] Creating stream with model: ${chatModel}`);
@@ -8222,16 +8652,51 @@ Only use tools when:
     
     console.log('[Chat] Sending messages in correct chronological order to the AI');
     
-    const stream = await openaiClient.chat.completions.create({
+    // Configure the stream request based on provider
+    let streamConfig = {
       model: chatModel,
       messages: fullHistory,
       stream: true,
       temperature: 0.7,
       max_tokens: 700,
       tools: standardTools
-    });
+    };
     
-    console.log('[streamNliThoughts] Stream created, beginning iteration...');
+    // Our native Gemini client handles proper formatting of requests
+    if (provider === 'google') {
+      console.log('[Chat] Using native Google Gemini SDK client - no need for payload adaptations');
+    }
+    
+    // Log the final configuration (redact sensitive information)
+    const redactedConfig = { ...streamConfig };
+    delete redactedConfig.messages; // Don't log all messages for brevity
+    console.log(`[Chat] Final streamConfig for ${provider}: ${JSON.stringify(redactedConfig)}`);
+    
+    let stream;
+    try {
+      stream = await client.chat.completions.create(streamConfig);
+    } catch (err) {
+      console.error(`[Chat] Error creating stream with ${provider}:`, err);
+      
+      if (provider === 'google') {
+        console.log('[Chat] Gemini request failed with native SDK');
+        // For Gemini, we've already used the native SDK which should handle the request properly
+        // If it still fails, it's likely an authentication or quota issue
+        yield {
+          event: 'thoughtError',
+          text: `Error: Could not create stream with Google Gemini API. Please check your API key or try a different model.`
+        };
+        throw new Error(`Failed to create stream with Google Gemini: ${err.message}`);
+      } else {
+        yield {
+          event: 'thoughtError',
+          text: `Error: ${err.message}`
+        };
+        throw err;
+      }
+    }
+    
+    console.log('[streamNliThoughts] Stream created, beginning to read...');
     
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta;
@@ -8314,7 +8779,7 @@ Only use tools when:
       ) || ['invalid_api_key', 'invalid_request_error'].includes(err?.code);
 
     if (isQuotaError(error)) {
-      const provider = openaiClient?.defaultQuery?.provider || 'OpenAI';
+      const provider = client?.defaultQuery?.provider || 'OpenAI';
       const errorDetails = error.error?.message || error.message || 'API quota exceeded';
       const errorMessage = `[Quota Error] ${provider} API: ${errorDetails}`;
       console.error(errorMessage);
@@ -8350,7 +8815,7 @@ Only use tools when:
     }
     
     if (isAuthError(error)) {
-      const provider = openaiClient.defaultQuery?.provider || 'API provider';
+      const provider = client.defaultQuery?.provider || 'API provider';
       const details = error.response?.data?.error?.message || error.message;
       console.error(`[Auth Error] ${provider}:`, details);
       

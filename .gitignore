@@ -11,6 +11,8 @@ coverage/
 .env
 .env.*
 !.env.example
+!.env.development
+!.env.production
 *.env.local
 *.env.test
 
@@ -116,3 +118,5 @@ sentinel_report/tmp
 # Midscene.js dump files
 midscene_run/report
 midscene_run/tmp
+
+nexus_run

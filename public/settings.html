@@ -236,7 +236,7 @@
 
   <script>
     const engines = [
-      { id: 'gpt-4o-mini', name: 'GPT‑4o Mini' },
+      { id: 'gemini-2.5-pro', name: 'Gemini‑2.5‑Pro' },
       { id: 'gpt-4o',      name: 'GPT‑4o' },
       { id: 'UITars',      name: 'UI‑Tars' },
       { id: 'qwen-vl-max-latest', name: 'Qwen‑VL‑Max‑Latest' },
@@ -301,7 +301,7 @@
       const k = document.getElementById('new-key').value.trim();
       if(!k){ return showNotif('Enter a key', false); }
     
-      const engine = prompt('Enter the engine name for this API key (e.g., gpt-4o-mini):');
+      const engine = prompt('Enter the engine name for this API key (e.g., gemini-2.5-pro):');
       if(!engine) return showNotif('Engine name required', false);
     
       const res = await fetch('/settings/api-keys', {

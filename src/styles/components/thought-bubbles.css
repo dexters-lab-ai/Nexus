@@ -1,0 +1,183 @@
+/* 
+ * Animated Thought Bubbles CSS
+ * Creates a fixed position thought bubble that stacks on top of previous ones
+ */
+
+/* Container for thought bubbles */
+.thought-bubbles-container {
+  position: fixed !important;
+  top: 50% !important;
+  left: 10% !important;
+  transform: translateY(-50%) !important;
+  z-index: 9999 !important;
+  pointer-events: none !important; /* Allow clicking through to elements underneath */
+  max-width: 300px !important;
+  max-height: 500px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  overflow-y: clip !important;
+}
+
+/* Styling for individual thought bubbles */
+.msg-thought-item {
+  position: relative;
+  background-color: rgba(20, 30, 60, 0.85) !important; 
+  border: 1px solid rgba(100, 130, 255, 0.6) !important;
+  border-radius: 8px !important;
+  padding: 12px !important;
+  margin: 8px 0 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+  color: #ffffff !important;
+  max-width: 280px !important;
+  transform: unset !important;
+  animation: slide-in 0.5s forwards !important;
+  pointer-events: auto !important; /* Make bubble itself clickable */
+  transition: transform 0.3s ease, opacity 0.3s ease !important;
+  font-size: 0.9rem !important;
+}
+
+/* Stacked bubble effect */
+
+/* Animation for sliding in from left */
+@keyframes slide-in {
+  0% {
+    transform: translateX(-100%) !important;
+    opacity: 0 !important;
+  }
+  100% {
+    transform: translateX(0) !important;
+    opacity: 1 !important;
+  }
+}
+
+/* Animation for fading out */
+@keyframes fade-out {
+  0%, 80% {
+    opacity: 1 !important;
+  }
+  100% {
+    opacity: 0 !important;
+    transform: translateX(-100%) !important;
+  }
+}
+
+/* When a new bubble appears, shift the others up */
+.msg-thought-item.new-bubble {
+  animation: slide-in 0.5s forwards !important;
+  z-index: 10000 !important;
+}
+
+/* Bubble that's fading out */
+.msg-thought-item.fade-out {
+  animation: fade-out 0.5s forwards !important;
+  z-index: 9990 !important; /* Lower z-index than new bubbles */
+  pointer-events: none !important; /* Prevent interaction with fading bubbles */
+}
+
+/* Typing animation dots */
+.typing-dots {
+  display: inline-block !important;
+  margin-left: 4px !important;
+  animation: typing-dots 1.5s infinite !important;
+  font-weight: bold !important;
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+@keyframes typing-dots {
+  0% { content: '.' !important; }
+  33% { content: '..' !important; }
+  66% { content: '...' !important; }
+  100% { content: '.' !important; }
+}
+
+/* Thought complete styling */
+.msg-thought-item.complete {
+  border-color: rgba(100, 255, 130, 0.6) !important;
+  background-color: rgba(20, 60, 30, 0.85) !important;
+}
+
+/* Thought content styling */
+.thought-content {
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: 0.9rem !important;
+  line-height: 1.4 !important;
+  color: #ffffff !important;
+  word-break: break-word !important;
+  max-height: 300px !important;
+  overflow-y: auto !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(100, 130, 255, 0.6) rgba(20, 30, 60, 0.4) !important;
+}
+
+/* Custom scrollbar styling */
+.msg-thought-item.new-bubble .msg-content::-webkit-scrollbar {
+  width: 6px !important;
+}
+
+.msg-thought-item.new-bubble .msg-content::-webkit-scrollbar-track {
+  background: rgba(20, 30, 60, 0.4) !important;
+  border-radius: 4px !important;
+}
+
+.msg-thought-item.new-bubble .msg-content::-webkit-scrollbar-thumb {
+  background-color: rgba(100, 130, 255, 0.6) !important;
+  border-radius: 4px !important;
+}
+
+/* Completion mark styling */
+.completion-mark {
+  position: absolute !important;
+  right: 8px !important;
+  top: 8px !important;
+  font-size: 14px !important;
+  color: rgba(100, 255, 130, 0.9) !important;
+  font-weight: bold !important;
+}
+
+
+.msg-thought-item.new-bubble ~ .msg-thought-item {
+  transform: translateY(-30px) !important;
+  transition: transform 0.3s ease !important;
+}
+
+/* Typing text animation */
+.typing-text {
+  border-right: 2px solid rgba(255, 255, 255, 0.75) !important;
+  white-space: pre-wrap !important;
+  overflow: hidden !important;
+  animation: caret-blink 1s infinite !important;
+}
+
+@keyframes caret-blink {
+  0%, 100% { border-color: transparent !important; }
+  50% { border-color: rgba(255, 255, 255, 0.75) !important; }
+}
+
+/* Typing effect indicator */
+.typing-bubble::after {
+  content: '...' !important;
+  animation: typing 1.5s infinite !important;
+}
+
+@keyframes typing {
+  0%, 100% { content: '.' !important; }
+  33% { content: '..' !important; }
+  66% { content: '...' !important; }
+}
+
+/* Keep the bubble visible while thinking */
+.typing-bubble {
+  opacity: 1 !important;
+  animation: none !important;
+}
+
+/* Ensure thought content is readable */
+.msg-thought-item .msg-content {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  max-height: 150px;
+  overflow-y: auto;
+  padding-right: 5px;
+}

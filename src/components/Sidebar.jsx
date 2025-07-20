@@ -106,6 +106,15 @@ export default function Sidebar(props = {}) {
   container.style.width = isCollapsed ? minWidth : width;
   if (containerId) container.id = containerId;
   
+  // Listen for expand-sidebar event from task events
+  eventBus.on('expand-sidebar', (data) => {
+    console.log('[Sidebar] Received expand-sidebar event:', data);
+    if (isCollapsed) {
+      // Only expand if currently collapsed
+      toggleCollapse();
+    }
+  });
+  
   // Add pagination styles
   if (!document.getElementById('yaml-pagination-styles')) {
     const paginationStyles = document.createElement('style');

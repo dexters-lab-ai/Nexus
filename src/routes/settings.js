@@ -49,14 +49,14 @@ router.get('/', requireAuth, async (req, res) => {
       success: true,
       settings: {
         email: user.email,
-        preferredEngine: user.preferredEngine || 'gpt-4o-mini',
+        preferredEngine: user.preferredEngine || 'gemini-2.5-pro',
         apiKeys: apiKeysStatus,
         privacyMode: user.privacyMode || false,
         modelPreferences: user.modelPreferences || {
-          default: 'gpt-4o-mini',
-          code: 'gpt-4o',
-          content: 'gpt-4o-mini',
-          research: 'midscene-pro'
+          default: 'gemini-2.5-pro',
+          code: 'gemini-2.5-pro',
+          content: 'gemini-2.5-pro',
+          research: 'gemini-2.5-pro'
         },
         maxSteps: user.maxSteps || 10
       },
@@ -266,25 +266,7 @@ router.delete('/api-keys/:provider', requireAuth, async (req, res) => {
   }
 });
 
-// POST /settings/model-preferences - Update model preferences
-router.post('/model-preferences', requireAuth, async (req, res) => {
-  try {
-    const { modelPreferences } = req.body;
-    if (!modelPreferences) {
-      return res.status(400).json({ success: false, error: 'Model preferences required' });
-    }
-    
-    await User.updateOne(
-      { _id: req.session.user },
-      { $set: { modelPreferences } }
-    );
-    
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Model preferences update error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+// Removed duplicate model-preferences endpoint
 
 // POST /settings/password - Change user's password
 router.post('/password', requireAuth, async (req, res) => {

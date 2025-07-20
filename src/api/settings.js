@@ -106,12 +106,15 @@ export async function saveExecutionMode(mode) {
       console.warn(`Warning: Invalid execution mode '${mode}'. Valid options are: ${validModes.join(', ')}`);
     }
     
-    return await post('/settings/execution-mode', { mode });
+    // Use the main settings endpoint with executionMode in the payload
+    return await post('/settings', { executionMode: mode });
   } catch (error) {
     console.error('Error saving execution mode:', error);
     return { success: false, error: error.message };
   }
 }
+
+// Function moved to its original location below
 
 /**
  * Saves model preferences for different task types
@@ -163,12 +166,12 @@ export async function saveLlmPreferences(preferences) {
  */
 export async function saveEnginePreference(engineId) {
   try {
-    return await post('/settings', {
-      preferredEngine: engineId
-    });
+    console.log(`Saving engine preference: ${engineId}`);
+    // Use the user API endpoint for setting the engine
+    return await post('/user/set-engine', { engineId });
   } catch (error) {
     console.error('Error saving engine preference:', error);
-    throw error;
+    return { success: false, error: error.message };
   }
 }
 

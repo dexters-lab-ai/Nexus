@@ -18,15 +18,15 @@ const userSchema = new Schema({
   },
   // Model preferences for different task types
   modelPreferences: {
-    default:   { type: String, default: 'gpt-4o' },
-    code:      { type: String, default: 'gpt-4o' },
-    content:   { type: String, default: 'gpt-4o' },
-    research:  { type: String, default: 'gpt-4o' }
+    default:   { type: String, default: 'gemini-2.5-pro' },
+    code:      { type: String, default: 'gemini-2.5-pro' },
+    content:   { type: String, default: 'gemini-2.5-pro' },
+    research:  { type: String, default: 'gemini-2.5-pro' }
   },
   // General preferences
-  preferredEngine:  { type: String, enum: ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo', 'qwen-2.5-vl-72b', 'gemini-2.5-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'ui-tars', 'claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku', 'grok-1'], default: 'gpt-4o' },
-  executionMode:    { type: String, enum: ['step-planning', 'action-planning'], default: 'step-planning' },
-  maxSteps:         { type: Number, min: 1, max: 50, default: 10 },
+  preferredEngine:  { type: String, enum: ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo', 'qwen-2.5-vl-72b', 'gemini-2.5-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'ui-tars', 'claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku', 'grok-1'], default: 'gemini-2.5-pro' },
+  executionMode:    { type: String, enum: ['step-planning', 'action-planning'], default: 'action-planning' },
+  maxSteps:         { type: Number, min: 1, max: 50, default: 20 },
   privacyMode:      { type: Boolean, default: false },
   customUrls:       { type: [String], default: [] },
   // ADB Configuration

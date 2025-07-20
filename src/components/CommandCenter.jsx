@@ -12,10 +12,31 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import api from '../utils/api.js';
 import NeuralFlow from '../utils/NeuralFlow.js';
+import WebSocketManager from '../utils/WebSocketManager.js';
+// FirebaseHandler import removed - file doesn't exist
+// import FirebaseHandler from "../utils/FirebaseHandler.js";
+import ThoughtBubbleManager from './ThoughtBubbleManager.js';
 // Import environment config
 import config from '../config/env.js';
 // Import AndroidConnection component
 import AndroidConnection from './AndroidConnection.jsx';
+
+// Load the thought bubbles CSS
+function loadThoughtBubbleStyles() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  const cssId = 'thought-bubbles-css';
+  if (!document.getElementById(cssId)) {
+    const href = isProduction ? '/css/components/thought-bubbles.css' : '/src/styles/components/thought-bubbles.css';
+    const linkEl = document.createElement('link');
+    linkEl.rel = 'stylesheet';
+    linkEl.href = href;
+    linkEl.id = cssId;
+    
+    document.head.appendChild(linkEl);
+    console.log('[CommandCenter] Loaded thought bubbles CSS');
+  }
+}
 
 // Tab types
 export const TAB_TYPES = {
@@ -58,6 +79,12 @@ export function CommandCenter(props = {}) {
   // Map to track which tasks already have a neural flow canvas
   // This prevents duplicate canvases for the same task
   const taskCanvasMapping = {};
+  
+  // Load thought bubbles styles
+  loadThoughtBubbleStyles();
+  
+  // Initialize the ThoughtBubbleManager
+  ThoughtBubbleManager.init();
   
   // Create component container
   const container = document.createElement('div');
@@ -573,6 +600,42 @@ export function CommandCenter(props = {}) {
 
   =============================================== */
 
+  /**
+   * Handle sidebar expansion on task events
+   * Expands the sidebar when task events occur if it's currently collapsed
+   */
+  const handleSidebarForTaskEvents = (eventType, data) => {
+    // List of events that should trigger sidebar expansion
+    const taskEvents = [
+      'taskStart', 
+      'taskProgress', 
+      'taskComplete', 
+      'thoughtUpdate', 
+      'thoughtComplete'
+    ];
+    
+    // Check if this is a task-related event that should expand the sidebar
+    if (taskEvents.includes(eventType)) {
+      // Get current sidebar state
+      const { sidebarCollapsed } = uiStore.getState();
+      
+      // Only emit event if sidebar is currently collapsed
+      if (sidebarCollapsed) {
+        console.log(`[CommandCenter] Task event ${eventType} detected, expanding sidebar`);
+        
+        // Emit event to expand sidebar
+        eventBus.emit('expand-sidebar', { 
+          reason: eventType, 
+          taskId: data?.taskId || data?.task_id,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Update UI store directly
+        stores.ui.setState({ sidebarCollapsed: false });
+      }
+    }
+  };
+  
   // Handle WebSocket messages from WebSocketManager
   const handleWebSocketMessage = (message) => {
     try {
@@ -585,6 +648,14 @@ export function CommandCenter(props = {}) {
       // Skip logging for high-frequency events unless debugging
       if (message.event !== 'functionCallPartial') {
         console.log('WebSocket: Received message:', message);
+      }
+      
+      // Skip thought handling here - it's handled in processWebSocketMessage
+      // This prevents double processing of thought updates
+      
+      // Check for task events and handle sidebar expansion
+      if (message.event) {
+        handleSidebarForTaskEvents(message.event, message);
       }
       
       // Forward to the existing message handler if it exists
@@ -618,6 +689,25 @@ export function CommandCenter(props = {}) {
     // Skip ping/pong messages
     if (message.type === 'pong' || message.type === 'ping') {
       return;
+    }
+    
+    // Handle thought streaming events with ThoughtBubbleManager
+    if (message.event === 'thoughtUpdate' || message.event === 'thoughtStart') {
+      const taskId = message.taskId || message.task_id;
+      const thought = message.thought || message.content || 'Thinking...';
+      
+      if (taskId && thought) {
+        // Update or create thought bubble
+        ThoughtBubbleManager.updateThoughtBubble(taskId, thought);
+      }
+    }
+    
+    // Handle thought completion
+    if (message.event === 'thoughtComplete') {
+      const taskId = message.taskId || message.task_id;
+      if (taskId) {
+        ThoughtBubbleManager.completeThoughtBubble(taskId);
+      }
     }
     
     // Handle quota exceeded notifications
@@ -879,6 +969,10 @@ export function CommandCenter(props = {}) {
           console.log('[taskComplete] Adding report URLs to task store:', reportUrls);
           tasksStore.addTaskReports(tid, reportUrls);
         }
+        
+        // Explicitly clear thought bubbles for this task
+        console.log(`[taskComplete] Clearing thought bubbles for task ${tid}`);
+        ThoughtBubbleManager.clearThoughtBubblesForTask(tid);
         
         // Emit thoughtComplete event with completion flag to mark thought bubbles as complete
         // This reuses the existing thoughtComplete handler logic
@@ -2837,24 +2931,6 @@ export function CommandCenter(props = {}) {
           }));
           
           // Close the connection on error
-          es.close();
-          return;
-        }
-        
-        // Handle successful messages
-        if (data.event === 'message' || data.event === 'chunk' || data.event === 'token') {
-          // Handle normal message chunks
-          messagesStore.setState(state => ({
-            timeline: state.timeline.map(msg => 
-              msg.id === thoughtId 
-                ? { 
-                    ...msg, 
-                    content: msg.content + (data.text || data.content || ''),
-                    timestamp: data.timestamp || new Date().toISOString()
-                  }
-                : msg
-            )
-          }));
         }
         
         // Handle completion
@@ -2924,6 +3000,13 @@ export function CommandCenter(props = {}) {
             console.debug('[DEBUG] taskComplete:', data);
             // Close connection only after handling the event
             handleTaskComplete(data);
+            
+            // Clear any thought bubbles for this task
+            const taskId = data.taskId || data.task_id;
+            if (taskId && ThoughtBubbleManager) {
+              ThoughtBubbleManager.clearTaskBubbles(taskId);
+            }
+            
             es.close();
             break;
           case 'taskError':
@@ -4847,7 +4930,7 @@ export function CommandCenter(props = {}) {
             
             setTimeout(() => {
               resultItem.classList.remove('expanded');
-              pre.style.maxHeight = '120px';
+              pre.style.maxHeight = '280px';
               pre.style.display = 'none'; // Hide the JSON content when collapsed
               
               // Re-show any previously hidden elements
