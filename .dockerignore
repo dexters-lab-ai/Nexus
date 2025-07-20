@@ -78,11 +78,6 @@ midscene_run
 !src/**/*.png
 !public/**/*.png
 
-# HTML files (except in src and public directories)
-!index.html
-*.html
-!src/**/*.html
-!public/**/*.html
 
 # Documentation
 *.md
