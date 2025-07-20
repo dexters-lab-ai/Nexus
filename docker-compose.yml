@@ -1,0 +1,125 @@
+version: '3.8'
+
+services:
+  # Development environment
+  app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: development
+    container_name: nexus-app-dev
+    hostname: nexus-dev
+    networks:
+      - nexus-network
+    ports:
+      - "3000:3000"  # Vite dev server
+      - "3420:3420"  # Backend API
+      - "24678:24678" # Vite HMR
+    environment:
+      - NODE_ENV=development
+      - DOCKER=true
+      - PORT=3420
+      - VITE_API_URL=http://localhost:3420
+      - VITE_WS_URL=ws://localhost:3420
+      - FRONTEND_URL=http://localhost:3000
+      - APP_DOMAIN=localhost
+      - NEXUS_RUN_DIR=/usr/src/app/nexus_run
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+      # Uncomment for debugging
+      # - DEBUG=vite:*
+      # - NODE_OPTIONS=--inspect=0.0.0.0:9229
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
+      - /usr/src/app/.vite
+      - nexus_data:/usr/src/app/nexus_run
+      - ./config:/usr/src/app/config:ro
+    working_dir: /usr/src/app
+    init: true
+    healthcheck:
+      test: ["CMD", "node", "healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+
+  # Production environment
+  app-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: nexus-app-prod
+    hostname: nexus-prod
+    networks:
+      - nexus-network
+    ports:
+      - "80:3000"
+      - "443:3420"
+    environment:
+      - NODE_ENV=production
+      - DOCKER=true
+      - PORT=3420
+      - VITE_API_URL=/
+      - NEXUS_RUN_DIR=/usr/src/app/nexus_run
+    volumes:
+      - nexus_data:/usr/src/app/nexus_run
+      - ./config:/usr/src/app/config:ro
+    working_dir: /usr/src/app
+    init: true
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+
+  # Database (example - uncomment and configure as needed)
+  # mongodb:
+  #   image: mongo:6.0
+  #   container_name: nexus-mongodb
+  #   environment:
+  #     - MONGO_INITDB_ROOT_USERNAME=root
+  #     - MONGO_INITDB_ROOT_PASSWORD=example
+  #   volumes:
+  #     - mongodb_data:/data/db
+  #   ports:
+  #     - "27017:27017"
+  #   networks:
+  #     - nexus-network
+  #   restart: unless-stopped
+
+networks:
+  nexus-network:
+    driver: bridge
+
+volumes:
+  nexus_data:
+    name: nexus_app_data
+    driver: local
+  # mongodb_data:
