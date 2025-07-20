@@ -3019,7 +3019,7 @@ async function clearDatabaseOnce() {
     if (process.env.CLEAR_DB_ON_START === 'true') {
       console.log('Clearing database...');
       await Promise.all([
-        User.deleteMany({}),
+        //User.deleteMany({}),
         Message.deleteMany({}),
         Task.deleteMany({}),
         ChatHistory.deleteMany({}),
@@ -5263,8 +5263,8 @@ export async function checkEngineApiKey(userId, engineName) {
   console.log(`[API Key Check] Checking API key for engine ${engineName}`);
   // Validate the engine name is one we support
   if (!Object.keys(ENGINE_KEY_MAPPING).includes(engineName)) {
-    console.warn(`Unsupported engine requested: ${engineName}, falling back to gpt-4o`);
-    engineName = 'gpt-4o'; // Default fallback
+    console.warn(`Unsupported engine requested: ${engineName}, falling back to gemini-2.5-pro`);
+    engineName = 'gemini-2.5-pro'; // Default fallback
   }
   
   // Map from engine name to API key type
@@ -5298,11 +5298,11 @@ export async function checkEngineApiKey(userId, engineName) {
 
   if (!user) {
     return { 
-      hasKey: DEFAULT_KEYS['openai'].length > 0, 
+      hasKey: DEFAULT_KEYS['google'].length > 0, 
       keySource: 'system-default',
       usingDefault: true,
-      engine: 'gpt-4o', // Always fall back to GPT-4o for missing users
-      keyType: 'openai'
+      engine: 'gemini-2.5-pro', // Always fall back to Gemini for missing users
+      keyType: 'google'
     };
   }
 
@@ -5360,14 +5360,13 @@ export async function checkEngineApiKey(userId, engineName) {
   return { 
     hasKey: false, 
     keySource: 'none', 
-    usingDefault: false, 
+    usingDefault: true, 
     engine: engineName,
     keyType: apiKeyType,
-    fallbackEngine: 'gpt-4o',
-    fallbackKeyType: 'openai'
+    fallbackEngine: 'gemini-2.5-pro',
+    fallbackKeyType: 'google'
   };
 }
-
 /**
  * Notify a user about API key status
  * @param {string} userId - User ID
@@ -8614,12 +8613,22 @@ async function* streamNliThoughts(userId, prompt) {
   
   console.log(`[Chat] Creating stream with model: ${chatModel}`);
   
-  const systemMessage = `You are Nexus, an AI assistant with chat and task capabilities. For general conversation, 
-  simply respond helpfully and clearly. DO NOT use tools unless the user explicitly asks for a task, web search, 
-  or cryptocurrency information.
-
+  const systemMessage = `You are O.P.E.R.A.T.O.R. an AI assistant with chat and task capabilities. For general conversation, 
+  simply respond helpfully and clearly. DO NOT use tools unless the user explicitly asks for a task.
 Only use tools when:
-- The user asks you to perform a web task (use process_task)`;
+- The user asks you to perform a web task (use process_task)
+
+When executing tasks with process_task:
+1. First explain what you'll do and emit a thoughtUpdate
+2. Call process_task with a clear command
+3. Wait for and monitor task execution results
+4. Based on the results:
+   - If successful, summarize the outcome
+   - If unsuccessful or incomplete, consider retrying or suggest alternatives
+   - If additional steps are needed, plan next actions
+5. Only conclude when the user's intent has been satisfied
+
+You will receive streaming updates as tasks execute. Use this information to provide progress updates and make decisions about next steps.`;
   
   const standardTools = [
     {

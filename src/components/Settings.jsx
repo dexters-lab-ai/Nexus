@@ -224,10 +224,10 @@ function SettingsModal(props = {}) {
       notificationPosition: 'bottom-left'
     },
     llmPreferences: {
-      default: 'gpt-4',
-      code: 'gpt-4',
-      content: 'gpt-4',
-      research: 'gpt-4'
+      default: 'gemini-2.5-pro',
+      code: 'gemini-2.5-pro',
+      content: 'gemini-2.5-pro',
+      research: 'gemini-2.5-pro'
     }
   };
 
@@ -535,8 +535,8 @@ function SettingsModal(props = {}) {
       <div class="llm-dropdown-container">
         <label for="browser-llm-model" class="llm-dropdown-label">Browser Automation Model</label>
         <select id="browser-llm-model" class="llm-dropdown">
-          <option value="gpt-4o">GPT-4o (OpenAI) - Recommended</option>
-          <option value="gemini-2.5-pro">Gemini 2.5 Pro (Google)</option>
+          <option value="gpt-4o">Gemini 2.5 Pro (Google) - Recommended</option>
+          <option value="gemini-2.5-pro">GPT-4o (OpenAI)</option>
           <option value="qwen-2.5-vl-72b">Qwen 2.5 VL (Alibaba)</option>
           <option value="ui-tars">UI-TARS (ByteDance)</option>
         </select>
@@ -552,8 +552,8 @@ function SettingsModal(props = {}) {
           min="1"
           max="50"
           step="1"
-          value="10"
-          placeholder="10"
+          value="20"
+          placeholder="20"
         />
         <div class="llm-tooltip" data-tooltip="Maximum number of steps allowed for task execution. Higher values allow more complex tasks but may increase execution time and cost.">?</div>
       </div>

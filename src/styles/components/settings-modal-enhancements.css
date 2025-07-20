@@ -196,3 +196,52 @@
   line-height: 1.4 !important;
   margin: 0 !important;
 }
+
+/* Mobile-specific adjustments for Settings Modal */
+@media (max-width: 768px) {
+  .nexus-api-key-input-group {
+    margin-bottom: 15px !important;
+  }
+
+  .nexus-settings-input {
+    padding: 8px 10px !important;
+    padding-right: 85px !important; /* Adjust for smaller buttons */
+    height: 40px !important;
+    font-size: 13px !important;
+  }
+
+  /* Ensure input fields are selectable and interactive on mobile */
+  .nexus-settings-input,
+  .nexus-settings-input[type="password"],
+  .nexus-settings-input[type="text"] {
+    -webkit-user-select: auto !important; /* Allow selection for iOS */
+    user-select: auto !important; /* Standard property */
+    pointer-events: auto !important; /* Ensure taps are registered */
+  }
+
+  /* Adjust button positions and sizes */
+  .nexus-toggle-visibility {
+    right: 50px !important;
+    height: 28px !important;
+    width: 28px !important;
+  }
+
+  .nexus-save-btn {
+    right: 50px !important; /* This might need adjustment based on visibility toggle */
+    display: none; /* Hiding individual save on mobile for simplicity */
+  }
+
+  .nexus-delete-btn {
+    right: 10px !important;
+    height: 28px !important;
+    min-width: 30px !important;
+  }
+
+  .model-card {
+    padding: 12px !important;
+  }
+
+  .settings-section-title {
+    font-size: 16px !important;
+  }
+}

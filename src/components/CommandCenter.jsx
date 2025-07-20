@@ -2286,8 +2286,8 @@ export function CommandCenter(props = {}) {
   };
   
   // Default to GPT-4o
-  let selectedEngine = 'gpt-4o';
-  let availableEngines = ['gpt-4o'];
+  let selectedEngine = 'gemini-2.5-pro';
+  let availableEngines = ['gemini-2.5-pro'];
   
   // Create trigger button
   const engineTrigger = document.createElement('button');
@@ -2303,7 +2303,7 @@ export function CommandCenter(props = {}) {
       // Initialize with defaults for resilience
       availableEngines = Object.keys(engineIcons);
       // Default to GPT-4o as fallback
-      selectedEngine = 'gpt-4o';
+      selectedEngine = 'gemini-2.5-pro';
       
       // Update the dropdown trigger with default
       const iconEl = engineTrigger.querySelector('i:first-child');
@@ -4930,7 +4930,7 @@ export function CommandCenter(props = {}) {
             
             setTimeout(() => {
               resultItem.classList.remove('expanded');
-              pre.style.maxHeight = '280px';
+              pre.style.maxHeight = '120px';
               pre.style.display = 'none'; // Hide the JSON content when collapsed
               
               // Re-show any previously hidden elements

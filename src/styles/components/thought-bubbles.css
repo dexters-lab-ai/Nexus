@@ -22,6 +22,7 @@
 /* Styling for individual thought bubbles */
 .msg-thought-item {
   position: relative;
+  display: block !important;
   background-color: rgba(20, 30, 60, 0.85) !important; 
   border: 1px solid rgba(100, 130, 255, 0.6) !important;
   border-radius: 8px !important;
