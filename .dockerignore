@@ -1,0 +1,100 @@
+# Node.js
+node_modules
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.test
+!.env.production
+!.env.example
+
+# Version control
+.git
+.gitmodules
+.gitignore
+.github
+.gitattributes
+
+# Editor directories and files
+.vscode
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build directories
+/dist
+/build
+/coverage
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Misc
+*.pem
+*.p12
+*.key
+*.crt
+*.cer
+*.p7b
+*.p7s
+*.p7c
+*.p7m
+*.p8
+*.p10
+*.pfx
+*.csr
+*.srl
+
+# Large runtime-generated directories
+nexus_run/**
+nexus_run
+/nexus_run
+midscene_run/**
+midscene_run
+/midscene_run
+
+# Image files (except in src and public directories)
+*.png
+!src/**/*.png
+!public/**/*.png
+
+# HTML files (except in src and public directories)
+*.html
+!src/**/*.html
+!public/**/*.html
+
+# Documentation
+*.md
+*.markdown
+
+# Local development
+.temp
+.tmp
+.cache
+
+# Debug
+.nyc_output
+
+# Testing
+/cypress/videos
+/cypress/screenshots
