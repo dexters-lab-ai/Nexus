@@ -98,6 +98,13 @@ Thumbs.db
 
 # Project specific
 .vercel
+
+# Generated runtime files
+nexus_run/**
+*.png
+*.html
+!src/**/*.html
+!public/**/*.html
 .temp
 .cache
 *.pem
@@ -118,5 +125,3 @@ sentinel_report/tmp
 # Midscene.js dump files
 midscene_run/report
 midscene_run/tmp
-
-nexus_run
