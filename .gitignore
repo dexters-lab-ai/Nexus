@@ -70,7 +70,7 @@ out
 out
 
 # Docker
-Dockerfile
+# Dockerfile is now allowed so it can be deployed
 .dockerignore
 docker-compose.override.yml
 
