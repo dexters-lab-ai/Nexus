@@ -39,7 +39,7 @@ class WebSocketManager {
     this.pingInterval = null;
     this.lastPongTime = null;
     this.connectionId = null;
-    this.pingTimeout = null;
+    this.pingTimeoutId = null;
     this.connectionTimeout = null;
     this.isAlive = false;
     this.isReconnecting = false;
@@ -611,7 +611,7 @@ class WebSocketManager {
         
         // Set timeout for pong response
         this.clearPingTimeout();
-        this.pingTimeout = setTimeout(() => {
+        this.pingTimeoutId = setTimeout(() => {
           this.pingTimeout();
         }, this.config.PONG_TIMEOUT);
         
@@ -696,9 +696,9 @@ class WebSocketManager {
    * Clear the ping timeout
    */
   clearPingTimeout() {
-    if (this.pingTimeout) {
-      clearTimeout(this.pingTimeout);
-      this.pingTimeout = null;
+    if (this.pingTimeoutId) {
+      clearTimeout(this.pingTimeoutId);
+      this.pingTimeoutId = null;
     }
   }
 

@@ -819,15 +819,8 @@ export function CommandCenter(props = {}) {
             if (stepCount <= 3) {
               canvasBubble.classList.add('size-small');
               canvasBubble.style.height = '350px';
-            } else if (stepCount <= 7) {
-              canvasBubble.classList.add('size-medium');
-              canvasBubble.style.height = '600px';
-            } else if (stepCount <= 12) {
-              canvasBubble.classList.add('size-large');
-              canvasBubble.style.height = '800px';
             } else {
-              canvasBubble.classList.add('size-xlarge');
-              canvasBubble.style.height = '1600px';
+              canvasBubble.classList.add('size-small');
             }
             
             // Make sure the canvas is properly initialized
@@ -849,43 +842,22 @@ export function CommandCenter(props = {}) {
             
             console.log(`[CANVAS RESIZE] Task ${message.taskId}, Steps: ${stepCount}, Height: ${canvasBubble.style.height}`);
             
-            // Check if we already have the content elements
-            let titleEl = canvasBubble.querySelector('.thought-title');
-            let preEl = canvasBubble.querySelector('.typing-content');
-            
-            // If content doesn't exist yet, create the structure
-            if (!titleEl || !preEl) {
-              // Clear only if we need to create new elements
-              canvasBubble.innerHTML = '';
-              
-              // Add the thought title and typing content container
-              canvasBubble.innerHTML = `<div class="thought-title"><em>Function:</em> ${message.functionName}</div><pre class="typing-content thought-text"></pre>`;
-              
-              // Get references to the newly created elements
-              titleEl = canvasBubble.querySelector('.thought-title');
-              preEl = canvasBubble.querySelector('.typing-content');
-            } else {
-              // Just update the title if it already exists
-              titleEl.innerHTML = `<em>Function:</em> ${message.functionName}`;
-            }
-            
-            // Set up the typing animation effect for the function call arguments
-            const text = JSON.stringify(args, null, 2);
-            let i = 0; 
-            const ti = setInterval(() => { 
-              preEl.textContent += text.charAt(i++); 
-              canvasBubble.scrollTop = canvasBubble.scrollHeight; 
-              if (i >= text.length) clearInterval(ti); 
-            }, 20);
-            
             try {
               // Ensure bubble is in thinking state for visualization
               canvasBubble.classList.add('typing-bubble', 'typing', 'thinking');
               
               // Create or update the neural flow visualization
+              // IMPORTANT: Only create NeuralFlow if it doesn't already exist
               if (!neuralFlows[message.taskId]) {
-                console.log(`Creating new NeuralFlow for task ${message.taskId}`);
-                neuralFlows[message.taskId] = new NeuralFlow(canvasBubble);
+                // Find the dedicated flow container instead of using the whole bubble
+                const flowContainer = canvasBubble.querySelector('.neural-flow-container');
+                if (flowContainer) {
+                  console.log(`Creating new NeuralFlow for task ${message.taskId} in dedicated container`);
+                  neuralFlows[message.taskId] = new NeuralFlow(flowContainer);
+                } else {
+                  console.log(`Creating new NeuralFlow for task ${message.taskId}`);
+                  neuralFlows[message.taskId] = new NeuralFlow(canvasBubble);
+                }
               }
               
               // Find the flow container for adding nodes
@@ -987,651 +959,53 @@ export function CommandCenter(props = {}) {
       }
 
       // Handle NLI response events (when assistant responses are shown)
-      if (message.event === 'nliResponsePersisted') {
-        console.log('[DEBUG] nliResponsePersisted event received - transitioning any active thought messages');
-        
-        const tid = message.taskId; // Logs show this exact attribute name
-        const thought = message.thought; // Logs show this exact attribute name
-        
-        if (!tid || !thought) {
-          console.warn('thoughtUpdate message missing taskId or thought content:', message);
-          return;
-        }
-        
-        // Look for an active thought stream in our new collection
-        // This supports multiple parallel thought streams
-        if (window.activeThoughtStreams && window.activeThoughtStreams[tid]) {
-          const stream = window.activeThoughtStreams[tid];
-          
-          // CRITICAL FIX: Instead of appending to the buffer, replace it with the newest content
-          // This ensures we only display the most recent step info in a minimal way
-          stream.buffer = thought;
-          stream.lastUpdated = Date.now();
-          
-          // Extract just the step information
-          const stepMatch = stream.buffer.match(/Executing\s+step\s+\d+:\s*(.+)/i) || 
-                            stream.buffer.match(/Step\s+\d+[^\n]*/i);
-          
-          // If we don't have a step match, don't render anything to prevent duplicates
-          if (!stepMatch) {
-            stream.element.innerHTML = '';
-            return;
-          }
-          
-          let displayContent = stepMatch[0];
-          
-          // Clean up the display content
-          displayContent = displayContent
-            .replace(/^Executing\s+step\s+\d+:?\s*/i, '') // Remove 'Executing step X:' prefix
-            .replace(/\*\*([^*]+)\*\*/g, '$1') // Remove markdown bold
-            .replace(/\*([^*]+)\*/g, '$1') // Remove markdown italic
+      if (message.event === 'nliResponsePersisted' || message.event === 'thoughtUpdate') {
+        const tid = message.task_id || message.taskId;
+        const thought = message.text || message.thought || message.content;
+
+        if (tid && thought) {
+          // Clean up the thought content for display, removing prefixes and extra whitespace.
+          const cleanedThought = thought
+            .replace(/Executing\s+step\s+\d+:/i, '')
+            .replace(/<br\s*\/?>/gi, ' ')
+            .replace(/\s+/g, ' ')
             .trim();
-          
-          // Get the step number
-          const stepNumberMatch = stream.buffer.match(/\d+/);
-          const stepNumber = stepNumberMatch ? stepNumberMatch[0] : '?';
-          
-          // Update the content with clean step info
-          if (stream.element) {
-            // Clear any existing content first to prevent duplicates
-            stream.element.innerHTML = '';
-            
-            // Create a single clean step display
-            const stepDiv = document.createElement('div');
-            stepDiv.className = 'step-message';
-            stepDiv.style.cssText = 'font-size: 0.9em; padding: 4px 0;';
-            
-            stepDiv.innerHTML = `
-              <div class="step-header" style="display: flex; align-items: center;">
-                <div class="step-number-badge" style="background: linear-gradient(135deg, var(--theme-primary-color), var(--theme-secondary-color)); color: white; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 8px; font-size: 0.8rem;">
-                  ${stepNumber}
-                </div>
-                <div class="step-title" style="font-weight: 500; font-size: 0.9rem; color: #ffffff;">
-                  ${displayContent}
-                </div>
-              </div>
-            `;
-            
-            stream.element.appendChild(stepDiv);
-            
-            // Auto-scroll to bottom
-            stream.element.scrollTop = stream.element.scrollHeight;
-            
-            // Make sure the container is visible
-            const container = stream.element.closest('.msg-item');
-            if (container) {
-              container.style.display = 'block';
-              container.style.opacity = '1';
-            }
-          }
-          
-          console.log(`[thoughtUpdate] Updated thought stream for task ${tid}`);
-        } else {
-          console.warn(`[thoughtUpdate] No active thought stream found for task ${tid}`);
-          
-          // Try to find or create a container
-          try {
-            // Check if we need to create a new container
-            const isNli = sessionStorage.getItem(`nli-task-${tid}`) === 'true';
-            const { container, contentDiv } = createThoughtContainer(tid, isNli);
-            
-            const messageTimeline = document.querySelector('.message-timeline-container');
-            if (messageTimeline) {
-              // Add to timeline
-              messageTimeline.appendChild(container);
-              
-              // Initialize the stream
-              if (!window.activeThoughtStreams) window.activeThoughtStreams = {};
-              window.activeThoughtStreams[tid] = {
-                element: contentDiv,
-                buffer: thought, // Start with this thought
-                taskId: tid,
-                isNli: isNli,
-                lastUpdated: Date.now()
-              };
-              
-              // Extract just the step information for the initial thought
-              const stepMatch = thought.match(/Executing\s+step\s+\d+:\s*(.+)/i) || 
-                                thought.match(/Step\s+\d+[^\n]*/i);
-              
-              // If we don't have a step match, don't render anything to prevent duplicates
-              if (!stepMatch) {
-                contentDiv.innerHTML = '';
-                return;
-              }
-              
-              let displayContent = stepMatch[0];
-              
-              // Clean up the display content
-              displayContent = displayContent
-                .replace(/^Executing\s+step\s+\d+:?\s*/i, '') // Remove 'Executing step X:' prefix
-                .replace(/\*\*([^*]+)\*\*/g, '$1') // Remove markdown bold
-                .replace(/\*([^*]+)\*/g, '$1') // Remove markdown italic
-                .trim();
-              
-              // Get the step number
-              const stepNumberMatch = thought.match(/\d+/);
-              const stepNumber = stepNumberMatch ? stepNumberMatch[0] : '?';
-              
-              // Clear any existing content first to prevent duplicates
-              contentDiv.innerHTML = '';
-              
-              // Create a single clean step display
-              const stepDiv = document.createElement('div');
-              stepDiv.className = 'step-message';
-              stepDiv.style.cssText = 'font-size: 0.9em; padding: 4px 0;';
-              
-              stepDiv.innerHTML = `
-                <div class="step-header" style="display: flex; align-items: center;">
-                  <div class="step-number-badge" style="background: linear-gradient(135deg, var(--theme-primary-color), var(--theme-secondary-color)); color: white; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 8px; font-size: 0.8rem;">
-                    ${stepNumber}
-                  </div>
-                  <div class="step-title" style="font-weight: 500; font-size: 0.9rem; color: #ffffff;">
-                    ${displayContent}
-                  </div>
-                </div>
-              `;
-              
-              contentDiv.appendChild(stepDiv);
-              
-              console.log(`[thoughtUpdate] Created new thought stream for task ${tid}`);
-            }
-          } catch (err) {
-            console.error('[thoughtUpdate] Error creating thought container:', err);
+
+          if (cleanedThought) {
+            window.ThoughtBubbleManager.updateThoughtBubble(tid, cleanedThought);
           }
         }
-        
-        // Stop event propagation - we're handling this thought update in the correct container now
         eventHandled = true;
         return;
       }
-      
+
       if (message.event === 'thoughtComplete') {
         console.debug('[DEBUG] WS thoughtComplete:', message);
         const tid = message.task_id || message.taskId;
-        const thoughtContent = message.text || message.thought || message.content || message.thoughtContent || message.message || 
-                             (message.error ? message.error.message : '');
-        
-        // Handle error state in thought bubble
-        if (message.isError || message.error) {
-          const errorData = message.error || {};
-          const errorClass = errorData.type === 'quota_exceeded' ? 'quota-error' : 'error';
-          const errorMessage = errorData.message || 'An error occurred';
-          
-          // Update the thought bubble with error styling
-          // First try with data-task-id
-          let thoughtBubble = document.querySelector(`.thought-bubble[data-task-id="${tid}"]`);
-          
-          // If not found, look for any thought bubble with data-message-id that starts with "thought-"
-          // and contains the task ID as part of the message content
-          if (!thoughtBubble) {
-            console.log(`[thoughtComplete] Looking for thought bubbles for task ${tid}...`);
-            const allThoughtBubbles = document.querySelectorAll('.msg-thought-item');
+
+        if (tid) {
+          if (message.isError || message.error) {
+            const errorData = message.error || {};
+            const errorMessage = errorData.message || 'An error occurred during the thought process.';
             
-            // Convert to array and find the most recent one
-            const matchingBubbles = Array.from(allThoughtBubbles).filter(el => {
-              const messageId = el.getAttribute('data-message-id') || '';
-              return messageId.startsWith('thought-');
-            });
+            // Update the bubble to display the error message.
+            window.ThoughtBubbleManager.updateThoughtBubble(tid, `Error: ${errorMessage}`);
             
-            if (matchingBubbles.length > 0) {
-              // Use the most recently created one (assuming it's the active one)
-              thoughtBubble = matchingBubbles[matchingBubbles.length - 1];
-              console.log(`[thoughtComplete] Found matching thought bubble with ID: ${thoughtBubble.getAttribute('data-message-id')}`);
-            }  
-          }
-          if (thoughtBubble) {
-            thoughtBubble.classList.add(errorClass);
-            const errorElement = document.createElement('div');
-            errorElement.className = 'error-message';
-            errorElement.textContent = errorMessage;
-            thoughtBubble.appendChild(errorElement);
-          }
-        }
-        
-        // Check if we have an active thought stream for this task
-        const hasActiveStream = window.activeThoughtStreams && window.activeThoughtStreams[tid];
-        
-        // Flag to determine if this is an NLI task
-        const isNliTask = sessionStorage.getItem(`nli-task-${tid}`) === 'true' || 
-                        (hasActiveStream && window.activeThoughtStreams[tid].isNli);
-        
-        // Store in message history as system message
-        if (thoughtContent && tid) {
-          // Generate a more unique ID with timestamp and random string
-          const generateId = () => {
-            return `thought-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          };
-          
-          const historyItem = {
-            id: generateId(),
-            role: 'assistant', 
-            type: 'thought',
-            content: thoughtContent,
-            task_id: tid,
-            timestamp: Date.now()
-          };
-          try {
-            messagesStore.addMessage(historyItem);
-          } catch (err) {
-            console.error('Error adding message to history:', err);
-          }
-        }
-        
-        // CRITICAL: First use our active thought streams rather than searching DOM
-        let thoughtElement = null;
-        let thoughtContainer = null;
-        
-        // Check if we have an active stream first - this is our preferred approach
-        if (hasActiveStream) {
-          const stream = window.activeThoughtStreams[tid];
-          thoughtElement = stream.element;
-          thoughtContainer = thoughtElement.closest('.msg-item');
-          console.log('[thoughtComplete] Found active thought stream to update for task:', tid);
-        } else {
-          // Fallback: search in DOM as a last resort
-          console.log('[thoughtComplete] No active stream found, searching DOM for task:', tid);
-          
-          // Try all possible selectors to find the thought bubble
-          thoughtContainer = document.querySelector(`[data-message-id="thought-${tid}"]`) ||
-                           document.querySelector(`.msg-thought[data-task-id="${tid}"]:not(.task-complete-card)`) ||
-                           document.querySelector(`.msg-thought-item[data-task-id="${tid}"]`);
-          
-          // If still not found, try finding any thought bubble with a randomly generated ID
-          if (!thoughtContainer) {
-            console.log('[thoughtComplete] Searching for any thought bubble with random ID...');
-            // Get all thought bubbles
-            const allThoughtBubbles = document.querySelectorAll('.msg-thought-item');
-            
-            // Look for the most recently created one that's not already completed
-            const incompleteThoughtBubbles = Array.from(allThoughtBubbles).filter(el => {
-              // Check if it has a message-id that starts with "thought-"
-              const messageId = el.getAttribute('data-message-id') || '';
-              const hasThoughtId = messageId.startsWith('thought-');
-              
-              // Check if it's not already marked as complete
-              const notComplete = !el.classList.contains('thought-complete') && 
-                                !el.classList.contains('complete') && 
-                                !el.classList.contains('task-complete-card');
-              
-              return hasThoughtId && notComplete;
-            });
-            
-            if (incompleteThoughtBubbles.length > 0) {
-              // Use the most recently created one (should be the active one)
-              thoughtContainer = incompleteThoughtBubbles[incompleteThoughtBubbles.length - 1];
-              console.log(`[thoughtComplete] Found incomplete thought bubble with ID: ${thoughtContainer.getAttribute('data-message-id')}`);
-              
-              // Associate this thought bubble with the task ID for future reference
-              thoughtContainer.setAttribute('data-task-id', tid);
-            }
-          }
-          
-          if (!thoughtContainer && isNliTask) {
-            // For NLI tasks with no container, do a more aggressive search
-            const allCards = document.querySelectorAll('.msg-item');
-            for (const card of allCards) {
-              if (card.textContent.includes('THINKING...')) {
-                thoughtContainer = card;
-                // Claim this card if found
-                card.setAttribute('data-task-id', tid);
-                card.setAttribute('data-message-id', `thought-${tid}`);
-                break;
-              }
-            }
-          }
-          
-          // Find the content element if we found a container
-          if (thoughtContainer) {
-            thoughtElement = thoughtContainer.querySelector('.msg-content');
-            if (!thoughtElement) {
-              thoughtElement = document.createElement('div');
-              thoughtElement.className = 'msg-content';
-              thoughtElement.style.maxHeight = '200px';
-              thoughtElement.style.overflowY = 'auto';
-              thoughtContainer.appendChild(thoughtElement);
-            }
-          }
-        }
-        
-        // CRITICAL: Skip any completed cards (task-complete, complete, thought-complete)
-        if (thoughtContainer && (
-          thoughtContainer.classList.contains('task-complete-card') ||
-          thoughtContainer.classList.contains('complete') ||
-          thoughtContainer.classList.contains('thought-complete')
-        )) {
-          console.log(`[thoughtComplete] Skipping completed card for task ${tid}`, {
-            hasTaskComplete: thoughtContainer.classList.contains('task-complete-card'),
-            hasComplete: thoughtContainer.classList.contains('complete'),
-            hasThoughtComplete: thoughtContainer.classList.contains('thought-complete')
-          });
-          thoughtContainer = null;
-          thoughtElement = null;
-          return; // Exit early to prevent further processing
-        }
-        
-        // For NLI tasks, NEVER create a new container during thoughtComplete - it causes unwanted movement
-        // Only create new containers for direct tasks or if explicitly required
-        if (!thoughtContainer || !thoughtElement) {
-          // Check if this is an NLI task
-          const isNliTaskComplete = [
-            // Check for explicit NLI flag
-            isNliTask === true,
-            // Check session storage
-            sessionStorage.getItem(`nli-task-${tid}`) === 'true',
-            // Check task ID pattern
-            tid && (tid.includes('nli') || tid.includes('assistant')),
-          ].some(check => check === true);
-          
-          if (!isNliTaskComplete) {
-            // ONLY for direct tasks, create a new container
-            console.log('[thoughtComplete] Creating new thought container for completed thought (direct task)');
-            const { container, contentDiv } = createThoughtContainer(tid, false);
-            thoughtContainer = container;
-            thoughtElement = contentDiv;
-            
-            // Add to timeline - critical to use message-timeline-container, not message-timeline
-            const messageTimeline = document.querySelector('.message-timeline-container');
-            if (messageTimeline) {
-              messageTimeline.appendChild(container);
-            }
-          } else {
-            // For NLI tasks, log but don't create or reposition anything
-            console.log('[thoughtComplete] NLI task container not found, but skipping creation to prevent movement');
-            
-            // Safety measure to prevent further processing that could cause transitions
-            return;
-          }
-        }
-        
-        if (thoughtContainer && thoughtElement) {
-          // Update the existing thought message with the completion content
-          console.log('[thoughtComplete] Updating thought container for task:', tid);
-          
-          // CRITICAL: For NLI tasks, replace streaming buffer with final thought
-          if (thoughtContent) {
-            // Format the thought content nicely
-            const formattedText = thoughtContent
-              .replace(/\n\n/g, '<br><br>')
-              .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-              .replace(/\*([^*]+)\*/g, '<em>$1</em>');
-            
-            // Clear the streaming buffer for this task as we now have the final content
-            if (window.activeThoughtStreams && window.activeThoughtStreams[tid]) {
-              window.activeThoughtStreams[tid].buffer = formattedText;
-            }
-            sessionStorage.removeItem(`nli-task-buffer-${tid}`);
-            
-            // Set the complete content directly (don't append)
-            thoughtElement.innerHTML = formattedText;
-            
-            // Ensure content area is properly styled
-            thoughtElement.style.maxHeight = '200px';
-            thoughtElement.style.overflowY = 'auto';
-            thoughtElement.style.scrollBehavior = 'smooth';
-            thoughtElement.style.paddingRight = '5px';
-          }
-          
-          // Determine if this is an NLI task through comprehensive checks
-          const msgId = thoughtContainer.getAttribute('data-message-id') || '';
-          const taskAttrib = thoughtContainer.getAttribute('data-task-id') || '';
-          
-          // Comprehensive NLI task detection
-          const isNliTask = [
-              // Check message ID pattern which indicates NLI
-              msgId.includes('thought-'),
-              // Check for streaming attributes
-              taskAttrib.includes('-streaming'),
-              // Check if this is in NLI task mapping
-              window.taskNliMapping && window.taskNliMapping[tid] === true,
-              // Check session storage
-              sessionStorage.getItem(`nli-task-${tid}`) === 'true',
-              // Check for streaming class
-              thoughtContainer.classList.contains('msg-thought-item'),
-              // Check for NLI specific indicators in the task ID
-              tid && (tid.includes('nli') || tid.includes('assistant'))
-          ].some(check => check === true);
-          
-          console.log(`[thoughtComplete] Task ${tid} NLI detection result: ${isNliTask}`);
-          
-          // Update visual indicators differently based on task type
-          const typeDiv = thoughtContainer.querySelector('.msg-type');
-          if (typeDiv) {
-            if (isNliTask) {
-              // FOR NLI TASKS: DO NOT MODIFY THE TEXT OR ADD CLASSES
-              console.log(`[thoughtComplete] Preserving NLI thought text for task ${tid}`);
-              // We leave the text as is - no changes at all
-            } else {
-              // Only for non-NLI tasks, use standard completion styling
-              typeDiv.textContent = 'Complete';
-              typeDiv.classList.add('complete', 'thought-complete');
-              typeDiv.classList.remove('typing', 'typing-bubble', 'thinking');
-            }
-          }
-          
-          // Different styling for NLI vs regular tasks
-          if (isNliTask) {
-            console.log(`[thoughtComplete] Preserving NLI container styling for task ${tid}`);
-            // FOR NLI TASKS: DO NOT ADD ANY COMPLETION CLASSES
-            // Only remove transitioning class to prevent animations
-            thoughtContainer.classList.remove('transitioning');
-            
-            // Ensure it's visible but don't change styling
-            thoughtContainer.style.opacity = '1';
-            thoughtContainer.style.display = 'block';
-            thoughtContainer.style.fontStyle = 'normal';
-          } else {
-            // For regular tasks, add the standard completion classes
-            thoughtContainer.classList.add('thought-complete', 'complete');
-            thoughtContainer.classList.remove('typing', 'typing-bubble', 'thinking');
-          }
-          
-          // Ensure container is fully visible
-          thoughtContainer.style.opacity = '1';
-          thoughtContainer.style.display = 'block';
-          thoughtContainer.style.fontStyle = 'normal';
-          
-          // Clean up activeThoughtStreams reference
-          if (window.activeThoughtStreams && window.activeThoughtStreams[tid]) {
-            delete window.activeThoughtStreams[tid];
-          }
-          
-          // Add to task steps store
-          tasksStore.addStepLog(tid, {
-            type: 'thought',
-            content: thoughtContent,
-            timestamp: new Date().toISOString()
-          });
-          
-          // CRITICAL: Create or update task completion message
-          // But ONLY for non-NLI tasks - skip for NLI tasks completely
-          const messageTimeline = document.querySelector('.message-timeline-container');
-          if (messageTimeline && thoughtContent && !isNliTask) {
-            console.log(`[thoughtComplete] Creating task completion message for NON-NLI task ${tid}`);
-            
-            // First check if we already have a completion card for this task
-            let completionMsg = document.querySelector(`.task-complete-card[data-task-id="${tid}"]`);
-            
-            if (!completionMsg) {
-              // Create a fresh completion message
-              completionMsg = document.createElement('div');
-              completionMsg.className = 'msg-item msg-assistant task-complete-card';
-              completionMsg.setAttribute('data-task-id', tid);
-              completionMsg.setAttribute('data-message-id', `completion-${tid}`);
-              
-              // Style the completion card appropriately
-              completionMsg.style.display = 'block';
-              completionMsg.style.opacity = '1';
-              completionMsg.style.width = '100%';
-              completionMsg.style.margin = '10px 0';
-              completionMsg.style.padding = '10px';
-              completionMsg.style.borderRadius = '8px';
-              completionMsg.style.backgroundColor = 'rgba(20, 30, 60, 0.6)';
-              
-              // Add to timeline
-              messageTimeline.appendChild(completionMsg);
-              console.log(`[thoughtComplete] Added new completion card for task ${tid}`);
-            } else {
-              console.log(`[thoughtComplete] Found existing completion card for task ${tid}`);
-            }
-            
-            // Process thought content for the completion card
-            let processedContent = thoughtContent || 'Task completed successfully';
-            
-            // Replace URLs with formatted links
-            const urlRegex = /(https?:\/\/[^\s]+)/g;
-            processedContent = processedContent.replace(urlRegex, (url) => {
-              // Extract domain for display text
-              let displayText = 'live url';
-              try {
-                const urlObj = new URL(url);
-                displayText = urlObj.hostname.replace('www.', '');
-              } catch (e) {
-                console.log('Error parsing URL:', e);
-              }
-              
-              // Return formatted link with gradient color
-              return `<a href="${url}" target="_blank" class="gradient-link" 
-                style="background-image: linear-gradient(90deg, #9c27b0, #3f51b5); 
-                -webkit-background-clip: text; background-clip: text; 
-                color: transparent; font-weight: bold; text-decoration: underline;">
-                ${displayText}</a>`;
-            });
-            
-            // Set inner HTML content for the completion message
-            completionMsg.innerHTML = `
-              <div class="task-result-header">
-                <span class="task-complete-label">Task Complete</span>
-              </div>
-              <div class="task-result-content">
-                ${processedContent}
-              </div>
-            `;
-            
-            // Position the completion card for BOTH NLI and direct tasks
-            // But handle them slightly differently
-            if (thoughtContainer && thoughtContainer.parentNode) {
-              // Position the card after the thought container
-              if (thoughtContainer.nextSibling !== completionMsg) {
-                if (thoughtContainer.nextSibling) {
-                  thoughtContainer.parentNode.insertBefore(completionMsg, thoughtContainer.nextSibling);
-                } else {
-                  thoughtContainer.parentNode.appendChild(completionMsg);
-                }
-              }
-            }
-            
-            // Make the completion message visible for BOTH task types
-            completionMsg.style.display = 'block';
-            
-            // But for NLI tasks, show a simpler card to avoid duplication
-            if (isNliTask) {
-              console.log(`[thoughtComplete] Detected NLI task: ${tid}, showing simplified completion card`);
-              
-              // For NLI tasks, show a minimal completion card without duplicating content
-              completionMsg.innerHTML = `
-                <div class="task-result-header">
-                  <span class="task-complete-label">Task Complete</span>
-                </div>
-                <div class="task-result-content" style="display: none;">
-                  ${processedContent}
-                </div>
-              `;
-              
-              // Also update our tracking to remember this is an NLI task
-              sessionStorage.setItem(`nli-task-${tid}`, 'true');
-              if (window.taskNliMapping && !window.taskNliMapping[tid]) {
-                window.taskNliMapping[tid] = true;
-              }
-            }
-            
-            // Scroll to the bottom of the message timeline
-            messageTimeline.scrollTop = messageTimeline.scrollHeight;
-            
-            // Small delay to ensure DOM is updated, only scroll to completion message for non-NLI tasks
+            // After a delay, complete and remove the bubble so the user has time to read the error.
             setTimeout(() => {
-              if (!isNliTask && completionMsg && completionMsg.parentNode) {
-                // For regular tasks, scroll to the completion message
-                completionMsg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-              } else if (isNliTask) {
-                // For NLI tasks, scroll to the thought container instead
-                console.log(`[thoughtComplete] Ensuring NLI thought container for ${tid} remains visible`);
-                
-                // Try to find the streaming container first
-                const thoughtStreaming = document.querySelector(`.msg-item[data-task-id="${tid}-streaming"]`);
-                if (thoughtStreaming) {
-                  thoughtStreaming.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                } else if (thoughtContainer) {
-                  // Fall back to the original thought container
-                  thoughtContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                }
-              }
-            }, 100);
-            
-            // Only mark non-NLI thought bubbles as completed
-            if (thoughtContainer && !isNliTask) {
-              // For standard tasks, mark as complete
-              thoughtContainer.classList.add('thought-complete', 'complete');
-              thoughtContainer.classList.remove('typing', 'typing-bubble', 'thinking');
-            } else if (thoughtContainer) {
-              console.log(`[thoughtComplete] Preserving NLI thought container styling for ${taskId}`);
-              // For NLI tasks, only remove the transitioning class but keep everything else
-              thoughtContainer.classList.remove('transitioning');
-              
-              // Ensure the container remains fully visible
-              thoughtContainer.style.opacity = '1';
-              thoughtContainer.style.display = 'block';
-              thoughtContainer.style.fontStyle = 'normal';
-            }
-          }
-        } else if (!thoughtContainer || !thoughtElement) {
-          // Log warning but don't create new cards
-          console.warn('[thoughtComplete] No THINKING card found to update!');
-        }
-        
-        // CRITICAL: Update neural flow canvas visualization
-        const canvasBubble = document.querySelector(`.thought-bubble[data-task-id="${tid}"]`);
-        if (canvasBubble) {
-          console.log('[thoughtComplete] Updating canvas bubble:', canvasBubble);
-          canvasBubble.classList.remove('typing-bubble', 'typing', 'thinking');
-          canvasBubble.classList.add('complete', 'thought-complete');
-          
-          // Ensure neural flow is updated
-          if (neuralFlows[tid]) {
-            try {
-              if (typeof neuralFlows[tid].addNode === 'function') {
-                neuralFlows[tid].addNode(thoughtContent || 'Thought complete');
-                // Don't call complete() since it might not exist
-              }
-            } catch (err) {
-              console.error(`[thoughtComplete] Error updating neural flow:`, err);
-            }
-          }
-        } else {
-          // Create neural flow canvas if it doesn't exist
-          try {
-            const container = document.querySelector('.neural-flow-container');
-            if (container) {
-              // Create bubble if needed
-              const newBubble = document.createElement('div');
-              newBubble.className = 'thought-bubble complete thought-complete';
-              newBubble.setAttribute('data-task-id', tid);
-              container.appendChild(newBubble);
-              
-              // Initialize neural flow
-              neuralFlows[tid] = new NeuralFlow(newBubble);
-              neuralFlows[tid].addNode(thoughtContent || 'Thought complete');
-              // Don't call complete() since it likely doesn't exist in NeuralFlow class
-            }
-          } catch (err) {
-            console.error(`[thoughtComplete] Error creating neural flow:`, err);
+              window.ThoughtBubbleManager.completeThoughtBubble(tid);
+            }, 4000); // 4-second delay
+
+          } else {
+            // On successful completion, trigger the completion animation and removal.
+            window.ThoughtBubbleManager.completeThoughtBubble(tid);
           }
         }
         
-        // Mark event as handled
         eventHandled = true;
         return;
       }
+
       
       if (message.event === 'planLog') {
         // Silenced detailed logging per user request
@@ -3050,20 +2424,6 @@ export function CommandCenter(props = {}) {
             try { args = JSON.parse(functionCallBuffers[data.taskId]); } catch { return; }
             delete functionCallBuffers[data.taskId];
             tasksStore.addStepLog(data.taskId, { type: 'functionCall', functionName: data.functionName, args, timestamp: new Date().toISOString() });
-            renderStepLogs(data.taskId);
-            const timelineEl = document.querySelector('.message-timeline-container');
-            if (timelineEl) {
-              let bubble = timelineEl.querySelector(`.thought-bubble[data-task-id="${data.taskId}"]`);
-              if (!bubble) {
-                bubble = document.createElement('div');
-                bubble.className = 'thought-bubble creative-bubble typing-bubble';
-                bubble.setAttribute('data-task-id', data.taskId);
-                timelineEl.appendChild(bubble);
-              }
-              bubble.innerHTML = `<div><em>Function:</em> ${data.functionName}</div><pre class="typing-content"></pre>`;
-              const pre = bubble.querySelector('.typing-content'); const text = JSON.stringify(args, null, 2);
-              let i = 0; const ti = setInterval(() => { pre.textContent += text.charAt(i++); bubble.scrollTop = bubble.scrollHeight; if (i >= text.length) clearInterval(ti); }, 20);
-            }
             return;
           default:
             console.debug('[DEBUG] SSE event:', data.event, data.text || data.message || '');

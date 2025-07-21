@@ -13,6 +13,7 @@ const taskSchema = new mongoose.Schema({
   error:             String,
   url:               String,
   runId:             String,
+  sessionId:         String,  // For tracking multiple tasks in the same streaming session
   browserSessionId:  String,  // For tracking active browser sessions
   cleanupAttempted:  { type: Boolean, default: false },
   isComplex:         { type: Boolean, default: false },

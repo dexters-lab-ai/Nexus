@@ -2323,18 +2323,19 @@ app.post('/api/nli', requireAuth, async (req, res) => {
       }
     };
 
-    // Set a 15-minute timeout for the entire operation
+    // Set a 30-minute timeout for the entire operation to support longer-running tasks
     const timeout = setTimeout(() => {
-      console.error(`Task ${taskId} timed out after 15 minutes`);
+      console.error(`Task ${taskId} timed out after 30 minutes`);
       if (res.writable) {
         res.write('data: ' + JSON.stringify({
           event: 'error',
           taskId: taskId.toString(),
-          error: 'Operation timed out after 15 minutes'
+          error: 'Operation timed out after 30 minutes',
+          sessionId: runId // Include session ID for tracking
         }) + '\n\n');
       }
       cleanup();
-    }, 15 * 60 * 1000);
+    }, 30 * 60 * 1000); // 30 minute timeout
 
     // Handle client disconnect
     req.on('close', cleanup);
@@ -2373,9 +2374,16 @@ app.post('/api/nli', requireAuth, async (req, res) => {
           if (res.flush) res.flush();
         }
 
-        if (done) {
+        // For tasks associated with a session, don't close the connection on completion
+        if (done && !task.sessionId) {
+          console.log(`[NLI] Task ${taskId} completed, but no sessionId - closing connection`);
           clearTimeout(timeout);
           cleanup();
+        } else if (done && task.sessionId) {
+          console.log(`[NLI] Task ${taskId} completed with sessionId ${task.sessionId} - keeping connection alive`);
+          // For tasks with a sessionId, we'll keep the connection open
+          // Just update the status and continue polling
+          // This allows multiple sequential tasks under the same session
         }
       } catch (err) {
         console.error('Task polling error:', err);
@@ -2394,11 +2402,15 @@ app.post('/api/nli', requireAuth, async (req, res) => {
     const controller = new AbortController();
     const { signal } = controller;
 
-    // Set a 5-minute timeout for the entire operation
+    // Set a 30-minute timeout for the entire operation to match task timeout
     const timeout = setTimeout(() => {
-      console.error(`Chat stream for user ${userId} timed out after 5 minutes`);
-      controller.abort('Operation timed out after 15 minutes');
-    }, 15 * 60 * 1000);
+      console.error(`Chat stream for user ${userId} timed out after 30 minutes`);
+      controller.abort('Operation timed out after 30 minutes');
+    }, 30 * 60 * 1000); // 30 minute timeout
+    
+    // Generate a session ID for tracking this streaming session
+    const sessionId = uuidv4();
+    console.log(`[NLI] Starting new chat session: ${sessionId}`);
 
     const cleanup = () => {
       clearTimeout(timeout);
@@ -4497,11 +4509,17 @@ Proceed with logical well thought out and tracked actions toward the Main Task: 
   }
 
   async executeBrowserQuery(args, stepIndex) {
-    if (!args.url && this.currentUrl && this.currentUrl !== 'Not specified' && 
-        args.instruction && typeof args.instruction === 'string' && 
-        args.instruction.toLowerCase().startsWith('navigate to ')) {
+    // Ensure we have the correct URL when needed
+    if (!args.url && this.currentUrl && this.currentUrl !== 'Not specified') {
       args.url = this.currentUrl;
     }
+    
+    // Make sure the query parameter is properly set, as handleBrowserQuery expects it
+    // Sometimes the query might come in args.instruction instead of args.query
+    if (!args.query && args.instruction) {
+      args.query = args.instruction;
+    }
+    
     const result = await handleBrowserQuery(
       args,
       this.userId,
@@ -4816,6 +4834,25 @@ const KEY_ENGINE_MAPPING = {
   'xai': 'grok-1'
 };
 
+/**
+ * Helper function to get the default engine for a provider
+ * @param {string} provider - Provider name (e.g., 'openai', 'google', 'anthropic')
+ * @returns {string|null} - Default engine for the provider or null if no default
+ */
+function getDefaultEngineForProvider(provider) {
+  // Map providers to their default engines
+  const providerDefaultEngines = {
+    'openai': 'gpt-4o',
+    'google': 'gemini-2.5-pro',
+    'qwen': 'qwen-2.5-vl-72b',
+    'anthropic': 'claude-3-opus',
+    'xai': 'grok-1',
+    'uitars': 'ui-tars'
+  };
+  
+  return providerDefaultEngines[provider] || null;
+}
+
 async function getUserOpenAiClient(userId, options = {}) {
   
   // Track whether we're using a default key
@@ -5103,8 +5140,20 @@ async function getUserGeminiClient(userId, model = 'gemini-2.5-pro') {
               if (historyMessages.length > 0) {
                 console.log(`[GeminiClient] Processing ${historyMessages.length} history messages`);
                 // We need to add these to history manually
-                for (const historyMsg of historyMessages) {
-                  await chat.sendMessage(historyMsg.parts[0].text);
+                try {
+                  for (const historyMsg of historyMessages) {
+                    // Ensure the message is valid before sending
+                    if (historyMsg && historyMsg.parts && historyMsg.parts[0] && typeof historyMsg.parts[0].text === 'string') {
+                      // Convert history message to proper format for Gemini
+                      const content = historyMsg.parts[0].text;
+                      await chat.sendMessage(content);
+                    } else {
+                      console.warn('[GeminiClient] Skipping invalid history message:', JSON.stringify(historyMsg));
+                    }
+                  }
+                } catch (historyErr) {
+                  console.error('[GeminiClient] Error processing history messages:', historyErr);
+                  // Continue with empty history if history processing fails
                 }
               }
               
@@ -5267,8 +5316,12 @@ export async function checkEngineApiKey(userId, engineName) {
     engineName = 'gemini-2.5-pro'; // Default fallback
   }
   
-  // Map from engine name to API key type
+  // Map from engine name to API key type (for user API keys in schema)
   const apiKeyType = ENGINE_KEY_MAPPING[engineName];
+  
+  // Get the provider for this engine (for system default keys)
+  const provider = MODEL_PROVIDER_MAPPING[engineName];
+  console.log(`[API Key Check] Engine ${engineName} maps to provider ${provider} and API key type ${apiKeyType}`);
   
   // Map from engine name to database schema key
   const engineToSchemaKey = {
@@ -5282,13 +5335,21 @@ export async function checkEngineApiKey(userId, engineName) {
   const schemaKey = engineToSchemaKey[engineName];
   console.log(`[API Key Check] Checking API key for engine ${engineName} using schema key ${schemaKey}`);
   
-  // Default fallback keys - mapped to our standardized key types
+  // Default fallback keys - mapped to our standardized provider names
   const DEFAULT_KEYS = {
     'openai': process.env.DEFAULT_GPT4O_KEY || '',
     'qwen': process.env.DEFAULT_OPENROUTER_KEY || '',
     'google': process.env.DEFAULT_GEMINI_KEY || '',
+    'anthropic': process.env.DEFAULT_CLAUDE_KEY || '',
     'uitars': process.env.DEFAULT_UITARS_KEY || ''
   };
+  
+  // Log default key availability without exposing the key
+  if (DEFAULT_KEYS[provider]) {
+    console.log(`[API Key Check] Default key exists for provider ${provider}: ${DEFAULT_KEYS[provider].substring(0, 3)}...`);
+  } else {
+    console.log(`[API Key Check] No default key found for provider ${provider}`);
+  }
   
   // Fetch user's API keys
   const user = await User
@@ -5333,14 +5394,17 @@ export async function checkEngineApiKey(userId, engineName) {
     };
   }
   
-  // Check for default key
-  if (DEFAULT_KEYS[apiKeyType] && DEFAULT_KEYS[apiKeyType].length > 0) {
+  // Check for default key - using the provider name to look up in DEFAULT_KEYS
+  if (DEFAULT_KEYS[provider] && DEFAULT_KEYS[provider].length > 0) {
+    console.log(`[API Key Check] Found default API key for ${engineName} (provider: ${provider})`);
     return { 
       hasKey: true, 
       keySource: 'system-default', 
       usingDefault: true, 
       engine: engineName,
-      keyType: apiKeyType 
+      keyType: apiKeyType,
+      key: DEFAULT_KEYS[provider], // Include the actual key
+      provider: provider // Include the provider for clarity
     };
   }
   
@@ -5629,6 +5693,31 @@ async function handleBrowserAction(
     console.log(`[BrowserAction][Step ${currentStep}] ${message}`, data || "");
   };
 
+  // Clean and validate URLs, handling special cases like trailing commas
+  function validateAndNormalizeUrl(url) {
+    if (!url) return null;
+    
+    // Remove trailing commas that can cause navigation failures
+    url = url.replace(/,\/?$/, '');
+    
+    // Remove leading/trailing whitespace
+    url = url.trim();
+    
+    // Add protocol if missing
+    if (!/^https?:\/\//i.test(url)) {
+      url = 'https://' + url;
+    }
+    
+    try {
+      // Use URL constructor for validation
+      const parsedUrl = new URL(url);
+      return parsedUrl.toString();
+    } catch (e) {
+      console.log(`[URL Validation] Invalid URL: ${url} - ${e.message}`);
+      return null;
+    }
+  }
+  
   // retry navigation with exponential backoff
   async function navigateWithRetry(page, url, maxRetries = 3) {
     let attempt = 0;
@@ -5873,15 +5962,13 @@ async function handleBrowserAction(
         currentUrl: page?.url?.() ?? null,
         task_id: taskId,
         stepIndex: currentStep,
+        // Only include browserSession if agent is defined
         browserSession: {
           page: page || null,
-          agent: agent || null,
-          reportFile: agent?.reportFile || null
-        },
-        browserSession: {
-          page: page || null,
-          agent: agent || null,
-          reportFile: agent?.reportFile || null
+          // Only reference agent if it exists
+          agent: typeof agent !== 'undefined' ? agent : null,
+          // Only try to access reportFile if agent exists
+          reportFile: typeof agent !== 'undefined' ? agent?.reportFile || null : null
         },
       };
     }
@@ -6397,7 +6484,9 @@ function incrementFreeTierUsage(userId) {
   freeTierUsage.set(userId, usage);
 }
 
-async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url, engine) {
+async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url, engine, sessionId = null) {
+  // Track session ID if provided to enable multi-task streaming support
+  console.log(`[processTask] Starting task ${taskId} with${sessionId ? ' session ' + sessionId : ' no session'}`);
   // --- Check if user has any API key configured ---
   const userData = await User.findById(userId).select('apiKeys openaiApiKey');
   
@@ -7357,15 +7446,58 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
   // Check if the engine is valid and the user has access to it
   const keyInfo = await checkEngineApiKey(userId, engineToUse);
   if (!keyInfo.hasKey) {
-    console.error(`[ProcessTask] No API key available for ${engineToUse}, falling back to GPT-4o`);
-    // Fall back to GPT-4o if no key is available for the specified engine
-    // This is a safety fallback that should never happen if the API endpoints are working correctly
+    // Try to determine the appropriate fallback model based on the provider
+    const provider = MODEL_PROVIDER_MAPPING[engineToUse];
+    console.log(`[ProcessTask] No user API key available for ${engineToUse} (provider: ${provider}), checking system default`);
+    
+    // If we have a system default key for the same provider, use it
+    // This will maintain the provider preference while using system keys
+    const providerDefaultEngine = getDefaultEngineForProvider(provider);
+    if (providerDefaultEngine) {
+      console.log(`[ProcessTask] Trying provider default: ${providerDefaultEngine}`);
+      const providerKeyInfo = await checkEngineApiKey(userId, providerDefaultEngine);
+      if (providerKeyInfo.hasKey) {
+        console.log(`[ProcessTask] Found system default for ${providerDefaultEngine}, using it instead of falling back to GPT-4o`);
+        
+        // Update engineToUse to the provider default
+        engineToUse = providerDefaultEngine;
+        
+        // Update keyInfo for use in the rest of the function
+        Object.assign(keyInfo, providerKeyInfo);
+        
+        // Store key info for use in the client initialization
+        process.env.TEMP_API_KEY = providerKeyInfo.key;
+        process.env.TEMP_API_KEY_TYPE = providerKeyInfo.keyType;
+        
+        // Notify the user about using the system default
+        notifyApiKeyStatus(userId, providerKeyInfo);
+        
+        // Continue with this model instead of falling back to GPT-4o
+        console.log(`[ProcessTask] Using ${providerDefaultEngine} from provider ${provider} with system default key`);
+      }
+    }
+    
+    // Last resort fallback to GPT-4o
+    console.error(`[ProcessTask] No system default available for ${provider}, falling back to GPT-4o`);
     const gpt4oKeyInfo = await checkEngineApiKey(userId, 'gpt-4o');
     if (!gpt4oKeyInfo.hasKey) {
       throw new Error(`No API key available for any engine`);
     }
-    // Use GPT-4o as the fallback engine
-    // Note: We don't have access to req.session here, but that's fine since we're directly using GPT-4o now
+    // Store the key info globally for this function to use later
+    process.env.TEMP_API_KEY = gpt4oKeyInfo.key;
+    process.env.TEMP_API_KEY_TYPE = gpt4oKeyInfo.keyType;
+  } else {
+    // Store the key info globally for this function to use later
+    process.env.TEMP_API_KEY = keyInfo.key;
+    process.env.TEMP_API_KEY_TYPE = keyInfo.keyType;
+    console.log(`[ProcessTask] Successfully found API key for ${engineToUse} (type: ${keyInfo.keyType}, source: ${keyInfo.keySource})`);
+    
+    // Notify the user that we're using their key or a default key
+    notifyApiKeyStatus(userId, keyInfo);
+  }
+  
+  // If we had to fall back to GPT-4o, notify the user
+  if (!keyInfo.hasKey) {
     // Notify the user about the fallback
     notifyApiKeyStatus(userId, {
       hasKey: true,
@@ -8016,38 +8148,34 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
       log: plan.planLog.slice(-10)
     });
     
-    // Send taskComplete event with error status
-    sendWebSocketUpdate(userId, {
-      event: 'taskComplete',
-      taskId: taskId.toString(),
-      status: 'error',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-    
-    await Task.updateOne(
-      { _id: taskId },
-      { $set: { status: 'error', error: error.message, endTime: new Date() } }
-    );
-    
-    // --- Save error message as assistant message to both ChatHistory and Message ---
-    let taskChatHistory = await ChatHistory.findOne({ userId });
-    if (!taskChatHistory) taskChatHistory = new ChatHistory({ userId, messages: [] });
-    taskChatHistory.messages.push({
-      role: 'assistant',
-      content: `Error: ${error.message}`,
-      timestamp: new Date()
-    });
-    await taskChatHistory.save();
-    await Message.create({
-      userId,
-      role: 'assistant',
-      type: 'command',
-      content: `Error: ${error.message}`,
-      taskId,
-      timestamp: new Date(),
-      meta: { error: error.message }
-    });
+    // Send taskComplete event with error status - make sure taskChatHistory exists
+    try {
+      // Fetch the TaskChatHistory if it doesn't exist in this scope
+      const TaskChatHistory = mongoose.model('TaskChatHistory');
+      const chatHistory = await TaskChatHistory.findOne({ taskId }) || 
+        new TaskChatHistory({ taskId, userId, messages: [] });
+      
+      chatHistory.messages.push({
+        role: 'assistant',
+        content: `Error: ${error.message}`,
+        timestamp: new Date()
+      });
+      await chatHistory.save();
+      
+      // Create message record
+      await Message.create({
+        userId,
+        role: 'assistant',
+        type: 'command',
+        content: `Error: ${error.message}`,
+        taskId,
+        timestamp: new Date(),
+        meta: { error: error.message }
+      });
+    } catch (chatError) {
+      console.error(`[ProcessTask] Error saving chat history for task ${taskId}:`, chatError);
+      // Don't let chat history error prevent task completion
+    }
     // -------------------------------------------------------------
   } finally {
     console.log(`[ProcessTask] Task ${taskId} finished with ${plan.steps.length} steps executed.`);
@@ -8519,6 +8647,33 @@ app.get('/api/messages', requireAuth, async (req, res) => {
 async function* streamNliThoughts(userId, prompt) {
   console.log('[streamNliThoughts] Starting stream for user:', userId);
   
+  // Configure keepalive for long-running connections
+  const pingInterval = 30000; // 30 seconds
+  let isConnectionActive = true;
+  const heartbeatTimer = setInterval(() => {
+    if (!isConnectionActive) {
+      clearInterval(heartbeatTimer);
+      return;
+    }
+    console.log('[streamNliThoughts] Sending keepalive ping');
+  }, pingInterval);
+  
+  // Clean up timer when generator is done
+  try {
+    // This will run when the generator is closed/returned
+    setTimeout(() => {
+      isConnectionActive = false;
+      clearInterval(heartbeatTimer);
+      console.log('[streamNliThoughts] Cleaned up keepalive timer');
+    }, 0);
+  } catch (err) {
+    console.error('[streamNliThoughts] Error setting up cleanup:', err);
+  }
+  
+  // Set a session ID for this entire streaming session
+  const sessionId = uuidv4();
+  console.log(`[streamNliThoughts] Starting new session: ${sessionId}`);
+  
   // Persist user prompt
   await new Message({ userId, role: 'user', type: 'chat', content: prompt, timestamp: new Date() }).save();
 
@@ -8613,22 +8768,32 @@ async function* streamNliThoughts(userId, prompt) {
   
   console.log(`[Chat] Creating stream with model: ${chatModel}`);
   
-  const systemMessage = `You are O.P.E.R.A.T.O.R. an AI assistant with chat and task capabilities. For general conversation, 
+  const systemMessage = `You are O.P.E.R.A.T.O.R. an AI assistant with powerful web automation capabilities. For general conversation, 
   simply respond helpfully and clearly. DO NOT use tools unless the user explicitly asks for a task.
+
 Only use tools when:
 - The user asks you to perform a web task (use process_task)
 
 When executing tasks with process_task:
 1. First explain what you'll do and emit a thoughtUpdate
-2. Call process_task with a clear command
-3. Wait for and monitor task execution results
-4. Based on the results:
-   - If successful, summarize the outcome
-   - If unsuccessful or incomplete, consider retrying or suggest alternatives
-   - If additional steps are needed, plan next actions
-5. Only conclude when the user's intent has been satisfied
+2. Call process_task with a clear, specific command for a single action
+3. IMPORTANT: Wait patiently for task execution results - this may take several minutes
+4. After receiving results, analyze them and plan next steps
+5. For complex workflows requiring multiple websites or actions:
+   - Issue multiple sequential process_task calls, one after the other
+   - Each task should be focused on a specific website or action
+   - Wait for each task to complete before starting the next one
+6. Continue this pattern until the user's entire request is satisfied
+7. Finally, provide a comprehensive summary of all actions taken
 
-You will receive streaming updates as tasks execute. Use this information to provide progress updates and make decisions about next steps.`;
+Task execution guidelines:
+- Stay connected and maintain the conversation during task execution
+- Provide thoughtful updates while waiting for task results
+- Be prepared to wait up to 30 minutes for complex tasks to complete
+- Never assume a task has failed just because it's taking time
+- If truly stuck, suggest an alternative approach
+
+This is a long-lived conversation. The stream will remain open during task execution and between multiple tasks.`;
   
   const standardTools = [
     {
@@ -8718,10 +8883,248 @@ You will receive streaming updates as tasks execute. Use this information to pro
         if (/[.?!]\s$/.test(buffer) || buffer.length > 80) buffer = '';
       }
       
-      // Tool call handling (existing code - keeping as is but adding logs)
+      // Specifically handle tool calls from Gemini API
       if (delta?.tool_calls) {
-        console.log('[streamNliThoughts] Processing tool calls...');
-        // ... existing tool call code ...
+        console.log('[streamNliThoughts] Processing tool calls:', JSON.stringify(delta.tool_calls));
+        
+        // Store partial tool calls to handle cases where function name and arguments come in separate deltas
+        // Use a module-scoped variable to persist across function calls
+        if (!global.partialToolCalls) {
+          global.partialToolCalls = new Map(); // index -> partial tool call data
+        }
+        const partialToolCalls = global.partialToolCalls;
+        
+        // Process each tool call
+        for (const toolCall of delta.tool_calls) {
+          if (!toolCall.function) {
+            console.log('[streamNliThoughts] Tool call missing function property, skipping');
+            continue;
+          }
+          
+          const toolCallIndex = toolCall.index || 0;
+          let functionName = toolCall.function.name;
+          let functionArgsStr = toolCall.function.arguments;
+          
+          // Check if we have a partial tool call for this index
+          if (partialToolCalls.has(toolCallIndex)) {
+            const partialData = partialToolCalls.get(toolCallIndex);
+            
+            // Merge with existing partial data
+            if (!functionName && partialData.functionName) {
+              functionName = partialData.functionName;
+            }
+            
+            if (!functionArgsStr && partialData.functionArgsStr) {
+              functionArgsStr = partialData.functionArgsStr;
+            }
+          }
+          
+          // If we still don't have both name and arguments, store what we have and wait for more
+          if (!functionName || !functionArgsStr) {
+            console.log(`[streamNliThoughts] Partial tool call data for index ${toolCallIndex}, storing for later`);
+            partialToolCalls.set(toolCallIndex, {
+              functionName: functionName || null,
+              functionArgsStr: functionArgsStr || null
+            });
+            continue;
+          }
+          
+          // We have both name and arguments, so process the tool call
+          let functionArgs = {};
+          
+          try {
+            functionArgs = JSON.parse(functionArgsStr);
+          } catch (argError) {
+            console.error(`[streamNliThoughts] Error parsing function arguments for ${functionName}:`, argError);
+            console.error(`[streamNliThoughts] Raw arguments string: ${functionArgsStr}`);
+            
+            // Try to extract command from raw string if possible
+            if (functionArgsStr && typeof functionArgsStr === 'string') {
+              // Look for command pattern in malformed JSON
+              const commandMatch = functionArgsStr.match(/"command"\s*:\s*"([^"]+)"/i);
+              if (commandMatch && commandMatch[1]) {
+                console.log(`[streamNliThoughts] Extracted command from malformed JSON: ${commandMatch[1]}`);
+                functionArgs = { command: commandMatch[1] };
+              } else {
+                // If the whole string looks like it could be a command, use it directly
+                if (!functionArgsStr.includes('{') && !functionArgsStr.includes('}')) {
+                  functionArgs = { command: functionArgsStr.trim() };
+                  console.log(`[streamNliThoughts] Using raw string as command: ${functionArgs.command}`);
+                } else {
+                  continue;
+                }
+              }
+            } else {
+              continue;
+            }
+          }
+          
+          console.log(`[streamNliThoughts] Function call: ${functionName || 'unknown'} with args:`, functionArgs);
+          
+          // Infer function name if missing but we have command argument
+          if (!functionName && functionArgs.command) {
+            console.log(`[streamNliThoughts] Inferring process_task function from command argument:`, functionArgs.command);
+            functionName = 'process_task';
+          }
+          
+          // Handle process_task function
+          if (functionName === 'process_task' && functionArgs.command) {
+            console.log(`[streamNliThoughts] Processing task: ${functionArgs.command}`);
+            
+            // Generate a task ID for tracking or use the session ID for grouping
+            const taskId = new mongoose.Types.ObjectId();
+            const runId = uuidv4();
+            const runDir = path.join(NEXUS_RUN_DIR, runId);
+            
+            // Create run directory
+            await fs.promises.mkdir(runDir, { recursive: true });
+            
+            // Emit a task event so UI can show it's being processed
+            yield { 
+              event: 'taskProcessing',
+              text: `Processing task: ${functionArgs.command}`,
+              taskId: taskId.toString(),
+              sessionId: sessionId // Link to the current streaming session
+            };
+            
+            try {
+              // Get user email for task processing
+              const userDoc = await User.findById(userId).lean();
+              const userEmail = userDoc?.email;
+              
+              // Send a "waiting" update immediately to keep the connection alive
+              yield {
+                event: 'thoughtUpdate',
+                text: `Starting task: ${functionArgs.command}...`
+              };
+              
+              // Save task to database with session reference
+              await new Task({
+                _id: taskId,
+                userId,
+                command: functionArgs.command,
+                status: 'pending',
+                progress: 0,
+                startTime: new Date(),
+                runId,
+                sessionId: sessionId // Associate with the current session
+              }).save();
+              
+              // Add task to user's active tasks
+              await User.updateOne(
+                { _id: userId },
+                { $push: { activeTasks: { 
+                  _id: taskId.toString(),
+                  command: functionArgs.command,
+                  status: 'pending',
+                  startTime: new Date(),
+                  sessionId: sessionId
+                }}}
+              );
+              
+              // Save command message
+              await new Message({
+                userId,
+                role: 'user',
+                type: 'command',
+                content: functionArgs.command,
+                taskId: taskId.toString(),
+                sessionId: sessionId,
+                timestamp: new Date()
+              }).save();
+              
+              // Send task start notification via WebSocket
+              sendWebSocketUpdate(userId, {
+                event: 'taskStart',
+                payload: {
+                  taskId: taskId.toString(),
+                  command: functionArgs.command,
+                  startTime: new Date(),
+                  sessionId: sessionId
+                }
+              });
+              
+              // Enhanced task processing with wait support
+              // Start processing task with session tracking for multi-site support
+              // Pass sessionId as the last parameter to enable tracking multiple tasks under the same session
+              processTask(userId, userEmail, taskId.toString(), runId, runDir, functionArgs.command, null, null, sessionId);
+              console.log('[streamNliThoughts] Task processing initiated successfully for task:', taskId.toString(), 'in session:', sessionId);
+              
+              // Add task information to the response
+              yield {
+                event: 'thoughtUpdate',
+                text: `✅ Task started: ${functionArgs.command}`,
+                taskId: taskId.toString(),
+                sessionId: sessionId
+              };
+              
+              // Setup periodic keepalive messages during task execution
+              const keepaliveMessages = [
+                "Still working on it...",
+                "Processing your request...",
+                "This may take a few moments...",
+                "The task is still running...",
+                "Continuing to process your task...",
+                "Analyzing the results...",
+                "Working on multiple steps...",
+                "Making progress on your request..."
+              ];
+              
+              // Initial update
+              yield {
+                event: 'thoughtUpdate',
+                text: "Waiting for task to complete. This may take some time depending on the complexity.",
+                sessionId: sessionId
+              };
+              
+              // Send keepalive updates periodically (but don't block the stream)
+              // This supports the pattern in the WebSocket Improvements Plan memory
+              setTimeout(async () => {
+                let messageIndex = 0;
+                const maxKeepalives = 60; // Support up to 30 minutes of keepalives
+                const keepaliveInterval = setInterval(() => {
+                  try {
+                    // Only continue if we're under our maximum
+                    if (messageIndex < maxKeepalives) {
+                      const message = keepaliveMessages[messageIndex % keepaliveMessages.length];
+                      console.log(`[streamNliThoughts] Sending keepalive #${messageIndex+1} for session ${sessionId}`);
+                      // We can't yield here since this is outside the generator function body
+                      // Instead, we use WebSockets to send a direct update
+                      sendWebSocketUpdate(userId, {
+                        event: 'sessionActive',
+                        sessionId: sessionId,
+                        taskId: taskId.toString(),
+                        text: message,
+                        timestamp: new Date()
+                      });
+                      messageIndex++;
+                    } else {
+                      clearInterval(keepaliveInterval);
+                    }
+                  } catch (e) {
+                    console.error('[streamNliThoughts] Error sending keepalive:', e);
+                    clearInterval(keepaliveInterval);
+                  }
+                }, 30000); // Send a keepalive every 30 seconds
+              }, 1);
+              
+            } catch (taskError) {
+              console.error('[streamNliThoughts] Error starting task processing:', taskError);
+              yield {
+                event: 'thoughtError',
+                text: `Error processing task: ${taskError.message}`,
+                taskId: taskId?.toString(),
+                sessionId: sessionId
+              };
+            }
+          } else {
+            console.log(`[streamNliThoughts] Unknown function: ${functionName}`);
+            yield {
+              event: 'thoughtUpdate',
+              text: `Received request to use unsupported function: ${functionName}`
+            };
+          }
+        }
       }
     }
     
@@ -8731,13 +9134,16 @@ You will receive streaming updates as tasks execute. Use this information to pro
     
     console.log(`[streamNliThoughts] Sending final response of length: ${responseText.length}`);
     
-    // FIXED: Always yield thoughtComplete
+    // Modified: Send thoughtComplete without closing the stream
+    // This allows the connection to remain open for subsequent task updates
     yield { 
       event: 'thoughtComplete', 
-      text: responseText 
+      text: responseText,
+      sessionId: sessionId,
+      keepAlive: true // Signal to keep the connection open
     };
     
-    // Save response to history
+    // Save response to history with session ID
     if (responseText.trim().length > 0) {
       try {
         await new Message({
@@ -8745,13 +9151,30 @@ You will receive streaming updates as tasks execute. Use this information to pro
           role: 'assistant',
           type: 'chat',
           content: responseText,
+          sessionId: sessionId,
           timestamp: new Date()
         }).save();
-        console.log(`[Chat] Saved assistant response to message history`);
+        console.log(`[Chat] Saved assistant response to message history (session: ${sessionId})`);
+        
+        // Send additional message to ensure stream stays open
+        yield {
+          event: 'sessionActive',
+          sessionId: sessionId,
+          timestamp: Date.now()
+        };
       } catch (saveError) {
         console.error(`[Chat] Error saving assistant response:`, saveError);
       }
     }
+    
+    // Wait a moment to ensure all task messages are transmitted
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // The connection remains open for task updates
+    console.log(`[streamNliThoughts] Stream remains active for task updates in session ${sessionId}`);
+    
+    // This allows the session to continue receiving updates from long-running tasks
+    // The client can still close the connection when appropriate
     
     // Clear tool calls
     if (global.toolCallsInProgress) {

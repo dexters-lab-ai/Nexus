@@ -6,6 +6,8 @@
 const ThoughtBubbleManager = {
   // Track active thought bubbles
   activeBubbles: new Set(),
+  // Counter for step numbers
+  stepCounter: 0,
   
   /**
    * Initialize the thought bubble manager
@@ -233,6 +235,15 @@ const ThoughtBubbleManager = {
         contentEl.textContent = content;
       }
     }
+  },
+  
+  /**
+   * Get the next step number for thought bubbles
+   * @returns {number} The incremented step number
+   */
+  getNextStepNumber() {
+    // Increment and return the step counter
+    return ++this.stepCounter;
   },
   
   /**
