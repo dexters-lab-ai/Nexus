@@ -275,6 +275,8 @@ class TaskPlanAdapter extends EventEmitter {
       return false;
     }
     
+    console.log(`[TaskPlanAdapter] Updating command for task ${taskId}: ${newCommand} (reason: ${reason})`);
+    
     // Store the command update for the next createStep call
     this.commandUpdates.set(taskId, {
       newCommand,
@@ -284,8 +286,28 @@ class TaskPlanAdapter extends EventEmitter {
     
     const planInfo = this.activePlans.get(taskId);
     if (planInfo && planInfo.plan) {
-      // Try to update the plan's prompt directly
+      // Update the plan's prompt directly and log it
       planInfo.plan.prompt = newCommand;
+      
+      // Also update the plan's state if possible
+      if (typeof planInfo.plan.updateState === 'function') {
+        planInfo.plan.updateState({
+          currentCommand: newCommand,
+          lastCommandUpdate: new Date(),
+          commandUpdateReason: reason
+        });
+        console.log(`[TaskPlanAdapter] Updated TaskPlan state for task ${taskId}`);
+      } else {
+        console.log(`[TaskPlanAdapter] Note: TaskPlan for ${taskId} does not have updateState method`);
+      }
+      
+      // Log to the plan if possible
+      if (typeof planInfo.plan.log === 'function') {
+        planInfo.plan.log(`Command updated: ${newCommand}`, { reason, source: 'TaskPlanAdapter' });
+        console.log(`[TaskPlanAdapter] Logged command update to TaskPlan ${taskId}`);
+      }
+    } else {
+      console.warn(`[TaskPlanAdapter] Could not find plan or plan info for task ${taskId}`);
     }
     
     this.emit('plan:commandUpdated', {
@@ -294,6 +316,25 @@ class TaskPlanAdapter extends EventEmitter {
       reason,
       timestamp: Date.now()
     });
+    
+    // Broadcast the update via any available WebSocket mechanism
+    if (global.sendWebSocketUpdate && planInfo && planInfo.plan.userId) {
+      try {
+        global.sendWebSocketUpdate(planInfo.plan.userId, {
+          event: 'planCommandUpdated',
+          payload: {
+            taskId,
+            newCommand,
+            reason,
+            timestamp: Date.now(),
+            sessionId: planInfo.sessionId
+          }
+        });
+        console.log(`[TaskPlanAdapter] Sent WebSocket update for command update: ${taskId}`);
+      } catch (err) {
+        console.error(`[TaskPlanAdapter] Failed to send WebSocket update: ${err.message}`);
+      }
+    }
     
     return true;
   }

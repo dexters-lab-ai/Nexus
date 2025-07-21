@@ -8082,8 +8082,8 @@ async function processTask(userId, userEmail, taskId, runId, runDir, prompt, url
       
         if (!functionCallReceived) {
           plan.log(`No tool call received for step ${plan.currentStepIndex + 1}`);
-          const recoveryStep = plan.createStep('query', 'Describe the current page state and available actions', {
-            query: 'Describe the current page state and available actions',
+          const recoveryStep = plan.createStep('query', 'Extract all information and prices and links on the page', {
+            query: 'Extract all information and prices and links on the page',
             task_id: taskId,
             url: plan.currentUrl
           });
@@ -9020,48 +9020,77 @@ async function* streamNliThoughts(userId, prompt, context = {}) {
       
       console.log(`[Chat] Creating stream with model: ${chatModel}`);
       
-      const systemMessage = `You are O.P.E.R.A.T.O.R. an AI assistant with powerful web automation capabilities. For general conversation, 
-      simply respond helpfully and clearly. DO NOT use tools unless the user explicitly asks for a task.
+      const systemMessage = `You are O.P.E.R.A.T.O.R., an advanced AI assistant with powerful web automation capabilities. You excel at executing web tasks with precision and reliability.
 
-    Only use tools when:
-    - The user asks you to perform a web task (use process_task)
+    ## CORE CAPABILITIES
+    - You maintain expert knowledge of common website URLs and interfaces
+    - You can navigate, search, click, type, and interact with any website
+    - You can extract information, complete forms, and perform complex workflows
+    - You remember session context and adapt commands based on real-time feedback
 
-    When executing tasks with process_task:
-    1. First explain what you'll do and emit a thoughtUpdate
-    2. Call process_task with a clear, specific command for a single action
-    3. IMPORTANT: Wait patiently for task execution results - this may take several minutes
-    4. After receiving results, analyze them and plan next steps
-    5. For complex workflows requiring multiple websites or actions:
-       - Issue multiple sequential process_task calls, one after the other
-       - Each task should be focused on a specific website or action
-       - Wait for each task to complete before starting the next one
-    6. Continue this pattern until the user's entire request is satisfied
-    7. Finally, provide a comprehensive summary of all actions taken
+    ## PROCESS_TASK TOOL USAGE
+    ALWAYS include a FULL URL when calling process_task. URL is REQUIRED for all tasks.
+    
+    For example:
+    - ✓ "navigate to https://www.google.com and search for cascade AI"
+    - ✓ "go to https://www.amazon.com and search for headphones"
+    - ✗ "search for cascade AI" (MISSING URL - will fail)
+    - ✗ "go to amazon" (INCOMPLETE URL - will fail)
 
-    Task execution guidelines:
-    - Stay connected and maintain the conversation during task execution
-    - Provide thoughtful updates while waiting for task results
-    - Be prepared to wait up to 30 minutes for complex tasks to complete
+    ## PROCESSABLE COMMANDS
+    You can issue these specific command types (always with full URLs):
+    - NAVIGATE: "go to https://website.com" or "navigate to https://website.com"
+    - CLICK: "click on the login button" or "click the first search result"
+    - TYPE: "type 'query' in the search box" or "enter 'email@example.com' in the email field"
+    - EXTRACT: "extract product prices from the page" or "get all article headlines"
+    - SCROLL: "scroll down" or "scroll to the bottom of the page"
+    - WAIT: "wait for the page to load" or "wait until the video finishes"
+    - SUBMIT: "submit the form" or "press enter in the search field"
+    
+    ## EXECUTION PROTOCOL
+    1. START with precise assessment of the task and required website
+    2. ALWAYS provide the full URL in your process_task calls
+    3. ISSUE clear, specific commands for single actions
+    4. WAIT for execution results before proceeding (can take several minutes)
+    5. ADAPT subsequent commands based on previous results
+    6. INFORM user of progress with thoughtful updates
+    7. RECOVER gracefully from errors by trying alternative approaches
+    8. SUMMARIZE all actions and results when the entire workflow is complete
+
+    ## OPTIMIZATION TECHNIQUES
+    - Break complex workflows into sequential, focused tasks
+    - Use specific selectors when clicking or typing (e.g., "click the 'Add to Cart' button")
+    - Structure commands to be deterministic and unambiguous
+    - Provide context in commands for better execution
+    - Remember previous pages and navigation state
+
+    ## IMPORTANT NOTES
+    - URL is MANDATORY for all tasks - never omit it
     - Never assume a task has failed just because it's taking time
-    - If truly stuck, suggest an alternative approach
-
-    This is a long-lived conversation. The stream will remain open during task execution and between multiple tasks.`;
+    - This is a long-lived conversation that remains active during task execution
+    - You can perform multiple sequential tasks within the same conversation
+    - Be prepared to wait up to 30 minutes for complex tasks to complete
+    - The system will update you with real-time feedback during execution`;
       
       const standardTools = [
         {
           type: "function",
           function: {
             name: "process_task",
-            description: "Process and execute a web browser task",
+            description: "Process and execute a web browser task with a required URL",
             parameters: {
               type: "object",
               properties: {
                 command: {
                   type: "string",
-                  description: "The browser task to execute, e.g. 'navigate to google.com and search for cats'"
+                  description: "The browser task to execute, MUST include a complete URL (e.g. 'navigate to https://google.com and search for cats')"
+                },
+                url: {
+                  type: "string",
+                  description: "The starting URL for the task (e.g. 'https://google.com'). Required for all tasks."
                 }
               },
-              required: ["command"]
+              required: ["command", "url"]
             }
           }
         }
@@ -9338,6 +9367,33 @@ async function* streamNliThoughts(userId, prompt, context = {}) {
                 taskPlanAdapter.on(`plan:stepExecutionCompleted`, stepPlanUpdateHandler);
                 taskPlanAdapter.on(`plan:stepExecutionFailed`, stepPlanUpdateHandler);
                 
+                // Add listener for command updates
+                // Note: We can't use yield directly inside a callback function
+                const commandUpdateHandler = (updateData) => {
+                  if (updateData.taskId === stepTaskId.toString()) {
+                    console.log(`[streamNliThoughts] Received command update: ${updateData.newCommand}`);
+                    
+                    // Send command update to UI via WebSocket
+                    sendWebSocketUpdate(userId, {
+                      event: 'thoughtUpdate',
+                      text: `🔄 Command updated: ${updateData.newCommand} (${updateData.reason})`,
+                      taskId: stepTaskId.toString(),
+                      sessionId
+                    });
+                    
+                    // Also send as specific plan command update event
+                    sendWebSocketUpdate(userId, {
+                      event: 'planCommandUpdated',
+                      payload: {
+                        ...updateData,
+                        sessionId
+                      }
+                    });
+                  }
+                };
+                
+                taskPlanAdapter.on(`plan:commandUpdated`, commandUpdateHandler);
+                
                 // Start processing task with session tracking
                 processTask(userId, userEmail, stepTaskId.toString(), stepRunId, stepRunDir, optimizedCommand, null, null, sessionId);
                 console.log('[streamNliThoughts] Task processing initiated successfully for task:', stepTaskId.toString(), 'in session:', sessionId);
@@ -9362,10 +9418,12 @@ async function* streamNliThoughts(userId, prompt, context = {}) {
                 
                 // Add cleanup function after task completion
                 setTimeout(() => {
+                  console.log(`[streamNliThoughts] Cleaning up listeners for task ${stepTaskId.toString()}`);
                   // Clean up TaskPlanAdapter listeners to prevent memory leaks
                   taskPlanAdapter.removeListener(`plan:stepExecutionStarted`, stepPlanUpdateHandler);
                   taskPlanAdapter.removeListener(`plan:stepExecutionCompleted`, stepPlanUpdateHandler);
                   taskPlanAdapter.removeListener(`plan:stepExecutionFailed`, stepPlanUpdateHandler);
+                  taskPlanAdapter.removeListener(`plan:commandUpdated`, commandUpdateHandler);
                   
                   // Unregister the task plan
                   taskPlanAdapter.unregisterTaskPlan(stepTaskId.toString());
