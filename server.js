@@ -8643,549 +8643,811 @@ app.get('/api/messages', requireAuth, async (req, res) => {
   }
 });
 
-// Helper: async generator for streaming thought (and tool) events
-async function* streamNliThoughts(userId, prompt) {
-  console.log('[streamNliThoughts] Starting stream for user:', userId);
+// Enhanced context builder (existing code)
+async function getEnhancedChatHistory(userId, limit = 20) {
+  console.log(`[Chat] Getting enhanced history for user ${userId} with limit ${limit}`);
   
-  // Configure keepalive for long-running connections
-  const pingInterval = 30000; // 30 seconds
-  let isConnectionActive = true;
-  const heartbeatTimer = setInterval(() => {
-    if (!isConnectionActive) {
-      clearInterval(heartbeatTimer);
-      return;
-    }
-    console.log('[streamNliThoughts] Sending keepalive ping');
-  }, pingInterval);
+  const messages = await Message.find({ 
+    userId, 
+    $or: [
+      { role: { $in: ['user','assistant'] }, type: 'chat' },
+      { role: 'assistant', type: 'command' }
+    ]
+  })
+  .sort({ timestamp: -1 })
+  .limit(limit)
+  .lean();
   
-  // Clean up timer when generator is done
-  try {
-    // This will run when the generator is closed/returned
-    setTimeout(() => {
-      isConnectionActive = false;
-      clearInterval(heartbeatTimer);
-      console.log('[streamNliThoughts] Cleaned up keepalive timer');
-    }, 0);
-  } catch (err) {
-    console.error('[streamNliThoughts] Error setting up cleanup:', err);
-  }
+  console.log(`[Chat] Found ${messages.length} messages for history, including task results`);
   
-  // Set a session ID for this entire streaming session
-  const sessionId = uuidv4();
-  console.log(`[streamNliThoughts] Starting new session: ${sessionId}`);
-  
-  // Persist user prompt
-  await new Message({ userId, role: 'user', type: 'chat', content: prompt, timestamp: new Date() }).save();
-
-  // Enhanced context builder (existing code)
-  async function getEnhancedChatHistory(userId, limit = 20) {
-    console.log(`[Chat] Getting enhanced history for user ${userId} with limit ${limit}`);
-    
-    const messages = await Message.find({ 
-      userId, 
-      $or: [
-        { role: { $in: ['user','assistant'] }, type: 'chat' },
-        { role: 'assistant', type: 'command' }
-      ]
-    })
-    .sort({ timestamp: -1 })
-    .limit(limit)
-    .lean();
-    
-    console.log(`[Chat] Found ${messages.length} messages for history, including task results`);
-    
-    return messages.map(msg => {
-      if (msg.type === 'command' && msg.meta) {
-        let enhancedContent = msg.content;
-        
-        const hasReports = msg.meta.nexusReportUrl || msg.meta.landingReportUrl;
-        
-        if (hasReports) {
-          enhancedContent += '\n\nTask Reports Available:';
-          if (msg.meta.nexusReportUrl) {
-            enhancedContent += `\n- Analysis Report: ${msg.meta.nexusReportUrl}`;
-          }
-          if (msg.meta.landingReportUrl) {
-            enhancedContent += `\n- Landing Page Report: ${msg.meta.landingReportUrl}`;
-          }
-          console.log(`[Chat] Enhanced task result with report URLs for message ${msg._id}`);
+  return messages.map(msg => {
+    if (msg.type === 'command' && msg.meta) {
+      let enhancedContent = msg.content;
+      
+      const hasReports = msg.meta.nexusReportUrl || msg.meta.landingReportUrl;
+      
+      if (hasReports) {
+        enhancedContent += '\n\nTask Reports Available:';
+        if (msg.meta.nexusReportUrl) {
+          enhancedContent += `\n- Analysis Report: ${msg.meta.nexusReportUrl}`;
         }
-        
-        return {
-          role: msg.role,
-          content: enhancedContent
-        };
+        if (msg.meta.landingReportUrl) {
+          enhancedContent += `\n- Landing Page Report: ${msg.meta.landingReportUrl}`;
+        }
+        console.log(`[Chat] Enhanced task result with report URLs for message ${msg._id}`);
       }
       
       return {
         role: msg.role,
-        content: msg.content
+        content: enhancedContent
       };
-    });
-  }
-  
-  const history = await getEnhancedChatHistory(userId, 20);
-  console.log(`[Chat] Using ${history.length} messages for context, including task results`);
-  
-  let buffer = '';
-  let fullReply = '';
-  
-  // Get user preferences to determine which client to use
-  const user = await User.findById(userId).select('preferredEngine modelPreferences').lean();
-  const preferredEngine = user?.preferredEngine || 'gpt-4o';
-  const provider = MODEL_PROVIDER_MAPPING[preferredEngine] || 'openai';
-  
-  console.log(`[Chat] Using preferred engine: ${preferredEngine} (provider: ${provider})`);
-  
-  // Select the appropriate client based on provider
-  let client;
-  let chatModel = preferredEngine;
-  
-  if (provider === 'google') {
-    client = await getUserGeminiClient(userId, preferredEngine);
-    console.log(`[Chat] Selected Gemini client for user ${userId}`);
-  } else if (provider === 'anthropic') {
-    client = await getUserClaudeClient(userId, preferredEngine);
-    console.log(`[Chat] Selected Claude client for user ${userId}`);
-  } else if (provider === 'qwen') {
-    client = await getUserQwenClient(userId, preferredEngine);
-    console.log(`[Chat] Selected Qwen client for user ${userId}`);
-  } else {
-    // Default to OpenAI
-    client = await getUserOpenAiClient(userId);
-    console.log(`[Chat] Selected OpenAI client for user ${userId}`);
+    }
     
-    // Use the model from the client's defaultQuery if available
-    if (client.defaultQuery?.engine) {
-      chatModel = client.defaultQuery.engine;
+    return {
+      role: msg.role,
+      content: msg.content
+    };
+  });
+}
+
+// Helper: async generator for streaming thought (and tool) events
+/**
+ * Streams NLI thoughts and handles task execution with support for different execution modes
+ * @param {string} userId - The user ID
+ * @param {string} prompt - User's input prompt
+ * @param {Object} context - Context object containing url and executionMode
+ */
+async function* streamNliThoughts(userId, prompt, context = {}) {
+  // Load task event systems for real-time feedback - dynamically import them since we're in a function
+  const { default: taskEventBus } = await import(new URL('./src/utils/TaskEventBus.js', import.meta.url));
+  const { default: taskPlanAdapter } = await import(new URL('./src/utils/TaskPlanAdapter.js', import.meta.url));
+  
+  // Extract context parameters with defaults
+  const { url, executionMode } = context || {};
+  console.log(`[streamNliThoughts] Starting stream for user: ${userId}, mode: ${executionMode || 'default'}`);
+  
+  // Create a session ID for the entire streaming session
+  const sessionId = uuidv4();
+  console.log(`[streamNliThoughts] Starting new session: ${sessionId}`);
+  
+  // Set up keepalive mechanism for long-running connections
+  let isConnectionActive = true;
+  const heartbeatTimer = setInterval(() => {
+    if (isConnectionActive) {
+      console.log('[streamNliThoughts] Sending keepalive ping');
+    } else {
+      clearInterval(heartbeatTimer);
     }
+  }, 30000); // 30 seconds
+  
+  // Ensure cleanup happens when generator is done
+  try {
+    setTimeout(() => {
+      isConnectionActive = false;
+      clearInterval(heartbeatTimer);
+    }, 1000 * 60 * 60); // Hard limit after 1 hour
+  } catch (err) {
+    console.error('[streamNliThoughts] Error setting up cleanup:', err);
   }
   
-  if (!client) {
-    console.error(`[Chat] Failed to initialize client for engine: ${preferredEngine}`);
-    throw new Error(`No client available for the selected engine: ${preferredEngine}`);
-  }
-  
-  console.log(`[Chat] Creating stream with model: ${chatModel}`);
-  
-  const systemMessage = `You are O.P.E.R.A.T.O.R. an AI assistant with powerful web automation capabilities. For general conversation, 
-  simply respond helpfully and clearly. DO NOT use tools unless the user explicitly asks for a task.
-
-Only use tools when:
-- The user asks you to perform a web task (use process_task)
-
-When executing tasks with process_task:
-1. First explain what you'll do and emit a thoughtUpdate
-2. Call process_task with a clear, specific command for a single action
-3. IMPORTANT: Wait patiently for task execution results - this may take several minutes
-4. After receiving results, analyze them and plan next steps
-5. For complex workflows requiring multiple websites or actions:
-   - Issue multiple sequential process_task calls, one after the other
-   - Each task should be focused on a specific website or action
-   - Wait for each task to complete before starting the next one
-6. Continue this pattern until the user's entire request is satisfied
-7. Finally, provide a comprehensive summary of all actions taken
-
-Task execution guidelines:
-- Stay connected and maintain the conversation during task execution
-- Provide thoughtful updates while waiting for task results
-- Be prepared to wait up to 30 minutes for complex tasks to complete
-- Never assume a task has failed just because it's taking time
-- If truly stuck, suggest an alternative approach
-
-This is a long-lived conversation. The stream will remain open during task execution and between multiple tasks.`;
-  
-  const standardTools = [
-    {
-      type: "function",
-      function: {
-        name: "process_task",
-        description: "Process and execute a web browser task",
-        parameters: {
-          type: "object",
-          properties: {
-            command: {
-              type: "string",
-              description: "The browser task to execute, e.g. 'navigate to google.com and search for cats'"
-            }
-          },
-          required: ["command"]
-        }
-      }
-    }
+  // Setup keepalive messages for UI feedback during long-running tasks
+  const keepaliveMessages = [
+    "Still working on it...",
+    "Processing your request...",
+    "This may take a few moments...",
+    "The task is still running...",
+    "Continuing to process your task...",
+    "Analyzing the results...",
+    "Working on multiple steps...",
+    "Making progress on your request..."
   ];
   
-  try {
-    const reversedHistory = [...history].reverse();
-    
-    const fullHistory = [
-      { role: 'system', content: systemMessage },
-      ...reversedHistory,
-      { role: 'user', content: prompt }
-    ];
-    
-    console.log('[Chat] Sending messages in correct chronological order to the AI');
-    
-    // Configure the stream request based on provider
-    let streamConfig = {
-      model: chatModel,
-      messages: fullHistory,
-      stream: true,
-      temperature: 0.7,
-      max_tokens: 700,
-      tools: standardTools
-    };
-    
-    // Our native Gemini client handles proper formatting of requests
-    if (provider === 'google') {
-      console.log('[Chat] Using native Google Gemini SDK client - no need for payload adaptations');
-    }
-    
-    // Log the final configuration (redact sensitive information)
-    const redactedConfig = { ...streamConfig };
-    delete redactedConfig.messages; // Don't log all messages for brevity
-    console.log(`[Chat] Final streamConfig for ${provider}: ${JSON.stringify(redactedConfig)}`);
-    
-    let stream;
-    try {
-      stream = await client.chat.completions.create(streamConfig);
-    } catch (err) {
-      console.error(`[Chat] Error creating stream with ${provider}:`, err);
-      
-      if (provider === 'google') {
-        console.log('[Chat] Gemini request failed with native SDK');
-        // For Gemini, we've already used the native SDK which should handle the request properly
-        // If it still fails, it's likely an authentication or quota issue
-        yield {
-          event: 'thoughtError',
-          text: `Error: Could not create stream with Google Gemini API. Please check your API key or try a different model.`
-        };
-        throw new Error(`Failed to create stream with Google Gemini: ${err.message}`);
-      } else {
-        yield {
-          event: 'thoughtError',
-          text: `Error: ${err.message}`
-        };
-        throw err;
-      }
-    }
-    
-    console.log('[streamNliThoughts] Stream created, beginning to read...');
-    
-    for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta;
-      
-      if (delta?.content) {
-        buffer += delta.content;
-        fullReply += delta.content;
-        console.log('[streamNliThoughts] Yielding thoughtUpdate:', delta.content.substring(0, 20) + '...');
-        yield { event: 'thoughtUpdate', text: delta.content };
-        if (/[.?!]\s$/.test(buffer) || buffer.length > 80) buffer = '';
-      }
-      
-      // Specifically handle tool calls from Gemini API
-      if (delta?.tool_calls) {
-        console.log('[streamNliThoughts] Processing tool calls:', JSON.stringify(delta.tool_calls));
-        
-        // Store partial tool calls to handle cases where function name and arguments come in separate deltas
-        // Use a module-scoped variable to persist across function calls
-        if (!global.partialToolCalls) {
-          global.partialToolCalls = new Map(); // index -> partial tool call data
-        }
-        const partialToolCalls = global.partialToolCalls;
-        
-        // Process each tool call
-        for (const toolCall of delta.tool_calls) {
-          if (!toolCall.function) {
-            console.log('[streamNliThoughts] Tool call missing function property, skipping');
-            continue;
-          }
-          
-          const toolCallIndex = toolCall.index || 0;
-          let functionName = toolCall.function.name;
-          let functionArgsStr = toolCall.function.arguments;
-          
-          // Check if we have a partial tool call for this index
-          if (partialToolCalls.has(toolCallIndex)) {
-            const partialData = partialToolCalls.get(toolCallIndex);
-            
-            // Merge with existing partial data
-            if (!functionName && partialData.functionName) {
-              functionName = partialData.functionName;
-            }
-            
-            if (!functionArgsStr && partialData.functionArgsStr) {
-              functionArgsStr = partialData.functionArgsStr;
-            }
-          }
-          
-          // If we still don't have both name and arguments, store what we have and wait for more
-          if (!functionName || !functionArgsStr) {
-            console.log(`[streamNliThoughts] Partial tool call data for index ${toolCallIndex}, storing for later`);
-            partialToolCalls.set(toolCallIndex, {
-              functionName: functionName || null,
-              functionArgsStr: functionArgsStr || null
+  // Utility function for setting up keepalive updates for any task
+  const setupKeepAlives = (taskId) => {
+    setTimeout(async () => {
+      let messageIndex = 0;
+      const maxKeepalives = 60; // Support up to 30 minutes of keepalives
+      const keepaliveInterval = setInterval(() => {
+        try {
+          // Only continue if we're under our maximum and connection is still active
+          if (messageIndex < maxKeepalives && isConnectionActive) {
+            const message = keepaliveMessages[messageIndex % keepaliveMessages.length];
+            console.log(`[streamNliThoughts] Sending keepalive #${messageIndex+1} for session ${sessionId}`);
+            // Use WebSockets to send direct updates since we can't yield outside generator
+            sendWebSocketUpdate(userId, {
+              event: 'sessionActive',
+              sessionId,
+              taskId,
+              text: message,
+              timestamp: new Date()
             });
-            continue;
+            messageIndex++;
+          } else {
+            clearInterval(keepaliveInterval);
           }
-          
-          // We have both name and arguments, so process the tool call
-          let functionArgs = {};
-          
-          try {
-            functionArgs = JSON.parse(functionArgsStr);
-          } catch (argError) {
-            console.error(`[streamNliThoughts] Error parsing function arguments for ${functionName}:`, argError);
-            console.error(`[streamNliThoughts] Raw arguments string: ${functionArgsStr}`);
-            
-            // Try to extract command from raw string if possible
-            if (functionArgsStr && typeof functionArgsStr === 'string') {
-              // Look for command pattern in malformed JSON
-              const commandMatch = functionArgsStr.match(/"command"\s*:\s*"([^"]+)"/i);
-              if (commandMatch && commandMatch[1]) {
-                console.log(`[streamNliThoughts] Extracted command from malformed JSON: ${commandMatch[1]}`);
-                functionArgs = { command: commandMatch[1] };
-              } else {
-                // If the whole string looks like it could be a command, use it directly
-                if (!functionArgsStr.includes('{') && !functionArgsStr.includes('}')) {
-                  functionArgs = { command: functionArgsStr.trim() };
-                  console.log(`[streamNliThoughts] Using raw string as command: ${functionArgs.command}`);
-                } else {
-                  continue;
-                }
-              }
-            } else {
-              continue;
-            }
-          }
-          
-          console.log(`[streamNliThoughts] Function call: ${functionName || 'unknown'} with args:`, functionArgs);
-          
-          // Infer function name if missing but we have command argument
-          if (!functionName && functionArgs.command) {
-            console.log(`[streamNliThoughts] Inferring process_task function from command argument:`, functionArgs.command);
-            functionName = 'process_task';
-          }
-          
-          // Handle process_task function
-          if (functionName === 'process_task' && functionArgs.command) {
-            console.log(`[streamNliThoughts] Processing task: ${functionArgs.command}`);
-            
-            // Generate a task ID for tracking or use the session ID for grouping
-            const taskId = new mongoose.Types.ObjectId();
-            const runId = uuidv4();
-            const runDir = path.join(NEXUS_RUN_DIR, runId);
-            
-            // Create run directory
-            await fs.promises.mkdir(runDir, { recursive: true });
-            
-            // Emit a task event so UI can show it's being processed
-            yield { 
-              event: 'taskProcessing',
-              text: `Processing task: ${functionArgs.command}`,
-              taskId: taskId.toString(),
-              sessionId: sessionId // Link to the current streaming session
-            };
-            
+        } catch (e) {
+          console.error('[streamNliThoughts] Error sending keepalive:', e);
+          clearInterval(keepaliveInterval);
+        }
+      }, 30000); // Send a keepalive every 30 seconds
+    }, 1);
+  };
+  
+  try {
+    // Persist user prompt regardless of mode
+    await new Message({ 
+      userId, 
+      role: 'user', 
+      type: 'chat', 
+      content: prompt, 
+      timestamp: new Date(),
+      sessionId // Include session ID for tracking
+    }).save();
+    
+    // Get user preferences and account info
+    const user = await User.findById(userId).select('email preferredEngine modelPreferences').lean();
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    // Use preferred engine or default to gpt-4o
+    const preferredEngine = user.preferredEngine || 'gpt-4o';
+    
+    // Generate common task metadata used in both modes
+    const taskId = `task_${uuidv4()}`;
+    const runId = `run_${uuidv4()}`;
+    const runDir = path.join(__dirname, 'runs', runId);
+    await fs.promises.mkdir(runDir, { recursive: true });
+    
+    // ACTION-PLANNING MODE: Direct task execution without planning steps
+    if (executionMode === 'action-planning') {
+      console.log(`[streamNliThoughts] Using action-planning mode. Bypassing AI planning and calling processTask directly`);
+      
+      try {
+        // Initial notification for UI
+        yield { 
+          event: 'thoughtUpdate', 
+          text: 'Processing your task directly...', 
+          sessionId,
+          taskId
+        };
+        
+        // Setup keepalives for the task
+        setupKeepAlives(taskId);
+        
+        // Register task with both event systems
+        taskEventBus.registerTask(taskId, userId, prompt, sessionId);
+        
+        // Create a TaskPlan instance for this task
+        const taskPlan = new TaskPlan({
+          taskId,
+          userId,
+          sessionId,
+          prompt: prompt,
+          runDir,
+          browser: null // We'll initialize browser only if needed
+        });
+        
+        // Register the TaskPlan with our adapter
+        taskPlanAdapter.registerTaskPlan(taskPlan, sessionId);
+        
+        // Setup listeners for task events (TaskEventBus)
+        const taskUpdateHandler = (updateData) => {
+          if (updateData.taskId === taskId) {
             try {
-              // Get user email for task processing
-              const userDoc = await User.findById(userId).lean();
-              const userEmail = userDoc?.email;
-              
-              // Send a "waiting" update immediately to keep the connection alive
-              yield {
-                event: 'thoughtUpdate',
-                text: `Starting task: ${functionArgs.command}...`
-              };
-              
-              // Save task to database with session reference
-              await new Task({
-                _id: taskId,
-                userId,
-                command: functionArgs.command,
-                status: 'pending',
-                progress: 0,
-                startTime: new Date(),
-                runId,
-                sessionId: sessionId // Associate with the current session
-              }).save();
-              
-              // Add task to user's active tasks
-              await User.updateOne(
-                { _id: userId },
-                { $push: { activeTasks: { 
-                  _id: taskId.toString(),
-                  command: functionArgs.command,
-                  status: 'pending',
-                  startTime: new Date(),
-                  sessionId: sessionId
-                }}}
-              );
-              
-              // Save command message
-              await new Message({
-                userId,
-                role: 'user',
-                type: 'command',
-                content: functionArgs.command,
-                taskId: taskId.toString(),
-                sessionId: sessionId,
-                timestamp: new Date()
-              }).save();
-              
-              // Send task start notification via WebSocket
+              // Send task updates to the UI via WebSocket
               sendWebSocketUpdate(userId, {
-                event: 'taskStart',
+                event: 'taskStepUpdate',
                 payload: {
-                  taskId: taskId.toString(),
-                  command: functionArgs.command,
-                  startTime: new Date(),
-                  sessionId: sessionId
+                  ...updateData,
+                  sessionId
                 }
               });
               
-              // Enhanced task processing with wait support
-              // Start processing task with session tracking for multi-site support
-              // Pass sessionId as the last parameter to enable tracking multiple tasks under the same session
-              processTask(userId, userEmail, taskId.toString(), runId, runDir, functionArgs.command, null, null, sessionId);
-              console.log('[streamNliThoughts] Task processing initiated successfully for task:', taskId.toString(), 'in session:', sessionId);
+              // Also yield an update if interesting
+              if (updateData.description || updateData.result) {
+                console.log(`[streamNliThoughts] Task update received: ${JSON.stringify(updateData).substring(0, 100)}...`);
+              }
+            } catch (err) {
+              console.error('[streamNliThoughts] Error handling task update:', err);
+            }
+          }
+        };
+        
+        // Setup listeners for TaskPlanAdapter events
+        const planUpdateHandler = (updateData) => {
+          if (updateData.taskId === taskId) {
+            try {
+              // Send plan updates to the UI via WebSocket
+              sendWebSocketUpdate(userId, {
+                event: 'planStepUpdate',
+                payload: {
+                  ...updateData,
+                  sessionId
+                }
+              });
               
-              // Add task information to the response
-              yield {
-                event: 'thoughtUpdate',
-                text: `✅ Task started: ${functionArgs.command}`,
-                taskId: taskId.toString(),
-                sessionId: sessionId
-              };
+              // Also yield an update if it contains useful information
+              if (updateData.message || updateData.stepIndex) {
+                console.log(`[streamNliThoughts] Plan update received for step ${updateData.stepIndex || 'unknown'}`);
+              }
+            } catch (err) {
+              console.error('[streamNliThoughts] Error handling plan update:', err);
+            }
+          }
+        };
+        
+        // Listen for various task events (both systems)
+        taskEventBus.on('task:stepCompleted', taskUpdateHandler);
+        taskEventBus.on('task:stepFailed', taskUpdateHandler);
+        taskEventBus.on('task:commandUpdated', taskUpdateHandler);
+        
+        taskPlanAdapter.on('plan:stepExecutionStarted', planUpdateHandler);
+        taskPlanAdapter.on('plan:stepExecutionCompleted', planUpdateHandler);
+        taskPlanAdapter.on('plan:stepExecutionFailed', planUpdateHandler);
+        taskPlanAdapter.on('plan:commandUpdated', planUpdateHandler);
+        
+        // Mark task as started
+        taskEventBus.startTask(taskId);
+        
+        // Dynamically import TaskProcessorAdapter to enhance processTask
+        const { enhanceProcessTask, optimizeCommandForExecution } = await import(new URL('./src/utils/TaskProcessorAdapter.js', import.meta.url));
+        
+        // Optimize the command for direct execution
+        const optimizedCommand = optimizeCommandForExecution(prompt);
+        console.log(`[streamNliThoughts] Optimized command: '${optimizedCommand}' (from: '${prompt}')`);
+        
+        // Create enhanced processTask with real-time feedback capabilities
+        const enhancedProcessTaskFn = enhanceProcessTask(processTask);
+        
+        // Execute and stream all events using the enhanced processTask
+        yield* enhancedProcessTaskFn(
+          userId,
+          user.email,
+          taskId,
+          runId,
+          runDir,
+          optimizedCommand,  // Send the optimized command
+          url,               // Pass the current URL
+          preferredEngine,
+          sessionId          // Pass the session ID for continuity
+        );
+        
+        // Clean up event listeners to prevent memory leaks
+        taskEventBus.removeAllListeners(`task:stepCompleted`);
+        taskEventBus.removeAllListeners(`task:stepFailed`);
+        taskEventBus.removeAllListeners(`task:commandUpdated`);
+        
+        // Clean up TaskPlanAdapter listeners
+        taskPlanAdapter.removeAllListeners(`plan:stepExecutionStarted`);
+        taskPlanAdapter.removeAllListeners(`plan:stepExecutionCompleted`);
+        taskPlanAdapter.removeAllListeners(`plan:stepExecutionFailed`);
+        taskPlanAdapter.removeAllListeners(`plan:commandUpdated`);
+        
+        // Unregister the plan
+        taskPlanAdapter.unregisterTaskPlan(taskId);
+        
+        // Signal completion but keep stream active
+        yield { 
+          event: 'sessionActive',
+          sessionId,
+          timestamp: Date.now(),
+          text: 'Task processing completed'
+        };
+        
+      } catch (error) {
+        console.error('[streamNliThoughts] Error in action-planning execution:', error);
+        yield { 
+          event: 'error', 
+          error: { message: error.message },
+          sessionId,
+          taskId
+        };
+        
+        yield {
+          event: 'thoughtComplete',
+          text: `Error executing task: ${error.message}. Please try again.`,
+          isError: true,
+          sessionId,
+          taskId
+        };
+        
+        // Clean up event listeners in case of error
+        taskEventBus.removeAllListeners(`task:stepCompleted`);
+        taskEventBus.removeAllListeners(`task:stepFailed`);
+        taskEventBus.removeAllListeners(`task:commandUpdated`);
+        
+        // Clean up TaskPlanAdapter listeners
+        taskPlanAdapter.removeAllListeners(`plan:stepExecutionStarted`);
+        taskPlanAdapter.removeAllListeners(`plan:stepExecutionCompleted`);
+        taskPlanAdapter.removeAllListeners(`plan:stepExecutionFailed`);
+        taskPlanAdapter.removeAllListeners(`plan:commandUpdated`);
+        
+        // Unregister the plan if it was created
+        if (taskPlan) {
+          taskPlanAdapter.unregisterTaskPlan(taskId);
+        }
+      }
+      
+      // Wait a moment for final event transmission but don't terminate stream yet
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      console.log(`[streamNliThoughts] Action-planning task processing completed, stream remains active for updates`);
+      
+    } 
+    // STEP-PLANNING MODE: AI-driven planning and execution
+    else {
+      console.log('[streamNliThoughts] Using step-planning mode with AI orchestration');
+      
+      // Get conversation history for context
+      const history = await getEnhancedChatHistory(userId, 20);
+      console.log(`[Chat] Using ${history.length} messages for context, including task results`);
+      
+      // Buffers for collecting streamed content
+      let buffer = '';
+      let fullReply = '';
+      
+      // Determine provider based on model preference
+      const provider = MODEL_PROVIDER_MAPPING[preferredEngine] || 'openai';
+      console.log(`[Chat] Using preferred engine: ${preferredEngine} (provider: ${provider})`);
+      
+      // Select appropriate client based on provider
+      let client;
+      let chatModel = preferredEngine;
+      
+      if (provider === 'google') {
+        client = await getUserGeminiClient(userId, preferredEngine);
+        console.log(`[Chat] Selected Gemini client for user ${userId}`);
+      } else if (provider === 'anthropic') {
+        client = await getUserClaudeClient(userId, preferredEngine);
+        console.log(`[Chat] Selected Claude client for user ${userId}`);
+      } else if (provider === 'qwen') {
+        client = await getUserQwenClient(userId, preferredEngine);
+        console.log(`[Chat] Selected Qwen client for user ${userId}`);
+      } else {
+        // Default to OpenAI
+        client = await getUserOpenAiClient(userId);
+        console.log(`[Chat] Selected OpenAI client for user ${userId}`);
+        
+        // Use model from client's defaultQuery if available
+        if (client.defaultQuery?.engine) {
+          chatModel = client.defaultQuery.engine;
+        }
+      }
+      
+      if (!client) {
+        throw new Error(`No client available for the selected engine: ${preferredEngine}`);
+      }
+      
+      console.log(`[Chat] Creating stream with model: ${chatModel}`);
+      
+      const systemMessage = `You are O.P.E.R.A.T.O.R. an AI assistant with powerful web automation capabilities. For general conversation, 
+      simply respond helpfully and clearly. DO NOT use tools unless the user explicitly asks for a task.
+
+    Only use tools when:
+    - The user asks you to perform a web task (use process_task)
+
+    When executing tasks with process_task:
+    1. First explain what you'll do and emit a thoughtUpdate
+    2. Call process_task with a clear, specific command for a single action
+    3. IMPORTANT: Wait patiently for task execution results - this may take several minutes
+    4. After receiving results, analyze them and plan next steps
+    5. For complex workflows requiring multiple websites or actions:
+       - Issue multiple sequential process_task calls, one after the other
+       - Each task should be focused on a specific website or action
+       - Wait for each task to complete before starting the next one
+    6. Continue this pattern until the user's entire request is satisfied
+    7. Finally, provide a comprehensive summary of all actions taken
+
+    Task execution guidelines:
+    - Stay connected and maintain the conversation during task execution
+    - Provide thoughtful updates while waiting for task results
+    - Be prepared to wait up to 30 minutes for complex tasks to complete
+    - Never assume a task has failed just because it's taking time
+    - If truly stuck, suggest an alternative approach
+
+    This is a long-lived conversation. The stream will remain open during task execution and between multiple tasks.`;
+      
+      const standardTools = [
+        {
+          type: "function",
+          function: {
+            name: "process_task",
+            description: "Process and execute a web browser task",
+            parameters: {
+              type: "object",
+              properties: {
+                command: {
+                  type: "string",
+                  description: "The browser task to execute, e.g. 'navigate to google.com and search for cats'"
+                }
+              },
+              required: ["command"]
+            }
+          }
+        }
+      ];
+      
+      // Prepare chat history in correct order
+      const reversedHistory = [...history].reverse();
+      const fullHistory = [
+        { role: 'system', content: systemMessage },
+        ...reversedHistory,
+        { role: 'user', content: prompt }
+      ];
+      
+      console.log('[Chat] Sending messages in correct chronological order to the AI');
+      
+      // Configure stream request based on provider
+      let streamConfig = {
+        model: chatModel,
+        messages: fullHistory,
+        stream: true,
+        temperature: 0.7,
+        max_tokens: 700,
+        tools: standardTools
+      };
+      
+      // Our native Gemini client handles proper formatting of requests
+      if (provider === 'google') {
+        console.log('[Chat] Using native Google Gemini SDK client - no need for payload adaptations');
+      }
+      
+      // Log the final configuration (redact sensitive information)
+      const redactedConfig = { ...streamConfig };
+      delete redactedConfig.messages; // Don't log all messages for brevity
+      console.log(`[Chat] Final streamConfig for ${provider}: ${JSON.stringify(redactedConfig)}`);
+      
+      // Create the stream for AI responses
+      let stream;
+      try {
+        stream = await client.chat.completions.create(streamConfig);
+      } catch (err) {
+        if (provider === 'google') {
+          console.log('[Chat] Gemini request failed with native SDK');
+          yield {
+            event: 'thoughtError',
+            text: `Error: Could not create stream with Google Gemini API. Please check your API key or try a different model.`,
+            sessionId
+          };
+          throw new Error(`Failed to create stream with Google Gemini: ${err.message}`);
+        } else {
+          yield {
+            event: 'thoughtError',
+            text: `Error: ${err.message}`,
+            sessionId
+          };
+          throw err;
+        }
+      }
+      
+      console.log('[streamNliThoughts] Stream created, beginning to read...');
+      
+      // Process the streamed response
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta;
+        
+        // Handle text content updates
+        if (delta?.content) {
+          buffer += delta.content;
+          fullReply += delta.content;
+          console.log('[streamNliThoughts] Yielding thoughtUpdate:', delta.content.substring(0, 20) + '...');
+          yield { 
+            event: 'thoughtUpdate', 
+            text: delta.content,
+            sessionId
+          };
+          
+          // Reset buffer at sentence boundaries or when it gets too long
+          if (/[.?!]\s$/.test(buffer) || buffer.length > 80) buffer = '';
+        }
+        
+        // Handle tool calls (process_task function invocations)
+        if (delta?.tool_calls) {
+          console.log('[streamNliThoughts] Processing tool calls:', JSON.stringify(delta.tool_calls));
+          
+          // Store partial tool calls to handle cases where function name and arguments come in separate deltas
+          if (!global.partialToolCalls) {
+            global.partialToolCalls = new Map(); // index -> partial tool call data
+          }
+          const partialToolCalls = global.partialToolCalls;
+          
+          // Process each tool call
+          for (const toolCall of delta.tool_calls) {
+            if (!toolCall.function) {
+              console.log('[streamNliThoughts] Tool call missing function property, skipping');
+              continue;
+            }
+            
+            const toolCallIndex = toolCall.index || 0;
+            let functionName = toolCall.function.name;
+            let functionArgsStr = toolCall.function.arguments;
+            
+            // Check if we have a partial tool call for this index
+            if (partialToolCalls.has(toolCallIndex)) {
+              const partialData = partialToolCalls.get(toolCallIndex);
               
-              // Setup periodic keepalive messages during task execution
-              const keepaliveMessages = [
-                "Still working on it...",
-                "Processing your request...",
-                "This may take a few moments...",
-                "The task is still running...",
-                "Continuing to process your task...",
-                "Analyzing the results...",
-                "Working on multiple steps...",
-                "Making progress on your request..."
-              ];
+              // Merge with existing partial data
+              if (!functionName && partialData.functionName) {
+                functionName = partialData.functionName;
+              }
               
-              // Initial update
-              yield {
-                event: 'thoughtUpdate',
-                text: "Waiting for task to complete. This may take some time depending on the complexity.",
-                sessionId: sessionId
-              };
+              if (!functionArgsStr && partialData.functionArgsStr) {
+                functionArgsStr = partialData.functionArgsStr;
+              }
+            }
+            
+            // If we still don't have both name and arguments, store what we have and wait for more
+            if (!functionName || !functionArgsStr) {
+              console.log(`[streamNliThoughts] Partial tool call data for index ${toolCallIndex}, storing for later`);
+              partialToolCalls.set(toolCallIndex, {
+                functionName: functionName || null,
+                functionArgsStr: functionArgsStr || null
+              });
+              continue;
+            }
+            
+            // We have both name and arguments, so process the tool call
+            let functionArgs = {};
+            
+            try {
+              functionArgs = JSON.parse(functionArgsStr);
+            } catch (argError) {
+              console.error(`[streamNliThoughts] Error parsing function arguments for ${functionName}:`, argError);
+              console.error(`[streamNliThoughts] Raw arguments string: ${functionArgsStr}`);
               
-              // Send keepalive updates periodically (but don't block the stream)
-              // This supports the pattern in the WebSocket Improvements Plan memory
-              setTimeout(async () => {
-                let messageIndex = 0;
-                const maxKeepalives = 60; // Support up to 30 minutes of keepalives
-                const keepaliveInterval = setInterval(() => {
-                  try {
-                    // Only continue if we're under our maximum
-                    if (messageIndex < maxKeepalives) {
-                      const message = keepaliveMessages[messageIndex % keepaliveMessages.length];
-                      console.log(`[streamNliThoughts] Sending keepalive #${messageIndex+1} for session ${sessionId}`);
-                      // We can't yield here since this is outside the generator function body
-                      // Instead, we use WebSockets to send a direct update
-                      sendWebSocketUpdate(userId, {
-                        event: 'sessionActive',
-                        sessionId: sessionId,
-                        taskId: taskId.toString(),
-                        text: message,
-                        timestamp: new Date()
-                      });
-                      messageIndex++;
-                    } else {
-                      clearInterval(keepaliveInterval);
-                    }
-                  } catch (e) {
-                    console.error('[streamNliThoughts] Error sending keepalive:', e);
-                    clearInterval(keepaliveInterval);
+              // Try to extract command from raw string if possible
+              if (functionArgsStr && typeof functionArgsStr === 'string') {
+                // Look for command pattern in malformed JSON
+                const commandMatch = functionArgsStr.match(/"command"\s*:\s*"([^"]+)"/i);
+                if (commandMatch && commandMatch[1]) {
+                  console.log(`[streamNliThoughts] Extracted command from malformed JSON: ${commandMatch[1]}`);
+                  functionArgs = { command: commandMatch[1] };
+                } else {
+                  // If the whole string looks like it could be a command, use it directly
+                  if (!functionArgsStr.includes('{') && !functionArgsStr.includes('}')) {
+                    functionArgs = { command: functionArgsStr.trim() };
+                    console.log(`[streamNliThoughts] Using raw string as command: ${functionArgs.command}`);
+                  } else {
+                    continue;
                   }
-                }, 30000); // Send a keepalive every 30 seconds
-              }, 1);
+                }
+              } else {
+                continue;
+              }
+            }
+            
+            console.log(`[streamNliThoughts] Function call: ${functionName || 'unknown'} with args:`, functionArgs);
+            
+            // Infer function name if missing but we have command argument
+            if (!functionName && functionArgs.command) {
+              console.log(`[streamNliThoughts] Inferring process_task function from command argument:`, functionArgs.command);
+              functionName = 'process_task';
+            }
+            
+            // Handle process_task function
+            if (functionName === 'process_task' && functionArgs.command) {
+              console.log(`[streamNliThoughts] Processing task: ${functionArgs.command}`);
               
-            } catch (taskError) {
-              console.error('[streamNliThoughts] Error starting task processing:', taskError);
+              // Generate a task ID for tracking
+              const stepTaskId = new mongoose.Types.ObjectId();
+              const stepRunId = uuidv4();
+              const stepRunDir = path.join(NEXUS_RUN_DIR, stepRunId);
+              
+              // Create run directory
+              await fs.promises.mkdir(stepRunDir, { recursive: true });
+              
+              // Emit a task event so UI can show it's being processed
+              yield { 
+                event: 'taskProcessing',
+                text: `Processing task: ${functionArgs.command}`,
+                taskId: stepTaskId.toString(),
+                sessionId: sessionId // Link to the current streaming session
+              };
+              
+              try {
+                // Get user email for task processing
+                const userDoc = await User.findById(userId).lean();
+                const userEmail = userDoc?.email;
+                
+                // Send a "waiting" update immediately to keep the connection alive
+                yield {
+                  event: 'thoughtUpdate',
+                  text: `Starting task: ${functionArgs.command}...`,
+                  sessionId
+                };
+                
+                // Save task to database with session reference
+                await new Task({
+                  _id: stepTaskId,
+                  userId,
+                  command: functionArgs.command,
+                  status: 'pending',
+                  progress: 0,
+                  startTime: new Date(),
+                  runId: stepRunId,
+                  sessionId // Associate with the current session
+                }).save();
+                
+                // Add task to user's active tasks
+                await User.updateOne(
+                  { _id: userId },
+                  { $push: { activeTasks: { 
+                    _id: stepTaskId.toString(),
+                    command: functionArgs.command,
+                    status: 'pending',
+                    startTime: new Date(),
+                    sessionId
+                  }}}
+                );
+                
+                // Save command message
+                await new Message({
+                  userId,
+                  role: 'user',
+                  type: 'command',
+                  content: functionArgs.command,
+                  taskId: stepTaskId.toString(),
+                  sessionId,
+                  timestamp: new Date()
+                }).save();
+                
+                // Send task start notification via WebSocket
+                sendWebSocketUpdate(userId, {
+                  event: 'taskStart',
+                  payload: {
+                    taskId: stepTaskId.toString(),
+                    command: functionArgs.command,
+                    startTime: new Date(),
+                    sessionId
+                  }
+                });
+                
+                // Create a TaskPlan instance for this task
+                const stepTaskPlan = new TaskPlan({
+                  taskId: stepTaskId.toString(),
+                  userId,
+                  sessionId,
+                  prompt: functionArgs.command,
+                  runDir: stepRunDir,
+                  browser: null // Initialize browser only if needed
+                });
+                
+                // Register the TaskPlan with our adapter
+                taskPlanAdapter.registerTaskPlan(stepTaskPlan, sessionId);
+                
+                // Apply command optimization for direct execution
+                const optimizedCommand = taskPlanAdapter.optimizeCommandForExecution(functionArgs.command);
+                console.log(`[streamNliThoughts] Optimized command: '${optimizedCommand}' (from: '${functionArgs.command}')`);
+                
+                // Setup listeners for TaskPlanAdapter events
+                const stepPlanUpdateHandler = (updateData) => {
+                  if (updateData.taskId === stepTaskId.toString()) {
+                    // Send updates to the UI via WebSocket
+                    sendWebSocketUpdate(userId, {
+                      event: 'planStepUpdate',
+                      payload: {
+                        ...updateData,
+                        sessionId
+                      }
+                    });
+                  }
+                };
+                
+                // Listen for plan events
+                taskPlanAdapter.on(`plan:stepExecutionStarted`, stepPlanUpdateHandler);
+                taskPlanAdapter.on(`plan:stepExecutionCompleted`, stepPlanUpdateHandler);
+                taskPlanAdapter.on(`plan:stepExecutionFailed`, stepPlanUpdateHandler);
+                
+                // Start processing task with session tracking
+                processTask(userId, userEmail, stepTaskId.toString(), stepRunId, stepRunDir, optimizedCommand, null, null, sessionId);
+                console.log('[streamNliThoughts] Task processing initiated successfully for task:', stepTaskId.toString(), 'in session:', sessionId);
+                
+                // Add task information to the response
+                yield {
+                  event: 'thoughtUpdate',
+                  text: `✅ Task started: ${functionArgs.command}`,
+                  taskId: stepTaskId.toString(),
+                  sessionId
+                };
+                
+                // Setup keepalive messages for this task
+                yield {
+                  event: 'thoughtUpdate',
+                  text: "Waiting for task to complete. This may take some time depending on the complexity.",
+                  sessionId
+                };
+                
+                // Setup periodic keepalives
+                setupKeepAlives(stepTaskId.toString());
+                
+                // Add cleanup function after task completion
+                setTimeout(() => {
+                  // Clean up TaskPlanAdapter listeners to prevent memory leaks
+                  taskPlanAdapter.removeListener(`plan:stepExecutionStarted`, stepPlanUpdateHandler);
+                  taskPlanAdapter.removeListener(`plan:stepExecutionCompleted`, stepPlanUpdateHandler);
+                  taskPlanAdapter.removeListener(`plan:stepExecutionFailed`, stepPlanUpdateHandler);
+                  
+                  // Unregister the task plan
+                  taskPlanAdapter.unregisterTaskPlan(stepTaskId.toString());
+                  
+                  console.log(`[streamNliThoughts] Cleaned up listeners for task: ${stepTaskId.toString()}`);
+                }, 10 * 60 * 1000); // Clean up after 10 minutes
+                
+              } catch (taskError) {
+                console.error('[streamNliThoughts] Error starting task processing:', taskError);
+                yield {
+                  event: 'thoughtError',
+                  text: `Error processing task: ${taskError.message}`,
+                  taskId: stepTaskId?.toString(),
+                  sessionId
+                };
+              }
+            } else {
+              console.log(`[streamNliThoughts] Unknown function: ${functionName}`);
               yield {
-                event: 'thoughtError',
-                text: `Error processing task: ${taskError.message}`,
-                taskId: taskId?.toString(),
-                sessionId: sessionId
+                event: 'thoughtUpdate',
+                text: `Received request to use unsupported function: ${functionName}`,
+                sessionId
               };
             }
-          } else {
-            console.log(`[streamNliThoughts] Unknown function: ${functionName}`);
-            yield {
-              event: 'thoughtUpdate',
-              text: `Received request to use unsupported function: ${functionName}`
-            };
           }
         }
       }
-    }
-    
-    const responseText = fullReply.trim().length > 0 
-      ? fullReply 
-      : 'I apologize, but I encountered an issue generating a response. Please try again.';
-    
-    console.log(`[streamNliThoughts] Sending final response of length: ${responseText.length}`);
-    
-    // Modified: Send thoughtComplete without closing the stream
-    // This allows the connection to remain open for subsequent task updates
-    yield { 
-      event: 'thoughtComplete', 
-      text: responseText,
-      sessionId: sessionId,
-      keepAlive: true // Signal to keep the connection open
-    };
-    
-    // Save response to history with session ID
-    if (responseText.trim().length > 0) {
-      try {
-        await new Message({
-          userId,
-          role: 'assistant',
-          type: 'chat',
-          content: responseText,
-          sessionId: sessionId,
-          timestamp: new Date()
-        }).save();
-        console.log(`[Chat] Saved assistant response to message history (session: ${sessionId})`);
-        
-        // Send additional message to ensure stream stays open
-        yield {
-          event: 'sessionActive',
-          sessionId: sessionId,
-          timestamp: Date.now()
-        };
-      } catch (saveError) {
-        console.error(`[Chat] Error saving assistant response:`, saveError);
+      
+      // Process the final response
+      const responseText = fullReply.trim().length > 0 
+        ? fullReply 
+        : 'I apologize, but I encountered an issue generating a response. Please try again.';
+      
+      console.log(`[streamNliThoughts] Sending final response of length: ${responseText.length}`);
+      
+      // Send thoughtComplete without closing the stream
+      yield { 
+        event: 'thoughtComplete', 
+        text: responseText,
+        sessionId,
+        keepAlive: true // Signal to keep the connection open
+      };
+      
+      // Save response to history with session ID
+      if (responseText.trim().length > 0) {
+        try {
+          await new Message({
+            userId,
+            role: 'assistant',
+            type: 'chat',
+            content: responseText,
+            sessionId,
+            timestamp: new Date()
+          }).save();
+          console.log(`[Chat] Saved assistant response to message history (session: ${sessionId})`);
+          
+          // Send additional message to ensure stream stays open
+          yield {
+            event: 'sessionActive',
+            sessionId,
+            timestamp: Date.now()
+          };
+        } catch (saveError) {
+          console.error(`[Chat] Error saving assistant response:`, saveError);
+        }
+      }
+      
+      // Clear any pending tool calls
+      if (global.partialToolCalls) {
+        global.partialToolCalls.clear();
+        console.log('[Chat] Cleared any pending tool calls');
       }
     }
     
-    // Wait a moment to ensure all task messages are transmitted
+    // Wait a moment to ensure all messages are transmitted
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // The connection remains open for task updates
     console.log(`[streamNliThoughts] Stream remains active for task updates in session ${sessionId}`);
-    
-    // This allows the session to continue receiving updates from long-running tasks
-    // The client can still close the connection when appropriate
-    
-    // Clear tool calls
-    if (global.toolCallsInProgress) {
-      global.toolCallsInProgress.clear();
-      console.log('[Chat] Cleared any pending tool calls');
-    }
     
   } catch (error) {
     console.error('[streamNliThoughts] Error occurred:', error);
     
-    // FIXED: Better quota error detection
+    // Handle specific error types
     const isQuotaError = (err) => {
       if (!err) return false;
       
@@ -9210,76 +9472,80 @@ This is a long-lived conversation. The stream will remain open during task execu
         String(err?.message || '').toLowerCase().includes(term)
       ) || ['invalid_api_key', 'invalid_request_error'].includes(err?.code);
 
+    // Handle quota errors
     if (isQuotaError(error)) {
-      const provider = client?.defaultQuery?.provider || 'OpenAI';
+      const provider = error.client?.defaultQuery?.provider || 'API provider';
       const errorDetails = error.error?.message || error.message || 'API quota exceeded';
-      const errorMessage = `[Quota Error] ${provider} API: ${errorDetails}`;
-      console.error(errorMessage);
+      
+      console.log('[streamNliThoughts] Yielding quota error event');
+      yield {
+        event: 'quotaExceeded',
+        text: `🚫 API Quota Exceeded: ${errorDetails}. ` +
+              'Please check or add a valid API key in settings.',
+        sessionId
+      };
+      
+      yield {
+        event: 'thoughtComplete',
+        text: 'I apologize, system fallback API key hit a limit. Please Add your own valid API key in settings to continue using the agent.',
+        isError: true,
+        errorType: 'quotaExceeded',
+        sessionId
+      };
       
       try {
-        console.log('[streamNliThoughts] Yielding quota error event');
-        yield {
-          event: 'quotaExceeded',
-          text: `🚫 API Quota Exceeded: ${errorDetails}. ` +
-                'Please check or add a valid API key in settings.'
-        };
-        
-        yield {
-          event: 'thoughtComplete',
-          text: 'I apologize, system fallback API key hit a limit. Please Add your own valid API key in settings to continue using the agent.',
-          isError: true,
-          errorType: 'quotaExceeded'
-        };
-        
         await new Message({
           userId,
           role: 'assistant',
           type: 'chat',
           content: 'I apologize, system fallback API key hit a limit. Please Add your own valid API key in settings to continue using the agent.',
+          sessionId,
           timestamp: new Date()
         }).save();
-        
-        console.log('[streamNliThoughts] Quota error handling completed');
       } catch (logError) {
-        console.error('Error handling quota error:', logError);
+        console.error('Error saving quota error message:', logError);
       }
-      return;
     }
-    
-    if (isAuthError(error)) {
-      const provider = client.defaultQuery?.provider || 'API provider';
+    // Handle authentication errors
+    else if (isAuthError(error)) {
+      const provider = error.client?.defaultQuery?.provider || 'API provider';
       const details = error.response?.data?.error?.message || error.message;
-      console.error(`[Auth Error] ${provider}:`, details);
       
-      console.log('[streamNliThoughts] Yielding auth error event');
       yield {
         event: 'authError',
         text: `🔑 Authentication Error: ${details || 'Invalid API key'}. ` +
-              'Please verify your API key in Settings > API Keys.'
+              'Please verify your API key in Settings > API Keys.',
+        sessionId
       };
       
       yield {
         event: 'thoughtComplete',
         text: 'Authentication error occurred. Please check your API key settings.',
         isError: true,
-        errorType: 'authError'
+        errorType: 'authError',
+        sessionId
       };
-      return;
     }
-    
     // Handle all other errors
-    console.log('[streamNliThoughts] Yielding general error event');
-    yield {
-      event: 'error',
-      text: `❌ Error: ${error.message || 'An unknown error occurred'}. Please try again.`
-    };
-    
-    yield {
-      event: 'thoughtComplete',
-      text: 'An error occurred while processing your request. Please try again.',
-      isError: true,
-      errorType: 'error'
-    };
+    else {
+      yield {
+        event: 'error',
+        text: `❌ Error: ${error.message || 'An unknown error occurred'}. Please try again.`,
+        sessionId
+      };
+      
+      yield {
+        event: 'thoughtComplete',
+        text: 'An error occurred while processing your request. Please try again.',
+        isError: true,
+        errorType: 'error',
+        sessionId
+      };
+    }
+  } finally {
+    // Ensure connection cleanup happens
+    isConnectionActive = false;
+    clearInterval(heartbeatTimer);
   }
 }
 
